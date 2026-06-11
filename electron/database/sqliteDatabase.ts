@@ -130,6 +130,19 @@ export class LauncherDatabase {
         UNIQUE(instance_id, provider, project_id, version_id, file_name)
       );
 
+      CREATE TABLE IF NOT EXISTS avatar_skins (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        source TEXT NOT NULL,
+        nickname TEXT,
+        uuid TEXT,
+        skin_url TEXT,
+        preview_url TEXT,
+        local_path TEXT,
+        created_at TEXT NOT NULL,
+        equipped_at TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL,

@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain } from "electron";
 import { z } from "zod";
 import { MicrosoftAuthService } from "../auth/microsoftAuthService";
+import { AvatarService } from "../avatar/avatarService";
 import { ContentService } from "../content/contentService";
 import { DownloadManager } from "../downloads/downloadManager";
 import { OfflineAuthService } from "../auth/offlineAuthService";
@@ -77,6 +78,11 @@ const updateSettingsSchema = z.object({
   clearCurseForgeApiKey: z.boolean().optional(),
 });
 
+const saveNicknameSkinSchema = z.object({
+  nickname: z.string(),
+  name: z.string().optional(),
+});
+
 type IpcDeps = {
   microsoftAuth: MicrosoftAuthService;
   offlineAuth: OfflineAuthService;
@@ -86,6 +92,7 @@ type IpcDeps = {
   instances: InstanceService;
   content: ContentService;
   apiKeys: ApiKeyStore;
+  avatar: AvatarService;
   updater: UpdateService;
 };
 
@@ -98,6 +105,7 @@ export const registerIpcHandlers = ({
   instances,
   content,
   apiKeys,
+  avatar,
   updater,
 }: IpcDeps) => {
   ipcMain.handle("auth:get-session", async () => {
@@ -175,6 +183,20 @@ export const registerIpcHandlers = ({
   ipcMain.handle("updater:get-state", async () => updater.getState());
   ipcMain.handle("updater:check", async () => updater.checkForUpdates(true));
   ipcMain.handle("updater:install", async () => updater.installDownloadedUpdate());
+  ipcMain.handle("avatar:search-nickname", async (_, nickname: unknown) =>
+    avatar.searchNickname(z.string().parse(nickname)),
+  );
+  ipcMain.handle("avatar:save-nickname-skin", async (_, input: unknown) =>
+    avatar.saveNicknameSkin(saveNicknameSkinSchema.parse(input)),
+  );
+  ipcMain.handle("avatar:import-custom-skin", async () => avatar.importCustomSkin());
+  ipcMain.handle("avatar:list-skins", async () => avatar.list());
+  ipcMain.handle("avatar:equip-skin", async (_, skinId: unknown) =>
+    avatar.equip(z.string().min(1).parse(skinId)),
+  );
+  ipcMain.handle("avatar:remove-skin", async (_, skinId: unknown) =>
+    avatar.remove(z.string().min(1).parse(skinId)),
+  );
   ipcMain.handle("window:minimize", (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize();
   });

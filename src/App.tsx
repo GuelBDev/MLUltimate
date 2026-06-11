@@ -5,6 +5,7 @@ import { AccountPanel } from "./components/account/AccountPanel";
 import { Sidebar, type PageId } from "./components/layout/Sidebar";
 import { StartupScreen } from "./components/startup/StartupScreen";
 import { WindowTitleBar } from "./components/window/WindowTitleBar";
+import { AvatarPage } from "./pages/AvatarPage";
 import { DownloadsPage } from "./pages/DownloadsPage";
 import { ExplorePage } from "./pages/ExplorePage";
 import { HomePage } from "./pages/HomePage";
@@ -14,6 +15,7 @@ import type { ContentType } from "./types/launcher";
 
 const pageTitles: Record<PageId, string> = {
   home: "Home",
+  avatar: "Avatar",
   library: "Biblioteca",
   explore: "Explorar",
   downloads: "Downloads",
@@ -40,6 +42,8 @@ function AppShell() {
         );
       case "downloads":
         return <DownloadsPage />;
+      case "avatar":
+        return <AvatarPage />;
       case "settings":
         return <SettingsPage />;
       case "explore":

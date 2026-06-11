@@ -3,6 +3,7 @@ import {
   Download,
   Home,
   Library,
+  UserRound,
   Settings,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -10,6 +11,7 @@ import { cn } from "../../utils/cn";
 
 export type PageId =
   | "home"
+  | "avatar"
   | "library"
   | "explore"
   | "downloads"
@@ -23,6 +25,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { id: "home", label: "Home", icon: Home },
+  { id: "avatar", label: "Avatar", icon: UserRound },
   { id: "library", label: "Biblioteca", icon: Library },
   { id: "explore", label: "Explorar", icon: Compass },
   { id: "downloads", label: "Downloads", icon: Download },

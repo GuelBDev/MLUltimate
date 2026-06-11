@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, shell } from "electron";
 import path from "node:path";
 import { LauncherDatabase } from "./database/sqliteDatabase";
+import { AvatarService } from "./avatar/avatarService";
 import { SecureTokenStore } from "./auth/secureTokenStore";
 import { MicrosoftAuthService } from "./auth/microsoftAuthService";
 import { OfflineAuthService } from "./auth/offlineAuthService";
@@ -79,6 +80,7 @@ const bootstrap = async () => {
   await database.initialize();
 
   const tokenStore = new SecureTokenStore(database);
+  const avatar = new AvatarService(database);
   const apiKeys = new ApiKeyStore(database);
   const microsoftAuth = new MicrosoftAuthService(tokenStore);
   const offlineAuth = new OfflineAuthService(database);
@@ -112,6 +114,7 @@ const bootstrap = async () => {
     instances,
     content,
     apiKeys,
+    avatar,
     updater,
   });
   await createWindow();

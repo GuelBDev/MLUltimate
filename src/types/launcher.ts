@@ -192,6 +192,34 @@ export type ImportInstanceInput = {
   code?: string;
 };
 
+export type SkinSource = "namemc" | "custom";
+
+export type SkinSearchResult = {
+  nickname: string;
+  uuid: string;
+  skinUrl: string;
+  avatarUrl: string;
+  namemcUrl: string;
+};
+
+export type LauncherSkin = {
+  id: string;
+  name: string;
+  source: SkinSource;
+  nickname?: string;
+  uuid?: string;
+  skinUrl?: string;
+  previewUrl?: string;
+  imageDataUrl?: string;
+  createdAt: string;
+  equippedAt?: string;
+};
+
+export type SaveNicknameSkinInput = {
+  nickname: string;
+  name?: string;
+};
+
 export type LauncherSettings = {
   curseForgeApiKeyConfigured: boolean;
   encryptionAvailable: boolean;

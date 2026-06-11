@@ -10,6 +10,7 @@ import type {
   LaunchRequest,
   LauncherSettings,
   OfflineLoginInput,
+  SaveNicknameSkinInput,
   UpdaterState,
   UpdateLauncherSettingsInput,
   UpdateInstanceInput,
@@ -192,5 +193,35 @@ export const launcherApi = {
     }
 
     return window.mlultimate.updater.onState(callback);
+  },
+
+  searchSkinNickname: async (nickname: string) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.avatar.searchNickname(nickname);
+  },
+
+  saveNicknameSkin: async (input: SaveNicknameSkinInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.avatar.saveNicknameSkin(input);
+  },
+
+  importCustomSkin: async () => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.avatar.importCustomSkin();
+  },
+
+  listSkins: async () => {
+    if (!hasBridge()) return [];
+    return window.mlultimate.avatar.listSkins();
+  },
+
+  equipSkin: async (skinId: string) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.avatar.equipSkin(skinId);
+  },
+
+  removeSkin: async (skinId: string) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.avatar.removeSkin(skinId);
   },
 };

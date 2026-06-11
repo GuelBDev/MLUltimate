@@ -16,6 +16,9 @@ import type {
   LauncherInstance,
   MinecraftVersionSummary,
   OfflineLoginInput,
+  LauncherSkin,
+  SaveNicknameSkinInput,
+  SkinSearchResult,
   UpdaterState,
   UpdateLauncherSettingsInput,
   UpdateInstanceInput,
@@ -67,6 +70,14 @@ declare global {
         check: () => Promise<UpdaterState>;
         install: () => Promise<void>;
         onState: (callback: (state: UpdaterState) => void) => () => void;
+      };
+      avatar: {
+        searchNickname: (nickname: string) => Promise<SkinSearchResult>;
+        saveNicknameSkin: (input: SaveNicknameSkinInput) => Promise<LauncherSkin>;
+        importCustomSkin: () => Promise<LauncherSkin | null>;
+        listSkins: () => Promise<LauncherSkin[]>;
+        equipSkin: (skinId: string) => Promise<LauncherSkin>;
+        removeSkin: (skinId: string) => Promise<void>;
       };
       window: {
         minimize: () => Promise<void>;

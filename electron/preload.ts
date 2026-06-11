@@ -17,6 +17,9 @@ import type {
   LauncherInstance,
   MinecraftVersionSummary,
   OfflineLoginInput,
+  LauncherSkin,
+  SaveNicknameSkinInput,
+  SkinSearchResult,
   UpdaterState,
   UpdateLauncherSettingsInput,
   UpdateInstanceInput,
@@ -110,6 +113,19 @@ const api = {
 
       return () => ipcRenderer.removeListener("updater:state", listener);
     },
+  },
+  avatar: {
+    searchNickname: (nickname: string) =>
+      ipcRenderer.invoke("avatar:search-nickname", nickname) as Promise<SkinSearchResult>,
+    saveNicknameSkin: (input: SaveNicknameSkinInput) =>
+      ipcRenderer.invoke("avatar:save-nickname-skin", input) as Promise<LauncherSkin>,
+    importCustomSkin: () =>
+      ipcRenderer.invoke("avatar:import-custom-skin") as Promise<LauncherSkin | null>,
+    listSkins: () => ipcRenderer.invoke("avatar:list-skins") as Promise<LauncherSkin[]>,
+    equipSkin: (skinId: string) =>
+      ipcRenderer.invoke("avatar:equip-skin", skinId) as Promise<LauncherSkin>,
+    removeSkin: (skinId: string) =>
+      ipcRenderer.invoke("avatar:remove-skin", skinId) as Promise<void>,
   },
   window: {
     minimize: () => ipcRenderer.invoke("window:minimize") as Promise<void>,

@@ -14,6 +14,7 @@ import type {
   ContentSearchResult,
   ContentType,
   ContentVersion,
+  LauncherInstance,
   LoaderType,
 } from "../types/launcher";
 
@@ -25,7 +26,13 @@ type ExplorePageProps = {
 const providerFilters: ContentProviderFilter[] = ["all", "modrinth", "curseforge"];
 const types: ContentType[] = ["mod", "modpack", "resourcepack", "shader"];
 const loaders: LoaderType[] = ["vanilla", "fabric", "forge", "neoforge", "quilt"];
-const detailTabs = ["overview", "content", "changelog", "gallery", "versions", "comments"] as const;
+const detailTabs = ["content", "gallery", "versions", "comments"] as const;
+type DetailTab = (typeof detailTabs)[number];
+
+type InstallTarget = {
+  project: ContentSearchResult | ContentProjectDetails;
+  version?: ContentVersion;
+};
 
 const typeLabels: Record<ContentType, string> = {
   mod: "Mods",
@@ -40,7 +47,7 @@ const providerLabels: Record<ContentProviderFilter, string> = {
   curseforge: "CurseForge",
 };
 
-export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExplorePageProps) => {
+export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
   const queryClient = useQueryClient();
   const { instances } = useInstances();
   const { versions } = useMinecraftVersions();
@@ -49,10 +56,10 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   const [query, setQuery] = useState("");
   const [loader, setLoader] = useState<LoaderType | "">("");
   const [version, setVersion] = useState("");
-  const [instanceId, setInstanceId] = useState(initialInstanceId ?? "");
   const [results, setResults] = useState<ContentSearchResult[]>([]);
   const [selectedProject, setSelectedProject] = useState<ContentSearchResult | null>(null);
-  const [activeTab, setActiveTab] = useState<(typeof detailTabs)[number]>("overview");
+  const [activeTab, setActiveTab] = useState<DetailTab>("versions");
+  const [installTarget, setInstallTarget] = useState<InstallTarget | null>(null);
 
   const releaseVersions = useMemo(
     () =>
@@ -62,13 +69,8 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
     [versions.data],
   );
   const selectedVersion = version;
-  const selectedInstanceId = instanceId;
-  const selectedInstance = useMemo(
-    () => (instances.data ?? []).find((instance) => instance.id === selectedInstanceId),
-    [instances.data, selectedInstanceId],
-  );
-  const effectiveVersion = selectedInstance?.minecraftVersion ?? selectedVersion;
-  const effectiveLoader = selectedInstance?.loader ?? loader;
+  const effectiveVersion = selectedVersion;
+  const effectiveLoader = loader;
 
   const search = useMutation({
     mutationFn: (input: ContentSearchInput) => launcherApi.searchContent(input),
@@ -87,15 +89,20 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   });
 
   const install = useMutation({
-    mutationFn: (input: { project: ContentSearchResult | ContentProjectDetails; versionId?: string }) =>
+    mutationFn: (input: {
+      project: ContentSearchResult | ContentProjectDetails;
+      instanceId: string;
+      versionId?: string;
+    }) =>
       launcherApi.installContent({
         provider: input.project.provider,
         type: input.project.type,
         projectId: input.project.projectId,
-        instanceId: selectedInstanceId,
+        instanceId: input.instanceId,
         versionId: input.versionId,
       }),
     onSuccess: () => {
+      setInstallTarget(null);
       void queryClient.invalidateQueries({ queryKey: ["instances"] });
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
     },
@@ -125,8 +132,12 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
 
   const openProject = (project: ContentSearchResult) => {
     setSelectedProject(project);
-    setActiveTab("overview");
+    setActiveTab("versions");
     details.mutate(project);
+  };
+
+  const requestInstall = (project: ContentSearchResult | ContentProjectDetails, selectedContentVersion?: ContentVersion) => {
+    setInstallTarget({ project, version: selectedContentVersion });
   };
 
   const error =
@@ -146,15 +157,19 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onBack={() => setSelectedProject(null)}
-        onInstall={(version) =>
-          install.mutate({
-            project: details.data ?? selectedProject,
-            versionId: version?.id,
-          })
-        }
-        canInstall={Boolean(selectedInstanceId)}
+        onInstall={(version) => requestInstall(details.data ?? selectedProject, version)}
         installing={install.isPending}
         error={error}
+        instances={instances.data ?? []}
+        installTarget={installTarget}
+        onCloseInstall={() => setInstallTarget(null)}
+        onConfirmInstall={(instanceId) =>
+          install.mutate({
+            project: installTarget?.project ?? details.data ?? selectedProject,
+            instanceId,
+            versionId: installTarget?.version?.id,
+          })
+        }
       />
     );
   }
@@ -166,7 +181,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
           <div>
             <h2 className="text-lg font-semibold text-white">Explorar conteudo</h2>
             <p className="mt-1 text-sm text-[#94A3B8]">
-              Lista atualizada automaticamente pela instancia selecionada.
+              Pesquise livremente e escolha a instancia compativel na hora de instalar.
             </p>
           </div>
           <Badge tone="blue">{providerLabels[provider]}</Badge>
@@ -243,29 +258,9 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
           </Button>
         </form>
 
-        <div className="mt-4">
-          <select
-            value={selectedInstanceId}
-            onChange={(event) => setInstanceId(event.target.value)}
-            className="h-11 w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
-          >
-            <option value="">Add: N/A - pesquisar todas as versoes</option>
-            {(instances.data ?? []).map((instance) => (
-              <option key={instance.id} value={instance.id}>
-                Add to: {instance.name} - {instance.minecraftVersion} - {instance.loader}
-              </option>
-            ))}
-          </select>
-          {selectedInstance ? (
-            <p className="mt-2 text-xs text-[#94A3B8]">
-              Filtro ativo: Minecraft {selectedInstance.minecraftVersion} - {selectedInstance.loader}
-            </p>
-          ) : (
-            <p className="mt-2 text-xs text-[#94A3B8]">
-              Filtro ativo: Add: N/A - todas as versoes e loaders
-            </p>
-          )}
-        </div>
+        <p className="mt-3 text-xs text-[#94A3B8]">
+          Filtro ativo: {selectedVersion || "todas as versoes"} - {loader || "todos loaders"}
+        </p>
 
         {provider !== "modrinth" ? (
           <p className="mt-3 text-xs leading-5 text-[#94A3B8]">
@@ -317,11 +312,11 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
               <div className="flex shrink-0 flex-col items-end gap-2">
                 <Button
                   type="button"
-                  disabled={!selectedInstanceId || install.isPending}
-                  title={selectedInstanceId ? "Instalar" : "Escolha uma instancia em Add"}
+                  disabled={install.isPending}
+                  title="Escolher instancia"
                   onClick={(event) => {
                     event.stopPropagation();
-                    install.mutate({ project });
+                    requestInstall(project);
                   }}
                 >
                   <Download className="h-4 w-4" />
@@ -348,6 +343,22 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
           </p>
         </Card>
       ) : null}
+
+      <InstallInstanceDialog
+        target={installTarget}
+        instances={instances.data ?? []}
+        installing={install.isPending}
+        onClose={() => setInstallTarget(null)}
+        onInstall={(instanceId) =>
+          installTarget
+            ? install.mutate({
+                project: installTarget.project,
+                instanceId,
+                versionId: installTarget.version?.id,
+              })
+            : undefined
+        }
+      />
     </div>
   );
 };
@@ -355,13 +366,16 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
 type ProjectDetailsProps = {
   project?: ContentProjectDetails;
   fallback: ContentSearchResult;
-  activeTab: (typeof detailTabs)[number];
-  onTabChange: (tab: (typeof detailTabs)[number]) => void;
+  activeTab: DetailTab;
+  onTabChange: (tab: DetailTab) => void;
   onBack: () => void;
   onInstall: (version?: ContentVersion) => void;
-  canInstall: boolean;
   installing: boolean;
   error: string | null;
+  instances: LauncherInstance[];
+  installTarget: InstallTarget | null;
+  onCloseInstall: () => void;
+  onConfirmInstall: (instanceId: string) => void;
 };
 
 const ProjectDetails = ({
@@ -371,13 +385,26 @@ const ProjectDetails = ({
   onTabChange,
   onBack,
   onInstall,
-  canInstall,
   installing,
   error,
+  instances,
+  installTarget,
+  onCloseInstall,
+  onConfirmInstall,
 }: ProjectDetailsProps) => {
   const current = project ?? fallback;
   const versions = project?.versions ?? [];
   const latestVersion = versions.at(0);
+  const visibleTabs = useMemo(
+    () => detailTabs.filter((tab) => tab !== "content" || current.type === "modpack"),
+    [current.type],
+  );
+
+  useEffect(() => {
+    if (!visibleTabs.includes(activeTab)) {
+      onTabChange("versions");
+    }
+  }, [activeTab, onTabChange, visibleTabs]);
 
   return (
     <div className="space-y-5">
@@ -421,8 +448,8 @@ const ProjectDetails = ({
           <Button
             type="button"
             onClick={() => onInstall(latestVersion)}
-            disabled={installing || !canInstall}
-            title={canInstall ? "Instalar" : "Volte e escolha uma instancia em Add"}
+            disabled={installing}
+            title="Escolher instancia"
           >
             <Download className="h-4 w-4" />
             Instalar
@@ -431,7 +458,7 @@ const ProjectDetails = ({
       </section>
 
       <div className="flex gap-5 border-b border-white/10">
-        {detailTabs.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab}
             type="button"
@@ -454,14 +481,6 @@ const ProjectDetails = ({
       ) : null}
 
       <Card className="rounded-sm border-white/10 bg-[#1f1f1f] p-5">
-        {activeTab === "overview" ? (
-          <div className="prose prose-invert max-w-none text-sm leading-7 text-[#B8C2D0]">
-            {(project?.body || current.description).split("\n").slice(0, 20).map((line, index) => (
-              <p key={`${line}-${index}`}>{line || " "}</p>
-            ))}
-          </div>
-        ) : null}
-
         {activeTab === "versions" ? (
           <div className="space-y-2">
             {versions.map((version) => (
@@ -469,29 +488,10 @@ const ProjectDetails = ({
                 key={`${version.provider}-${version.id}`}
                 version={version}
                 onInstall={() => onInstall(version)}
-                installing={installing || !canInstall}
+                installing={installing}
               />
             ))}
             {versions.length === 0 ? <EmptyDetail text="Carregando versoes..." /> : null}
-          </div>
-        ) : null}
-
-        {activeTab === "changelog" ? (
-          <div className="space-y-4">
-            {versions
-              .filter((version) => version.changelog)
-              .slice(0, 8)
-              .map((version) => (
-                <div key={version.id} className="border-b border-white/8 pb-4 last:border-b-0">
-                  <p className="font-semibold text-white">{version.name}</p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#B8C2D0]">
-                    {version.changelog}
-                  </p>
-                </div>
-              ))}
-            {!versions.some((version) => version.changelog) ? (
-              <EmptyDetail text="Changelog indisponivel para este provedor ou arquivo." />
-            ) : null}
           </div>
         ) : null}
 
@@ -538,6 +538,14 @@ const ProjectDetails = ({
           </div>
         ) : null}
       </Card>
+
+      <InstallInstanceDialog
+        target={installTarget}
+        instances={instances}
+        installing={installing}
+        onClose={onCloseInstall}
+        onInstall={onConfirmInstall}
+      />
     </div>
   );
 };
@@ -564,6 +572,159 @@ const VersionRow = ({
     </Button>
   </div>
 );
+
+const InstallInstanceDialog = ({
+  target,
+  instances,
+  installing,
+  onClose,
+  onInstall,
+}: {
+  target: InstallTarget | null;
+  instances: LauncherInstance[];
+  installing: boolean;
+  onClose: () => void;
+  onInstall: (instanceId: string) => void;
+}) => {
+  const compatibilityRows = useMemo(
+    () =>
+      target
+        ? instances.map((instance) => ({
+            instance,
+            ...getInstallCompatibility(target.project, target.version, instance),
+          }))
+        : [],
+    [instances, target],
+  );
+
+  if (!target) {
+    return null;
+  }
+
+  const availableCount = compatibilityRows.filter((row) => row.compatible).length;
+  const title = target.version ? `${target.project.title} - ${target.version.name}` : target.project.title;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-2xl rounded-2xl border border-white/12 bg-[#161B22] p-5 shadow-2xl shadow-black/50">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#60A5FA]">
+              Escolher instancia
+            </p>
+            <h2 className="mt-2 truncate text-xl font-semibold text-white">{title}</h2>
+            <p className="mt-1 text-sm text-[#94A3B8]">
+              Instancias vanilla e incompatíveis aparecem bloqueadas para evitar arquivo quebrado.
+            </p>
+          </div>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={installing}>
+            Fechar
+          </Button>
+        </div>
+
+        <div className="mt-5 max-h-[420px] space-y-3 overflow-y-auto pr-1">
+          {compatibilityRows.map(({ instance, compatible, reason }) => (
+            <button
+              key={instance.id}
+              type="button"
+              disabled={!compatible || installing}
+              onClick={() => onInstall(instance.id)}
+              className={`w-full rounded-xl border p-4 text-left transition ${
+                compatible
+                  ? "border-[#3B82F6]/40 bg-[#0D1117] hover:border-[#60A5FA] hover:bg-[#132033]"
+                  : "cursor-not-allowed border-white/8 bg-white/[0.04] opacity-55"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-white">{instance.name}</p>
+                  <p className="mt-1 text-sm text-[#94A3B8]">
+                    Minecraft {instance.minecraftVersion} - {instance.loader}
+                  </p>
+                </div>
+                <Badge tone={compatible ? "green" : "slate"}>
+                  {compatible ? "Compativel" : "Bloqueado"}
+                </Badge>
+              </div>
+              <p className={`mt-3 text-sm ${compatible ? "text-[#B8C2D0]" : "text-[#94A3B8]"}`}>
+                {reason}
+              </p>
+            </button>
+          ))}
+
+          {compatibilityRows.length === 0 ? (
+            <div className="rounded-xl border border-white/10 bg-[#0D1117] p-6 text-center text-sm text-[#94A3B8]">
+              Crie uma instancia Fabric, Forge, NeoForge ou Quilt na Biblioteca antes de instalar conteudo.
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-5 flex items-center justify-between gap-3 border-t border-white/10 pt-4">
+          <p className="text-sm text-[#94A3B8]">
+            {availableCount > 0
+              ? `${availableCount} instancia${availableCount === 1 ? "" : "s"} disponivel${availableCount === 1 ? "" : "is"}.`
+              : "Nenhuma instancia compativel encontrada."}
+          </p>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={installing}>
+            Cancelar
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const getInstallCompatibility = (
+  project: ContentSearchResult | ContentProjectDetails,
+  version: ContentVersion | undefined,
+  instance: LauncherInstance,
+) => {
+  if (instance.loader === "vanilla") {
+    return { compatible: false, reason: "Instancia vanilla nao aceita instalacao automatica de mods, shaders ou modpacks." };
+  }
+
+  const gameVersions = version?.gameVersions ?? project.compatibleGameVersions ?? [];
+  const versionCompatible =
+    gameVersions.length === 0 ||
+    gameVersions.some((gameVersion) => isMinecraftVersionCompatible(gameVersion, instance.minecraftVersion));
+
+  if (!versionCompatible) {
+    return {
+      compatible: false,
+      reason: `Incompativel com Minecraft ${instance.minecraftVersion}.`,
+    };
+  }
+
+  const contentLoaders = version?.loaders ?? project.compatibleLoaders ?? [];
+  const loaderCompatible =
+    project.type === "resourcepack" ||
+    contentLoaders.length === 0 ||
+    contentLoaders.includes(instance.loader);
+
+  if (!loaderCompatible) {
+    return {
+      compatible: false,
+      reason: `Precisa de ${contentLoaders.join(", ")}; esta instancia usa ${instance.loader}.`,
+    };
+  }
+
+  return {
+    compatible: true,
+    reason: `Pronto para instalar em ${instance.name}.`,
+  };
+};
+
+const isMinecraftVersionCompatible = (supported: string, instanceVersion: string) => {
+  if (supported === instanceVersion) {
+    return true;
+  }
+
+  if (supported.endsWith(".x")) {
+    return instanceVersion.startsWith(supported.slice(0, -1));
+  }
+
+  return false;
+};
 
 const CompatibilityMeta = ({ project }: { project: ContentSearchResult | ContentProjectDetails }) => {
   const compatible = project.compatibleGameVersions?.slice(0, 4) ?? [];
