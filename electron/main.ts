@@ -49,7 +49,10 @@ const createWindow = async () => {
     },
   });
 
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.maximize();
+    mainWindow?.show();
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://") || url.startsWith("http://")) {

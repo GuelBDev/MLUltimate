@@ -142,9 +142,9 @@ export function AvatarPage() {
             {searchResult ? (
               <div className="flex flex-col items-center text-center">
                 <img
-                  src={searchResult.avatarUrl}
+                  src={searchResult.skinUrl}
                   alt={searchResult.nickname}
-                  className="h-44 w-32 object-contain drop-shadow-2xl"
+                  className="h-44 w-32 object-contain drop-shadow-2xl [image-rendering:pixelated]"
                 />
                 <h3 className="mt-3 text-base font-semibold text-white">
                   {searchResult.nickname}
@@ -212,9 +212,9 @@ export function AvatarPage() {
               <Card key={skin.id} className="overflow-hidden p-4">
                 <div className="flex gap-4">
                   <div className="grid h-28 w-24 shrink-0 place-items-center rounded-xl border border-white/10 bg-[#0D1117]">
-                    {skin.previewUrl || skin.imageDataUrl ? (
+                    {skin.imageDataUrl || skin.previewUrl ? (
                       <img
-                        src={skin.previewUrl ?? skin.imageDataUrl}
+                        src={skin.imageDataUrl ?? skin.previewUrl}
                         alt={skin.name}
                         className="max-h-24 max-w-20 object-contain [image-rendering:pixelated]"
                       />

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
-import { CheckCircle2, DownloadCloud, KeyRound, RefreshCw, Save, Trash2 } from "lucide-react";
+import { CheckCircle2, DownloadCloud, KeyRound, Languages, RefreshCw, Save, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { languageOptions } from "../constants/languages";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -147,6 +148,41 @@ export const SettingsPage = () => {
             </div>
           </div>
         </div>
+      </Card>
+
+      <Card className="p-5">
+        <div className="flex items-start justify-between gap-5">
+          <div className="flex items-center gap-3">
+            <Languages className="h-5 w-5 text-[#60A5FA]" />
+            <div>
+              <h2 className="text-lg font-semibold text-white">Linguagem</h2>
+              <p className="mt-1 text-sm leading-6 text-[#94A3B8]">
+                Escolha o idioma do app. A preferencia fica salva neste computador.
+              </p>
+            </div>
+          </div>
+          <Badge tone="blue">
+            {languageOptions.find((language) => language.id === settings.data?.language)?.label ?? "Portugues Brasil"}
+          </Badge>
+        </div>
+
+        <select
+          value={settings.data?.language ?? "pt-BR"}
+          disabled={settings.isLoading || updateSettings.isPending}
+          onChange={(event) =>
+            updateSettings.mutate({
+              language: event.target.value as typeof languageOptions[number]["id"],
+              languageSelected: true,
+            })
+          }
+          className="mt-5 h-11 w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none transition focus:border-[#60A5FA]/70"
+        >
+          {languageOptions.map((language) => (
+            <option key={language.id} value={language.id}>
+              {language.label}
+            </option>
+          ))}
+        </select>
       </Card>
 
       <Card className="p-5">

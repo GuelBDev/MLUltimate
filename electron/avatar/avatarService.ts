@@ -102,7 +102,7 @@ export class AvatarService {
       nickname: session.name,
       uuid: session.id,
       skinUrl: payload.textures.SKIN.url,
-      avatarUrl: `https://crafatar.com/renders/body/${session.id}?overlay=true&size=160`,
+      avatarUrl: payload.textures.SKIN.url,
       namemcUrl: `https://namemc.com/profile/${session.name}`,
     };
   }
@@ -228,7 +228,7 @@ export class AvatarService {
       nickname: skin.nickname ?? undefined,
       uuid: skin.uuid ?? undefined,
       skinUrl: skin.skin_url ?? undefined,
-      previewUrl: skin.preview_url ?? imageDataUrl,
+      previewUrl: imageDataUrl ?? skin.preview_url ?? undefined,
       imageDataUrl,
       createdAt: skin.created_at,
       equippedAt: skin.equipped_at ?? undefined,

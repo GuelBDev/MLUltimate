@@ -1,7 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useMemo, useState } from "react";
 import { AccountPanel } from "./components/account/AccountPanel";
+import { LanguageSetupScreen } from "./components/language/LanguageSetupScreen";
 import { Sidebar, type PageId } from "./components/layout/Sidebar";
 import { StartupScreen } from "./components/startup/StartupScreen";
 import { WindowTitleBar } from "./components/window/WindowTitleBar";
@@ -11,6 +12,7 @@ import { ExplorePage } from "./pages/ExplorePage";
 import { HomePage } from "./pages/HomePage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { launcherApi } from "./services/launcherApi";
 import type { ContentType } from "./types/launcher";
 
 const pageTitles: Record<PageId, string> = {
@@ -107,8 +109,74 @@ function AppShell() {
   );
 }
 
-function App() {
+const settingsKey = ["settings"] as const;
+
+function AppRoot() {
+  const queryClient = useQueryClient();
   const [isBooting, setIsBooting] = useState(true);
+  const settings = useQuery({
+    queryKey: settingsKey,
+    queryFn: launcherApi.getSettings,
+    enabled: !isBooting,
+  });
+  const saveLanguage = useMutation({
+    mutationFn: launcherApi.updateSettings,
+    onSuccess: (data) => {
+      queryClient.setQueryData(settingsKey, data);
+    },
+  });
+
+  const needsLanguageSetup = !isBooting && settings.data && !settings.data.languageSelected;
+  const isLoadingSettings = !isBooting && settings.isLoading;
+  const showTitleBar = !isBooting && !isLoadingSettings && !needsLanguageSetup;
+  const handleStartupComplete = useCallback(() => setIsBooting(false), []);
+
+  return (
+    <>
+      {showTitleBar ? <WindowTitleBar /> : null}
+      <AnimatePresence mode="wait">
+        {isBooting ? (
+          <StartupScreen key="startup" onComplete={handleStartupComplete} />
+        ) : isLoadingSettings ? (
+          <motion.div
+            key="settings-loading"
+            className="grid min-h-screen place-items-center bg-[#0D1117] text-sm text-[#94A3B8]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            Carregando preferencias...
+          </motion.div>
+        ) : needsLanguageSetup ? (
+          <motion.div
+            key="language"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+          >
+            <LanguageSetupScreen
+              currentLanguage={settings.data.language}
+              saving={saveLanguage.isPending}
+              onSave={(language) => saveLanguage.mutate({ language, languageSelected: true })}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="app"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+          >
+            <AppShell />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+function App() {
   const queryClient = useMemo(
     () =>
       new QueryClient({
@@ -121,25 +189,10 @@ function App() {
       }),
     [],
   );
-  const handleStartupComplete = useCallback(() => setIsBooting(false), []);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <WindowTitleBar />
-      <AnimatePresence mode="wait">
-        {isBooting ? (
-          <StartupScreen key="startup" onComplete={handleStartupComplete} />
-        ) : (
-          <motion.div
-            key="app"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-          >
-            <AppShell />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <AppRoot />
     </QueryClientProvider>
   );
 }

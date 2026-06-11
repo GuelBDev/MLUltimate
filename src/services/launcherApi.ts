@@ -29,6 +29,8 @@ const signedOut: AuthSession = {
 const defaultSettings: LauncherSettings = {
   curseForgeApiKeyConfigured: false,
   encryptionAvailable: false,
+  language: "pt-BR",
+  languageSelected: false,
 };
 
 const defaultUpdaterState: UpdaterState = {

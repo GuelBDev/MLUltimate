@@ -220,14 +220,20 @@ export type SaveNicknameSkinInput = {
   name?: string;
 };
 
+export type AppLanguage = "pt-BR" | "pt-PT" | "en" | "fr";
+
 export type LauncherSettings = {
   curseForgeApiKeyConfigured: boolean;
   encryptionAvailable: boolean;
+  language: AppLanguage;
+  languageSelected: boolean;
 };
 
 export type UpdateLauncherSettingsInput = {
   curseForgeApiKey?: string;
   clearCurseForgeApiKey?: boolean;
+  language?: AppLanguage;
+  languageSelected?: boolean;
 };
 
 export type UpdaterStatus =

@@ -1,11 +1,16 @@
 import { safeStorage } from "electron";
 import { LauncherDatabase } from "../database/sqliteDatabase";
+import type { AppLanguage } from "../../src/types/launcher";
 
 type SecureRecord = {
   value: Uint8Array;
 };
 
 const curseForgeKey = "api.curseforge.key";
+const languageKey = "app.language";
+const languageSelectedKey = "app.language.selected";
+const defaultLanguage: AppLanguage = "pt-BR";
+const appLanguages = new Set<AppLanguage>(["pt-BR", "pt-PT", "en", "fr"]);
 
 export class ApiKeyStore {
   constructor(private readonly database: LauncherDatabase) {}
@@ -54,6 +59,15 @@ export class ApiKeyStore {
     this.database.run("DELETE FROM secure_records WHERE key = ?", [curseForgeKey]);
   }
 
+  saveLanguage(language: AppLanguage, selected = true) {
+    if (!appLanguages.has(language)) {
+      throw new Error("Idioma invalido.");
+    }
+
+    this.saveSetting(languageKey, language);
+    this.saveSetting(languageSelectedKey, selected ? "true" : "false");
+  }
+
   getPublicSettings() {
     return {
       curseForgeApiKeyConfigured: Boolean(
@@ -62,6 +76,38 @@ export class ApiKeyStore {
           process.env.CURSEFORGE_API_KEY,
       ),
       encryptionAvailable: safeStorage.isEncryptionAvailable(),
+      language: this.loadLanguage(),
+      languageSelected: this.loadLanguageSelected(),
     };
+  }
+
+  private loadLanguage() {
+    const record = this.database.get<{ value: string }>(
+      "SELECT value FROM settings WHERE key = ?",
+      [languageKey],
+    );
+    const language = record?.value as AppLanguage | undefined;
+
+    return language && appLanguages.has(language) ? language : defaultLanguage;
+  }
+
+  private loadLanguageSelected() {
+    const record = this.database.get<{ value: string }>(
+      "SELECT value FROM settings WHERE key = ?",
+      [languageSelectedKey],
+    );
+
+    return record?.value === "true";
+  }
+
+  private saveSetting(key: string, value: string) {
+    this.database.run(
+      `
+      INSERT INTO settings (key, value, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+      `,
+      [key, value, new Date().toISOString()],
+    );
   }
 }

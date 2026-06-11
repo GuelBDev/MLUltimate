@@ -5,6 +5,7 @@ import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import { launcherApi } from "../../services/launcherApi";
 import appIcon from "../../assets/mlultimate-icon.png";
+import type { UpdaterState } from "../../types/launcher";
 
 type StartupStepStatus = "waiting" | "running" | "done";
 
@@ -70,6 +71,38 @@ type StartupScreenProps = {
   onComplete: () => void;
 };
 
+const waitForUpdateToFinish = (
+  initialState: UpdaterState,
+  onProgress: (state: UpdaterState) => void,
+) =>
+  new Promise<UpdaterState>((resolve) => {
+    if (!["available", "downloading"].includes(initialState.status)) {
+      resolve(initialState);
+      return;
+    }
+
+    onProgress(initialState);
+    let finished = false;
+    const finish = (state: UpdaterState) => {
+      if (finished) return;
+      finished = true;
+      window.clearInterval(pollTimer);
+      unsubscribe();
+      resolve(state);
+    };
+    const inspect = (state: UpdaterState) => {
+      onProgress(state);
+
+      if (["downloaded", "not-available", "error"].includes(state.status)) {
+        finish(state);
+      }
+    };
+    const unsubscribe = launcherApi.onUpdaterState(inspect);
+    const pollTimer = window.setInterval(() => {
+      void launcherApi.getUpdaterState().then(inspect);
+    }, 500);
+  });
+
 export function StartupScreen({ onComplete }: StartupScreenProps) {
   const [steps, setSteps] = useState(baseSteps);
   const [progress, setProgress] = useState(8);
@@ -117,13 +150,35 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
         setStatusText("Checando atualizacoes");
         setProgress(52);
         const updaterState = await launcherApi.checkForUpdates();
+        const finalUpdaterState = await waitForUpdateToFinish(updaterState, (state) => {
+          if (state.status === "available") {
+            setStatusText("Atualizacao encontrada");
+            setProgress(56);
+            setRunning("updates", `Atualizacao ${state.availableVersion ?? "nova"} encontrada`);
+          }
+
+          if (state.status === "downloading") {
+            const downloadProgress = state.progress ?? 0;
+            setStatusText("Baixando atualizacao obrigatoria");
+            setProgress(Math.min(74, 56 + Math.round(downloadProgress * 0.18)));
+            setRunning("updates", `Baixando atualizacao ${downloadProgress}%`);
+          }
+        });
+
+        if (finalUpdaterState.status === "downloaded") {
+          setStatusText("Instalando atualizacao");
+          setProgress(100);
+          setDone("updates", "Atualizacao baixada. Reiniciando para instalar.");
+          await sleep(600);
+          await launcherApi.installUpdate();
+          return;
+        }
+
         setDone(
           "updates",
-          updaterState.status === "downloaded"
-            ? "Atualizacao pronta para instalar"
-            : updaterState.status === "available" || updaterState.status === "downloading"
-              ? "Atualizacao encontrada"
-              : "Nenhuma atualizacao bloqueando a entrada",
+          finalUpdaterState.status === "error"
+            ? "Nao foi possivel verificar updates agora"
+            : "Nenhuma atualizacao bloqueando a entrada",
         );
 
         setRunning("library");

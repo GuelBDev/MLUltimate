@@ -76,6 +76,8 @@ const importInstanceSchema = z.object({
 const updateSettingsSchema = z.object({
   curseForgeApiKey: z.string().optional(),
   clearCurseForgeApiKey: z.boolean().optional(),
+  language: z.enum(["pt-BR", "pt-PT", "en", "fr"]).optional(),
+  languageSelected: z.boolean().optional(),
 });
 
 const saveNicknameSkinSchema = z.object({
@@ -176,6 +178,10 @@ export const registerIpcHandlers = ({
       apiKeys.clearCurseForgeApiKey();
     } else if (typeof parsed.curseForgeApiKey === "string") {
       apiKeys.saveCurseForgeApiKey(parsed.curseForgeApiKey);
+    }
+
+    if (parsed.language) {
+      apiKeys.saveLanguage(parsed.language, parsed.languageSelected ?? true);
     }
 
     return apiKeys.getPublicSettings();
