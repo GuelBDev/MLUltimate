@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import { launcherApi } from "../../services/launcherApi";
+import appIcon from "../../assets/mlultimate-icon.png";
 
 type StartupStepStatus = "waiting" | "running" | "done";
 
@@ -160,15 +161,12 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 grid min-h-screen place-items-center overflow-hidden bg-[#0D1117] px-6 text-white"
+      className="fixed inset-0 z-50 grid min-h-screen place-items-center overflow-hidden bg-transparent px-6 text-white"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0, scale: 1.01 }}
       transition={{ duration: 0.28, ease: "easeOut" }}
     >
-      <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(59,130,246,0.10),transparent_34%,rgba(34,197,94,0.06)_72%,transparent)]" />
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:56px_56px] opacity-25" />
-
       <motion.section
         className="relative flex w-full max-w-[460px] flex-col items-center rounded-2xl border border-white/10 bg-[#161B22]/86 px-8 py-9 text-center shadow-2xl shadow-black/40 backdrop-blur-xl"
         initial={{ opacity: 0, y: 18, scale: 0.96 }}
@@ -180,7 +178,7 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
           animate={{ y: [0, -4, 0] }}
           transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
         >
-          <img src="/icon.png" alt="MLUltimate" className="size-16 rounded-2xl object-cover" />
+          <img src={appIcon} alt="MLUltimate" className="size-20 rounded-2xl object-contain" />
         </motion.div>
 
         <p className="text-sm font-semibold text-[#60A5FA]">MLUltimate Launcher</p>
