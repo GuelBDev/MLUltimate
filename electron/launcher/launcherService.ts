@@ -131,7 +131,7 @@ export class LauncherService {
       version_type: versionJson.type,
       natives_directory: nativesDir,
       launcher_name: "MLUltimateLauncher",
-      launcher_version: "1.0.0-alpha.2",
+      launcher_version: "1.0.0-alpha.3",
       classpath,
     };
 
