@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { AccountPanel } from "./components/account/AccountPanel";
 import { Sidebar, type PageId } from "./components/layout/Sidebar";
 import { StartupScreen } from "./components/startup/StartupScreen";
+import { WindowTitleBar } from "./components/window/WindowTitleBar";
 import { DownloadsPage } from "./pages/DownloadsPage";
 import { ExplorePage } from "./pages/ExplorePage";
 import { HomePage } from "./pages/HomePage";
@@ -65,8 +66,8 @@ function AppShell() {
   }, [activePage, exploreContext.instanceId, exploreContext.type]);
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[#0D1117] text-white">
-      <div className="grid h-screen grid-cols-[248px_minmax(0,1fr)_340px]">
+    <div className="min-h-screen overflow-hidden bg-[#0D1117] pt-8 text-white">
+      <div className="grid h-[calc(100vh-2rem)] grid-cols-[248px_minmax(0,1fr)_340px]">
         <Sidebar activePage={activePage} onPageChange={setActivePage} />
 
         <main className="min-w-0 overflow-y-auto border-x border-white/8">
@@ -120,6 +121,7 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <WindowTitleBar />
       <AnimatePresence mode="wait">
         {isBooting ? (
           <StartupScreen key="startup" onComplete={handleStartupComplete} />

@@ -38,7 +38,7 @@ const createWindow = async () => {
     icon: iconPath,
     show: false,
     autoHideMenuBar: true,
-    titleBarStyle: "hiddenInset",
+    frame: false,
     webPreferences: {
       preload,
       nodeIntegration: false,

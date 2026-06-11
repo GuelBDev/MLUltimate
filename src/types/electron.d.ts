@@ -68,6 +68,11 @@ declare global {
         install: () => Promise<void>;
         onState: (callback: (state: UpdaterState) => void) => () => void;
       };
+      window: {
+        minimize: () => Promise<void>;
+        toggleMaximize: () => Promise<boolean>;
+        close: () => Promise<void>;
+      };
     };
   }
 }
