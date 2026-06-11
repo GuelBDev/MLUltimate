@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { DownloadCloud, KeyRound, RefreshCw, Save, Trash2 } from "lucide-react";
+import { CheckCircle2, DownloadCloud, KeyRound, RefreshCw, Save, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -31,6 +31,41 @@ export const SettingsPage = () => {
     updateSettings.mutate({ curseForgeApiKey: curseForgeKey });
   };
 
+  const updaterState = updater.data;
+  const isChecking = check.isPending || updaterState?.status === "checking";
+  const isDownloading = updaterState?.status === "downloading";
+  const isDownloaded = updaterState?.status === "downloaded";
+  const isUpToDate = updaterState?.status === "not-available";
+  const updateMessage = (() => {
+    if (!updaterState) return "Clique em procurar para verificar se existe uma nova versao.";
+    if (isChecking) return "Procurando uma nova versao no GitHub Releases...";
+    if (isDownloading) return `Baixando atualizacao ${updaterState.progress ?? 0}%...`;
+    if (isDownloaded) {
+      return `Versao ${updaterState.availableVersion ?? "nova"} baixada e pronta para instalar.`;
+    }
+    if (isUpToDate) return "Voce ja esta com o app atualizado.";
+    if (updaterState.status === "available") {
+      return `Versao ${updaterState.availableVersion ?? "nova"} encontrada. O download vai comecar automaticamente.`;
+    }
+    if (updaterState.status === "error") {
+      return updaterState.message?.includes("releases.atom")
+        ? "Ainda nao existe uma release publicada no GitHub para comparar atualizacoes."
+        : (updaterState.message ?? "Nao foi possivel procurar atualizacoes agora.");
+    }
+
+    return "Clique em procurar para verificar se existe uma nova versao.";
+  })();
+
+  const installDownloadedUpdate = () => {
+    const shouldRestart = window.confirm(
+      "A atualizacao ja foi baixada. Quer fechar e reiniciar o MLUltimate agora para instalar?",
+    );
+
+    if (shouldRestart) {
+      install.mutate();
+    }
+  };
+
   const error =
     updateSettings.error instanceof Error
       ? updateSettings.error.message
@@ -39,61 +74,78 @@ export const SettingsPage = () => {
         : null;
 
   return (
-    <div className="grid gap-5">
-      <Card className="p-5">
-        <div className="flex items-start justify-between gap-5">
+    <div className="grid min-w-0 gap-5">
+      <Card className="overflow-hidden p-5">
+        <div className="flex flex-col gap-5">
           <div className="flex items-center gap-3">
-            <DownloadCloud className="h-5 w-5 text-[#60A5FA]" />
-            <div>
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[#60A5FA]/25 bg-[#3B82F6]/12">
+              <DownloadCloud className="h-5 w-5 text-[#60A5FA]" />
+            </div>
+            <div className="min-w-0">
               <h2 className="text-lg font-semibold text-white">Atualizacoes</h2>
               <p className="mt-1 text-sm leading-6 text-[#94A3B8]">
-                Canal GitHub Releases configurado para procurar novas versoes alpha.
+                Versao instalada:{" "}
+                <span className="font-semibold text-white">
+                  {updaterState?.currentVersion ?? "dev"}
+                </span>
               </p>
             </div>
+            <Badge
+              tone={isDownloaded ? "green" : isUpToDate ? "green" : updaterState?.status === "error" ? "red" : "blue"}
+              className="ml-auto shrink-0"
+            >
+              {isDownloaded ? "Pronta" : isUpToDate ? "Atualizado" : updaterState?.status ?? "idle"}
+            </Badge>
           </div>
-          <Badge tone={updater.data?.status === "downloaded" ? "green" : "blue"}>
-            {updater.data?.currentVersion ?? "dev"}
-          </Badge>
-        </div>
 
-        <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-white">
-                {updater.data?.availableVersion
-                  ? `Versao disponivel: ${updater.data.availableVersion}`
-                  : "Nenhuma atualizacao baixada"}
-              </p>
-              <p className="mt-1 truncate text-sm text-[#94A3B8]">
-                {updater.data?.message ?? "O launcher procura updates automaticamente ao abrir."}
-              </p>
+          <div className="rounded-xl border border-white/10 bg-[#0D1117]/70 p-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle2
+                className={`mt-0.5 h-5 w-5 shrink-0 ${
+                  isUpToDate ? "text-[#22C55E]" : "text-[#60A5FA]"
+                }`}
+              />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white">
+                  {isDownloaded
+                    ? "Atualizacao pronta"
+                    : isUpToDate
+                      ? "Launcher atualizado"
+                      : "Verificacao de atualizacao"}
+                </p>
+                <p className="mt-1 break-words text-sm leading-6 text-[#94A3B8]">
+                  {updateMessage}
+                </p>
+              </div>
             </div>
-            <div className="flex shrink-0 gap-2">
+            {typeof updaterState?.progress === "number" && isDownloading ? (
+              <Progress value={updaterState.progress} className="mt-4" />
+            ) : null}
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
               <Button
                 type="button"
                 variant="secondary"
-                disabled={check.isPending || updater.data?.status === "checking"}
+                className="w-full sm:w-auto"
+                disabled={isChecking || isDownloading}
                 onClick={() => check.mutate()}
               >
                 <RefreshCw
-                  className={`h-4 w-4 ${
-                    check.isPending || updater.data?.status === "checking" ? "animate-spin" : ""
-                  }`}
+                  className={`h-4 w-4 ${isChecking || isDownloading ? "animate-spin" : ""}`}
                 />
-                Verificar
+                Procurar atualizacoes
               </Button>
-              <Button
-                type="button"
-                disabled={updater.data?.status !== "downloaded" || install.isPending}
-                onClick={() => install.mutate()}
-              >
-                Instalar
-              </Button>
+              {isDownloaded ? (
+                <Button
+                  type="button"
+                  className="w-full sm:w-auto"
+                  disabled={install.isPending}
+                  onClick={installDownloadedUpdate}
+                >
+                  Reiniciar e atualizar
+                </Button>
+              ) : null}
             </div>
           </div>
-          {typeof updater.data?.progress === "number" ? (
-            <Progress value={updater.data.progress} className="mt-4" />
-          ) : null}
         </div>
       </Card>
 
@@ -113,7 +165,7 @@ export const SettingsPage = () => {
           </Badge>
         </div>
 
-        <form className="mt-5 grid grid-cols-[1fr_auto_auto] gap-3" onSubmit={saveCurseForgeKey}>
+        <form className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]" onSubmit={saveCurseForgeKey}>
           <input
             value={curseForgeKey}
             onChange={(event) => setCurseForgeKey(event.target.value)}

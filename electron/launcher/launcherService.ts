@@ -131,7 +131,7 @@ export class LauncherService {
       version_type: versionJson.type,
       natives_directory: nativesDir,
       launcher_name: "MLUltimateLauncher",
-      launcher_version: "1.0.0-alpha.1",
+      launcher_version: "1.0.0-alpha.2",
       classpath,
     };
 
@@ -320,12 +320,12 @@ export class LauncherService {
       };
     }
 
-    const offlineSession =
-      this.offlineAuth.getLastOfflineSession() ??
-      (await this.offlineAuth.login({ username: "MLUltimate" }));
+    const offlineSession = this.offlineAuth.getLastOfflineSession();
 
-    if (offlineSession.status !== "signed-in") {
-      throw new Error("Nao foi possivel criar o perfil offline automaticamente.");
+    if (!offlineSession || offlineSession.status !== "signed-in") {
+      throw new Error(
+        "Escolha um nick offline ou entre com Microsoft antes de iniciar uma instancia.",
+      );
     }
 
     return {

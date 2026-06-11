@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, Menu, shell } from "electron";
 import path from "node:path";
 import { LauncherDatabase } from "./database/sqliteDatabase";
 import { SecureTokenStore } from "./auth/secureTokenStore";
@@ -19,6 +19,7 @@ let mainWindow: BrowserWindow | null = null;
 
 app.setName(launcherAppName);
 app.setPath("userData", getLauncherDataPath());
+Menu.setApplicationMenu(null);
 
 const createWindow = async () => {
   const preload = path.join(__dirname, "preload.cjs");
@@ -35,6 +36,7 @@ const createWindow = async () => {
     title: "MLUltimate Launcher",
     icon: iconPath,
     show: false,
+    autoHideMenuBar: true,
     titleBarStyle: "hiddenInset",
     webPreferences: {
       preload,

@@ -171,7 +171,13 @@ export const launcherApi = {
   },
 
   checkForUpdates: async () => {
-    if (!hasBridge()) return defaultUpdaterState;
+    if (!hasBridge()) {
+      return {
+        ...defaultUpdaterState,
+        status: "not-available" as const,
+        message: "Atualizacao automatica funciona apenas no app instalado.",
+      };
+    }
     return window.mlultimate.updater.check();
   },
 

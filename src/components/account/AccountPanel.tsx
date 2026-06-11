@@ -13,7 +13,7 @@ const licenseLabel = {
 
 export const AccountPanel = () => {
   const { session, loginMicrosoft, loginOffline, logout } = useAuthSession();
-  const [offlineName, setOfflineName] = useState("MLUltimate");
+  const [offlineName, setOfflineName] = useState("");
   const activeSession = session.data;
   const isSignedIn = activeSession?.status === "signed-in";
   const account = isSignedIn ? activeSession.account : null;
@@ -49,7 +49,7 @@ export const AccountPanel = () => {
               {account?.displayName ?? "Nenhuma conta"}
             </p>
             <p className="mt-1 truncate text-sm text-[#94A3B8]">
-              {account?.email ?? "Play usa offline se nenhuma conta for escolhida"}
+              {account?.email ?? "Entre com Microsoft ou escolha um nick offline"}
             </p>
           </div>
         </div>
@@ -109,12 +109,12 @@ export const AccountPanel = () => {
                 type="submit"
                 variant="secondary"
                 className="w-full"
-                disabled={loginOffline.isPending}
+                disabled={loginOffline.isPending || offlineName.trim().length < 3}
               >
                 Usar modo offline
               </Button>
               <p className="text-xs leading-5 text-[#94A3B8]">
-                Se voce apertar Play sem entrar, o launcher usa offline automaticamente.
+                O Play so libera offline depois que voce salvar um nick valido.
               </p>
             </form>
           </div>
