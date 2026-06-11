@@ -1,0 +1,469 @@
+import { shell } from "electron";
+import { createServer } from "node:http";
+import { randomBytes, createHash } from "node:crypto";
+import { URLSearchParams } from "node:url";
+import { z } from "zod";
+import { SecureTokenStore, type SecureMicrosoftSession } from "./secureTokenStore";
+import type { AuthSession, PublicAccount } from "../../src/types/launcher";
+
+const MICROSOFT_AUTH_URL = "https://login.live.com/oauth20_authorize.srf";
+const MICROSOFT_TOKEN_URL = "https://login.live.com/oauth20_token.srf";
+const XBL_AUTH_URL = "https://user.auth.xboxlive.com/user/authenticate";
+const XSTS_AUTH_URL = "https://xsts.auth.xboxlive.com/xsts/authorize";
+const MINECRAFT_LOGIN_URL =
+  "https://api.minecraftservices.com/authentication/login_with_xbox";
+const MINECRAFT_ENTITLEMENTS_URL =
+  "https://api.minecraftservices.com/entitlements/mcstore";
+const MINECRAFT_PROFILE_URL =
+  "https://api.minecraftservices.com/minecraft/profile";
+const MICROSOFT_GRAPH_ME_URL = "https://graph.microsoft.com/v1.0/me";
+const SESSION_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+
+const microsoftTokenSchema = z.object({
+  access_token: z.string(),
+  refresh_token: z.string(),
+  expires_in: z.number(),
+});
+
+const xboxAuthSchema = z.object({
+  Token: z.string(),
+  DisplayClaims: z.object({
+    xui: z.array(z.object({ uhs: z.string() })).min(1),
+  }),
+});
+
+const minecraftLoginSchema = z.object({
+  access_token: z.string(),
+  expires_in: z.number(),
+});
+
+const minecraftProfileSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+
+const graphMeSchema = z.object({
+  id: z.string(),
+  displayName: z.string().nullable().optional(),
+  mail: z.string().nullable().optional(),
+  userPrincipalName: z.string().nullable().optional(),
+});
+
+export class MicrosoftAuthService {
+  private clientId = process.env.MLULTIMATE_MICROSOFT_CLIENT_ID ?? "";
+
+  constructor(private readonly tokenStore: SecureTokenStore) {}
+
+  async getSession(): Promise<AuthSession> {
+    const secureSession = this.tokenStore.loadSession();
+
+    if (!secureSession) {
+      return { status: "signed-out", encryptionAvailable: this.tokenStore.isEncryptionAvailable() };
+    }
+
+    const refreshed = await this.refreshIfNeeded(secureSession);
+
+    return {
+      status: "signed-in",
+      account: this.toPublicAccount(refreshed),
+      encryptionAvailable: this.tokenStore.isEncryptionAvailable(),
+    };
+  }
+
+  async login(): Promise<AuthSession> {
+    this.assertConfigured();
+
+    const pkce = createPkcePair();
+    const callback = await this.waitForOAuthCallback();
+    const authUrl = new URL(MICROSOFT_AUTH_URL);
+
+    authUrl.search = new URLSearchParams({
+      client_id: this.clientId,
+      response_type: "code",
+      redirect_uri: callback.redirectUri,
+      scope: "XboxLive.signin offline_access User.Read",
+      code_challenge: pkce.challenge,
+      code_challenge_method: "S256",
+      state: callback.state,
+    }).toString();
+
+    await shell.openExternal(authUrl.toString());
+
+    const code = await callback.codePromise;
+    const microsoftTokens = await this.exchangeCodeForMicrosoftTokens(
+      code,
+      callback.redirectUri,
+      pkce.verifier,
+    );
+    const hydrated = await this.hydrateMicrosoftSession(microsoftTokens);
+
+    this.tokenStore.saveSession(hydrated);
+
+    return {
+      status: "signed-in",
+      account: this.toPublicAccount(hydrated),
+      encryptionAvailable: this.tokenStore.isEncryptionAvailable(),
+    };
+  }
+
+  async logout(): Promise<AuthSession> {
+    this.tokenStore.clearSession();
+    return { status: "signed-out", encryptionAvailable: this.tokenStore.isEncryptionAvailable() };
+  }
+
+  async requireLicensedSession() {
+    const secureSession = this.tokenStore.loadSession();
+
+    if (!secureSession) {
+      throw new Error("Entre com uma conta Microsoft antes de iniciar esta instancia.");
+    }
+
+    const refreshed = await this.refreshIfNeeded(secureSession);
+    const licenseVerified = await this.verifyMinecraftLicense(
+      refreshed.minecraftAccessToken,
+    );
+
+    const checkedSession = {
+      ...refreshed,
+      licenseVerified,
+      licenseCheckedAt: new Date().toISOString(),
+    };
+
+    this.tokenStore.saveSession(checkedSession);
+
+    if (!licenseVerified) {
+      throw new Error(
+        "Licenca do Minecraft nao encontrada nesta conta Microsoft. O jogo autenticado foi bloqueado.",
+      );
+    }
+
+    return checkedSession;
+  }
+
+  private async refreshIfNeeded(session: SecureMicrosoftSession) {
+    const shouldRefresh =
+      Date.now() + SESSION_REFRESH_MARGIN_MS >= session.minecraftExpiresAt ||
+      Date.now() + SESSION_REFRESH_MARGIN_MS >= session.microsoftExpiresAt;
+
+    if (!shouldRefresh) {
+      return session;
+    }
+
+    const microsoftTokens = await this.refreshMicrosoftTokens(
+      session.microsoftRefreshToken,
+    );
+    const refreshed = await this.hydrateMicrosoftSession(microsoftTokens, session);
+
+    this.tokenStore.saveSession(refreshed);
+    return refreshed;
+  }
+
+  private async exchangeCodeForMicrosoftTokens(
+    code: string,
+    redirectUri: string,
+    verifier: string,
+  ) {
+    const body = new URLSearchParams({
+      client_id: this.clientId,
+      code,
+      grant_type: "authorization_code",
+      redirect_uri: redirectUri,
+      code_verifier: verifier,
+    });
+
+    const response = await fetch(MICROSOFT_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+
+    return microsoftTokenSchema.parse(await parseJsonResponse(response, "Microsoft OAuth"));
+  }
+
+  private async refreshMicrosoftTokens(refreshToken: string) {
+    const body = new URLSearchParams({
+      client_id: this.clientId,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+      scope: "XboxLive.signin offline_access User.Read",
+    });
+
+    const response = await fetch(MICROSOFT_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+
+    return microsoftTokenSchema.parse(await parseJsonResponse(response, "Microsoft OAuth refresh"));
+  }
+
+  private async hydrateMicrosoftSession(
+    microsoftTokens: z.infer<typeof microsoftTokenSchema>,
+    previous?: SecureMicrosoftSession,
+  ): Promise<SecureMicrosoftSession> {
+    const identity = await this.fetchMicrosoftIdentity(microsoftTokens.access_token);
+    const xbox = await this.authenticateXboxLive(microsoftTokens.access_token);
+    const xsts = await this.authorizeXsts(xbox.Token);
+    const minecraft = await this.loginMinecraft(xsts.token, xsts.uhs);
+    const licenseVerified = await this.verifyMinecraftLicense(
+      minecraft.access_token,
+    );
+    const profile = licenseVerified
+      ? await this.fetchMinecraftProfile(minecraft.access_token)
+      : null;
+
+    return {
+      provider: "microsoft",
+      accountId: identity?.id ?? previous?.accountId ?? xsts.xuid,
+      displayName:
+        profile?.name ??
+        identity?.displayName ??
+        previous?.displayName ??
+        "Conta Microsoft",
+      email:
+        identity?.mail ??
+        identity?.userPrincipalName ??
+        previous?.email ??
+        undefined,
+      microsoftAccessToken: microsoftTokens.access_token,
+      microsoftRefreshToken: microsoftTokens.refresh_token,
+      microsoftExpiresAt: Date.now() + microsoftTokens.expires_in * 1000,
+      minecraftAccessToken: minecraft.access_token,
+      minecraftExpiresAt: Date.now() + minecraft.expires_in * 1000,
+      xuid: xsts.xuid,
+      uhs: xsts.uhs,
+      minecraftName: profile?.name ?? previous?.minecraftName,
+      minecraftUuid: profile?.id ?? previous?.minecraftUuid,
+      licenseVerified,
+      licenseCheckedAt: new Date().toISOString(),
+    };
+  }
+
+  private async fetchMicrosoftIdentity(accessToken: string) {
+    const response = await fetch(MICROSOFT_GRAPH_ME_URL, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return graphMeSchema.parse(await response.json());
+  }
+
+  private async authenticateXboxLive(accessToken: string) {
+    const response = await fetch(XBL_AUTH_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        Properties: {
+          AuthMethod: "RPS",
+          SiteName: "user.auth.xboxlive.com",
+          RpsTicket: `d=${accessToken}`,
+        },
+        RelyingParty: "http://auth.xboxlive.com",
+        TokenType: "JWT",
+      }),
+    });
+
+    return xboxAuthSchema.parse(await parseJsonResponse(response, "Xbox Live"));
+  }
+
+  private async authorizeXsts(xblToken: string) {
+    const response = await fetch(XSTS_AUTH_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        Properties: {
+          SandboxId: "RETAIL",
+          UserTokens: [xblToken],
+        },
+        RelyingParty: "rp://api.minecraftservices.com/",
+        TokenType: "JWT",
+      }),
+    });
+
+    const json = xboxAuthSchema
+      .extend({
+        NotAfter: z.string(),
+        DisplayClaims: z.object({
+          xui: z.array(z.object({ uhs: z.string(), xid: z.string().optional() })).min(1),
+        }),
+      })
+      .parse(await parseJsonResponse(response, "Xbox XSTS"));
+
+    const xui = json.DisplayClaims.xui.at(0);
+
+    if (!xui) {
+      throw new Error("Xbox XSTS nao retornou identidade do usuario.");
+    }
+
+    return {
+      token: json.Token,
+      uhs: xui.uhs,
+      xuid: xui.xid ?? xui.uhs,
+    };
+  }
+
+  private async loginMinecraft(xstsToken: string, uhs: string) {
+    const response = await fetch(MINECRAFT_LOGIN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        identityToken: `XBL3.0 x=${uhs};${xstsToken}`,
+      }),
+    });
+
+    return minecraftLoginSchema.parse(
+      await parseJsonResponse(response, "Minecraft services"),
+    );
+  }
+
+  private async verifyMinecraftLicense(accessToken: string) {
+    const response = await fetch(MINECRAFT_ENTITLEMENTS_URL, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    const json = z
+      .object({
+        items: z.array(z.object({ name: z.string().optional() })).default([]),
+      })
+      .parse(await parseJsonResponse(response, "Minecraft entitlements"));
+
+    return json.items.some((item) =>
+      ["game_minecraft", "product_minecraft"].includes(item.name ?? ""),
+    );
+  }
+
+  private async fetchMinecraftProfile(accessToken: string) {
+    const response = await fetch(MINECRAFT_PROFILE_URL, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return minecraftProfileSchema.parse(await response.json());
+  }
+
+  private async waitForOAuthCallback() {
+    const state = randomBytes(24).toString("base64url");
+    const liveCallback = await createLiveOAuthServer(state);
+
+    return {
+      state,
+      redirectUri: `http://127.0.0.1:${liveCallback.port}/callback`,
+      codePromise: liveCallback.codePromise,
+    };
+  }
+
+  private toPublicAccount(session: SecureMicrosoftSession): PublicAccount {
+    return {
+      id: session.accountId,
+      provider: "microsoft",
+      displayName: session.displayName,
+      email: session.email,
+      avatarLabel: (session.minecraftName ?? session.displayName).slice(0, 2).toUpperCase(),
+      license: {
+        status: session.licenseVerified ? "verified" : "unverified",
+        checkedAt: session.licenseCheckedAt,
+      },
+      serverAccess: "online-mode",
+      expiresAt: new Date(session.minecraftExpiresAt).toISOString(),
+    };
+  }
+
+  private assertConfigured() {
+    if (!this.clientId) {
+      throw new Error(
+        "Configure MLULTIMATE_MICROSOFT_CLIENT_ID com o app OAuth oficial antes de entrar com Microsoft.",
+      );
+    }
+  }
+}
+
+const createPkcePair = () => {
+  const verifier = randomBytes(64).toString("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+
+  return { verifier, challenge };
+};
+
+const parseJsonResponse = async (response: Response, context: string) => {
+  const text = await response.text();
+  const json = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    throw new Error(`${context} falhou (${response.status}): ${text.slice(0, 300)}`);
+  }
+
+  return json;
+};
+
+const addressPort = (server: ReturnType<typeof createServer>) => {
+  const address = server.address();
+  return typeof address === "object" && address ? address.port : 0;
+};
+
+const createLiveOAuthServer = (state: string) => {
+  let resolveCode: (code: string) => void = () => undefined;
+  let rejectCode: (error: Error) => void = () => undefined;
+
+  const codePromise = new Promise<string>((resolve, reject) => {
+    resolveCode = resolve;
+    rejectCode = reject;
+  });
+
+  const server = createServer((request, response) => {
+    const requestUrl = new URL(
+      request.url ?? "/",
+      `http://127.0.0.1:${addressPort(server)}`,
+    );
+
+    if (requestUrl.pathname !== "/callback") {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
+
+    const receivedState = requestUrl.searchParams.get("state");
+    const code = requestUrl.searchParams.get("code");
+    const error = requestUrl.searchParams.get("error");
+
+    if (receivedState !== state) {
+      response.writeHead(400);
+      response.end("Estado OAuth invalido.");
+      rejectCode(new Error("Estado OAuth invalido."));
+      server.close();
+      return;
+    }
+
+    if (error || !code) {
+      response.writeHead(400);
+      response.end("Login cancelado ou recusado.");
+      rejectCode(new Error(error ?? "Login cancelado ou recusado."));
+      server.close();
+      return;
+    }
+
+    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    response.end("<h1>MLUltimate conectado</h1><p>Voce pode voltar ao launcher.</p>");
+    resolveCode(code);
+    server.close();
+  });
+
+  return new Promise<{ port: number; codePromise: Promise<string> }>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const port = addressPort(server);
+      resolve({ port, codePromise });
+    });
+  });
+};

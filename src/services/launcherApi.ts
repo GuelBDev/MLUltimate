@@ -1,0 +1,190 @@
+import type {
+  AuthSession,
+  ContentProjectInput,
+  ContentSearchInput,
+  CreateInstanceInput,
+  InstallContentInput,
+  ImportInstanceInput,
+  LaunchEvent,
+  LaunchCancelRequest,
+  LaunchRequest,
+  LauncherSettings,
+  OfflineLoginInput,
+  UpdaterState,
+  UpdateLauncherSettingsInput,
+  UpdateInstanceInput,
+} from "../types/launcher";
+
+const desktopOnly = () =>
+  new Error("Esta acao precisa ser executada dentro do app desktop Electron.");
+
+const hasBridge = () => typeof window !== "undefined" && Boolean(window.mlultimate);
+
+const signedOut: AuthSession = {
+  status: "signed-out",
+  encryptionAvailable: false,
+};
+
+const defaultSettings: LauncherSettings = {
+  curseForgeApiKeyConfigured: false,
+  encryptionAvailable: false,
+};
+
+const defaultUpdaterState: UpdaterState = {
+  status: "idle",
+  currentVersion: "dev",
+};
+
+export const launcherApi = {
+  getSession: async () => {
+    if (hasBridge()) {
+      return window.mlultimate.auth.getSession();
+    }
+
+    return signedOut;
+  },
+
+  loginMicrosoft: async () => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.auth.loginMicrosoft();
+  },
+
+  loginOffline: async (input: OfflineLoginInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.auth.loginOffline(input);
+  },
+
+  logout: async () => {
+    if (!hasBridge()) return signedOut;
+    return window.mlultimate.auth.logout();
+  },
+
+  launch: async (request: LaunchRequest) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.launcher.launch(request);
+  },
+
+  cancel: async (request?: LaunchCancelRequest) => {
+    if (!hasBridge()) return;
+    return window.mlultimate.launcher.cancel(request);
+  },
+
+  onLaunchEvent: (callback: (event: LaunchEvent) => void) => {
+    if (!hasBridge()) {
+      return () => undefined;
+    }
+
+    return window.mlultimate.launcher.onEvent(callback);
+  },
+
+  listVersions: async () => {
+    if (!hasBridge()) return [];
+    return window.mlultimate.minecraft.listVersions();
+  },
+
+  installVersion: async (versionId: string) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.minecraft.installVersion(versionId);
+  },
+
+  listInstances: async () => {
+    if (!hasBridge()) return [];
+    return window.mlultimate.instances.list();
+  },
+
+  createInstance: async (input: CreateInstanceInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.create(input);
+  },
+
+  updateInstance: async (input: UpdateInstanceInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.update(input);
+  },
+
+  removeInstance: async (instanceId: string) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.remove(instanceId);
+  },
+
+  openInstanceFolder: async (instanceId: string) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.openFolder(instanceId);
+  },
+
+  importInstance: async (input: ImportInstanceInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.importInstance(input);
+  },
+
+  searchContent: async (input: ContentSearchInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.content.search(input);
+  },
+
+  getContentProject: async (input: ContentProjectInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.content.getProject(input);
+  },
+
+  installContent: async (input: InstallContentInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.content.install(input);
+  },
+
+  listInstalledContent: async (instanceId: string) => {
+    if (!hasBridge()) return [];
+    return window.mlultimate.content.listInstalled(instanceId);
+  },
+
+  listDownloads: async () => {
+    if (!hasBridge()) return [];
+    return window.mlultimate.downloads.list();
+  },
+
+  cancelDownload: async (downloadId: string) => {
+    if (!hasBridge()) return;
+    return window.mlultimate.downloads.cancel(downloadId);
+  },
+
+  onDownloadsChange: (callback: Parameters<typeof window.mlultimate.downloads.onChange>[0]) => {
+    if (!hasBridge()) {
+      return () => undefined;
+    }
+
+    return window.mlultimate.downloads.onChange(callback);
+  },
+
+  getSettings: async () => {
+    if (!hasBridge()) return defaultSettings;
+    return window.mlultimate.settings.get();
+  },
+
+  updateSettings: async (input: UpdateLauncherSettingsInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.settings.update(input);
+  },
+
+  getUpdaterState: async () => {
+    if (!hasBridge()) return defaultUpdaterState;
+    return window.mlultimate.updater.getState();
+  },
+
+  checkForUpdates: async () => {
+    if (!hasBridge()) return defaultUpdaterState;
+    return window.mlultimate.updater.check();
+  },
+
+  installUpdate: async () => {
+    if (!hasBridge()) return;
+    return window.mlultimate.updater.install();
+  },
+
+  onUpdaterState: (callback: (state: UpdaterState) => void) => {
+    if (!hasBridge()) {
+      return () => undefined;
+    }
+
+    return window.mlultimate.updater.onState(callback);
+  },
+};

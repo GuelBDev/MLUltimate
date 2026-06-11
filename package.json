@@ -1,0 +1,133 @@
+{
+  "name": "mlultimate-launcher",
+  "private": true,
+  "version": "1.0.0-alpha.1",
+  "description": "MLUltimate Launcher Alpha 1.0 desktop launcher for Minecraft.",
+  "author": "MLUltimate",
+  "desktopName": "MLUltimate Launcher Alpha 1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/miguelgossani068-arch/MLUltimate.git"
+  },
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k -n renderer,electron -c blue,green \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "dev:renderer": "vite --host 127.0.0.1",
+    "dev:electron": "wait-on tcp:5173 && npm run build:electron && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron dist-electron/main.cjs",
+    "build": "tsc -b && npm run build:electron && vite build",
+    "build:electron": "node scripts/build-electron.mjs",
+    "dist": "npm run build && electron-builder --win nsis --linux tar.gz",
+    "dist:win": "npm run build && electron-builder --win nsis",
+    "dist:linux": "npm run build && electron-builder --linux tar.gz",
+    "dist:linux:appimage": "npm run build && electron-builder --linux AppImage",
+    "release:github": "npm run build && electron-builder --win nsis --publish always",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "build": {
+    "appId": "com.mlultimate.launcher",
+    "productName": "MLUltimate Launcher Alpha 1.0",
+    "generateUpdatesFilesForAllChannels": true,
+    "artifactName": "MLUltimate-Launcher-Alpha-1.0-${os}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "miguelgossani068-arch",
+        "repo": "MLUltimate",
+        "releaseType": "prerelease"
+      }
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "dist-electron/sql-wasm.wasm"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "synopsis": "Minecraft launcher",
+      "syncDesktopName": true,
+      "category": "Game",
+      "target": [
+        "tar.gz"
+      ]
+    }
+  },
+  "dependencies": {
+    "@radix-ui/react-avatar": "^1.1.12",
+    "@radix-ui/react-dialog": "^1.1.16",
+    "@radix-ui/react-progress": "^1.1.9",
+    "@radix-ui/react-scroll-area": "^1.2.11",
+    "@radix-ui/react-select": "^2.3.0",
+    "@radix-ui/react-separator": "^1.1.9",
+    "@radix-ui/react-switch": "^1.3.0",
+    "@radix-ui/react-tabs": "^1.1.14",
+    "@radix-ui/react-tooltip": "^1.2.9",
+    "@tanstack/react-query": "^5.101.0",
+    "adm-zip": "^0.5.17",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "electron-updater": "^6.8.9",
+    "framer-motion": "^12.40.0",
+    "lucide-react": "^1.17.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "sql.js": "^1.14.1",
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/adm-zip": "^0.5.8",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/sql.js": "^1.4.11",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.5.0",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.2",
+    "esbuild": "^0.28.0",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "png-to-ico": "^3.0.1",
+    "postcss": "^8.5.15",
+    "sharp": "^0.35.0",
+    "tailwindcss": "^4.3.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.59.2",
+    "vite": "^8.0.12",
+    "wait-on": "^9.0.10"
+  }
+}
