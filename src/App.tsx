@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { AccountPanel } from "./components/account/AccountPanel";
 import { Sidebar, type PageId } from "./components/layout/Sidebar";
+import { StartupScreen } from "./components/startup/StartupScreen";
 import { DownloadsPage } from "./pages/DownloadsPage";
 import { ExplorePage } from "./pages/ExplorePage";
 import { HomePage } from "./pages/HomePage";
@@ -102,6 +103,7 @@ function AppShell() {
 }
 
 function App() {
+  const [isBooting, setIsBooting] = useState(true);
   const queryClient = useMemo(
     () =>
       new QueryClient({
@@ -114,10 +116,24 @@ function App() {
       }),
     [],
   );
+  const handleStartupComplete = useCallback(() => setIsBooting(false), []);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppShell />
+      <AnimatePresence mode="wait">
+        {isBooting ? (
+          <StartupScreen key="startup" onComplete={handleStartupComplete} />
+        ) : (
+          <motion.div
+            key="app"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+          >
+            <AppShell />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </QueryClientProvider>
   );
 }

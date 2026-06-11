@@ -112,9 +112,6 @@ const bootstrap = async () => {
     updater,
   });
   await createWindow();
-  setTimeout(() => {
-    void updater.checkForUpdates(false);
-  }, 5000);
 };
 
 app.whenReady().then(bootstrap).catch((error: unknown) => {
