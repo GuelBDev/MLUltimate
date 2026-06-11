@@ -4,6 +4,23 @@ import type { UpdaterState } from "../../src/types/launcher";
 
 type EmitUpdaterState = (state: UpdaterState) => void;
 
+const UPDATE_OWNER = "GuelBDev";
+const UPDATE_REPO = "MLUltimate";
+const RELEASES_API_URL = `https://api.github.com/repos/${UPDATE_OWNER}/${UPDATE_REPO}/releases`;
+
+type GitHubRelease = {
+  draft: boolean;
+  prerelease: boolean;
+  tag_name: string;
+  assets: Array<{ name: string }>;
+};
+
+type UpdateRelease = {
+  version: string;
+  tag: string;
+  feedUrl: string;
+};
+
 export class UpdateService {
   private state: UpdaterState = {
     status: "idle",
@@ -77,6 +94,25 @@ export class UpdateService {
 
     this.setState({ status: "checking", message: "Procurando atualizacao..." });
     try {
+      const release = await this.findLatestUpdateRelease();
+
+      if (!release) {
+        this.setState({
+          status: "not-available",
+          message: "Voce ja esta com o app atualizado.",
+        });
+        return this.state;
+      }
+
+      autoUpdater.setFeedURL({
+        provider: "generic",
+        url: release.feedUrl,
+      });
+      this.setState({
+        status: "available",
+        availableVersion: release.version,
+        message: `Atualizacao ${release.version} encontrada. Baixando...`,
+      });
       await autoUpdater.checkForUpdates();
     } catch (error) {
       this.setState({
@@ -95,6 +131,32 @@ export class UpdateService {
     autoUpdater.quitAndInstall(false, true);
   }
 
+  private async findLatestUpdateRelease(): Promise<UpdateRelease | null> {
+    const response = await fetch(RELEASES_API_URL, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "MLUltimate-Launcher-Updater",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Nao foi possivel consultar updates no GitHub (${response.status}).`,
+      );
+    }
+
+    const releases = (await response.json()) as GitHubRelease[];
+    const currentVersion = normalizeVersion(app.getVersion());
+
+    return releases
+      .filter((release) => !release.draft)
+      .filter((release) => autoUpdater.allowPrerelease || !release.prerelease)
+      .map(toUpdateRelease)
+      .filter((release): release is UpdateRelease => Boolean(release))
+      .filter((release) => compareVersions(release.version, currentVersion) > 0)
+      .sort((left, right) => compareVersions(right.version, left.version))[0] ?? null;
+  }
+
   private setState(patch: Partial<UpdaterState>) {
     this.state = {
       ...this.state,
@@ -108,3 +170,45 @@ export class UpdateService {
     this.emit(this.state);
   }
 }
+
+const toUpdateRelease = (release: GitHubRelease): UpdateRelease | null => {
+  const version = normalizeVersion(release.tag_name);
+  const hasInstaller = release.assets.some((asset) => asset.name.endsWith(".exe"));
+  const hasUpdateManifest = release.assets.some((asset) => asset.name === "latest.yml");
+
+  if (!version || !hasInstaller || !hasUpdateManifest) {
+    return null;
+  }
+
+  return {
+    version,
+    tag: release.tag_name,
+    feedUrl: `https://github.com/${UPDATE_OWNER}/${UPDATE_REPO}/releases/download/${release.tag_name}/`,
+  };
+};
+
+const normalizeVersion = (version: string) => version.replace(/^v/i, "");
+
+const compareVersions = (left: string, right: string) => {
+  const leftParts = toComparableVersion(left);
+  const rightParts = toComparableVersion(right);
+  const length = Math.max(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < length; index += 1) {
+    const leftValue = leftParts[index] ?? 0;
+    const rightValue = rightParts[index] ?? 0;
+
+    if (leftValue !== rightValue) {
+      return leftValue > rightValue ? 1 : -1;
+    }
+  }
+
+  return 0;
+};
+
+const toComparableVersion = (version: string) =>
+  version
+    .replace(/^v/i, "")
+    .split(/[^0-9]+/)
+    .filter(Boolean)
+    .map((part) => Number(part));
