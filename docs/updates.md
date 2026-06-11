@@ -5,7 +5,7 @@ MLUltimate usa GitHub Releases como canal de atualizacao.
 Repositorio esperado:
 
 ```text
-https://github.com/miguelgossani068-arch/MLUltimate
+https://github.com/GuelBDev/MLUltimate
 ```
 
 ## Publicar uma nova alpha
