@@ -366,7 +366,7 @@ export class ContentService {
     const instance = await this.instances.getById(input.instanceId);
 
     if (input.type === "mod" && instance.loader === "vanilla") {
-      throw new Error("Mods exigem uma instancia com Fabric, Forge, NeoForge ou Quilt.");
+      throw new Error("Mods exigem uma instância com Fabric, Forge, NeoForge ou Quilt.");
     }
 
     if (installedProjectIds.has(input.projectId)) {
@@ -385,13 +385,13 @@ export class ContentService {
       versions.find((candidate) => candidate.id === input.versionId) ?? versions.at(0);
 
     if (!version) {
-      throw new Error("Nenhum arquivo Modrinth compativel foi encontrado para esta instancia.");
+      throw new Error("Nenhum arquivo Modrinth compatível foi encontrado para esta instância.");
     }
 
     const file = version.files.find((candidate) => candidate.primary) ?? version.files.at(0);
 
     if (!file) {
-      throw new Error("A versao Modrinth encontrada nao possui arquivo para baixar.");
+      throw new Error("A versão Modrinth encontrada não possui arquivo para baixar.");
     }
 
     const installed = await this.installFile({
@@ -518,8 +518,8 @@ export class ContentService {
         description: image.description ?? undefined,
       })),
       versions: contentVersions,
-      commentsNote: "Comentarios nao sao expostos pela API publica do Modrinth.",
-      contentNote: "Conteudo instalado e listado na tela da instancia.",
+      commentsNote: "Comentários não são expostos pela API pública do Modrinth.",
+      contentNote: "Conteúdo instalado é listado na tela da instância.",
     };
   }
 
@@ -562,7 +562,7 @@ export class ContentService {
       ),
       gallery: [],
       versions: contentVersions,
-      commentsNote: "Comentarios nao sao expostos pela Core API oficial da CurseForge.",
+      commentsNote: "Comentários não são expostos pela Core API oficial da CurseForge.",
       contentNote: "Arquivos do projeto aparecem em Versions.",
     };
   }
@@ -613,7 +613,7 @@ export class ContentService {
       files.at(0);
 
     if (!file) {
-      throw new Error("Nenhum arquivo CurseForge compativel foi encontrado.");
+      throw new Error("Nenhum arquivo CurseForge compatível foi encontrado.");
     }
 
     const downloadUrl =
@@ -639,7 +639,7 @@ export class ContentService {
     );
 
     if (!response.ok) {
-      throw new Error(`CurseForge nao liberou URL de download (${response.status}).`);
+      throw new Error(`CurseForge não liberou URL de download (${response.status}).`);
     }
 
     const json = z.object({ data: z.string().url() }).parse(await response.json());

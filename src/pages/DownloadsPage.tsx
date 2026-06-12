@@ -73,7 +73,7 @@ export const DownloadsPage = () => {
         <Card className="p-8 text-center">
           <p className="text-base font-semibold text-white">Nenhum download na fila</p>
           <p className="mt-2 text-sm text-[#94A3B8]">
-            Baixe uma versao do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.
+            Baixe uma versão do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.
           </p>
         </Card>
       ) : null}

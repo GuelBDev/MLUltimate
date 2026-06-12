@@ -115,7 +115,7 @@ export class MicrosoftAuthService {
     const secureSession = this.tokenStore.loadSession();
 
     if (!secureSession) {
-      throw new Error("Entre com uma conta Microsoft antes de iniciar esta instancia.");
+      throw new Error("Entre com uma conta Microsoft antes de iniciar esta instância.");
     }
 
     const refreshed = await this.refreshIfNeeded(secureSession);
@@ -133,7 +133,7 @@ export class MicrosoftAuthService {
 
     if (!licenseVerified) {
       throw new Error(
-        "Licenca do Minecraft nao encontrada nesta conta Microsoft. O jogo autenticado foi bloqueado.",
+        "Licença do Minecraft não encontrada nesta conta Microsoft. O jogo autenticado foi bloqueado.",
       );
     }
 
@@ -301,7 +301,7 @@ export class MicrosoftAuthService {
     const xui = json.DisplayClaims.xui.at(0);
 
     if (!xui) {
-      throw new Error("Xbox XSTS nao retornou identidade do usuario.");
+      throw new Error("Xbox XSTS não retornou identidade do usuário.");
     }
 
     return {
@@ -454,7 +454,7 @@ const createLiveOAuthServer = (state: string) => {
     }
 
     response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    response.end("<h1>MLUltimate conectado</h1><p>Voce pode voltar ao launcher.</p>");
+    response.end("<h1>MLUltimate conectado</h1><p>Você pode voltar ao launcher.</p>");
     resolveCode(code);
     server.close();
   });

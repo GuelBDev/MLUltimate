@@ -71,11 +71,11 @@ export class AvatarService {
     );
 
     if (profileResponse.status === 404) {
-      throw new Error("Nick nao encontrado na Mojang.");
+      throw new Error("Nick não encontrado na Mojang.");
     }
 
     if (!profileResponse.ok) {
-      throw new Error(`Nao foi possivel buscar esse nick (${profileResponse.status}).`);
+      throw new Error(`Não foi possível buscar esse nick (${profileResponse.status}).`);
     }
 
     const profile = mojangProfileSchema.parse(await profileResponse.json());
@@ -84,14 +84,14 @@ export class AvatarService {
     );
 
     if (!sessionResponse.ok) {
-      throw new Error("Nao foi possivel carregar a skin desse perfil.");
+      throw new Error("Não foi possível carregar a skin desse perfil.");
     }
 
     const session = sessionProfileSchema.parse(await sessionResponse.json());
     const textures = session.properties.find((property) => property.name === "textures");
 
     if (!textures) {
-      throw new Error("Esse perfil nao retornou textura de skin.");
+      throw new Error("Esse perfil não retornou textura de skin.");
     }
 
     const payload = texturePayloadSchema.parse(
@@ -203,7 +203,7 @@ export class AvatarService {
     const skin = this.database.get<SkinRow>("SELECT * FROM avatar_skins WHERE id = ?", [id]);
 
     if (!skin) {
-      throw new Error("Skin nao encontrada.");
+      throw new Error("Skin não encontrada.");
     }
 
     return this.toPublicSkin(skin);
@@ -240,7 +240,7 @@ const downloadBytes = async (url: string) => {
   const response = await fetch(url);
 
   if (!response.ok) {
-    throw new Error(`Nao foi possivel baixar a skin (${response.status}).`);
+    throw new Error(`Não foi possível baixar a skin (${response.status}).`);
   }
 
   return Buffer.from(await response.arrayBuffer());

@@ -65,11 +65,11 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
     try {
       await launcherApi.launch({ instanceId: instance.id });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Nao foi possivel abrir o jogo.";
+      const message = error instanceof Error ? error.message : "Não foi possível abrir o jogo.";
 
       if (message.startsWith("INSTANCE_ALREADY_RUNNING")) {
         const openAgain = window.confirm(
-          "Essa instancia ja esta aberta ou iniciando. Deseja abrir outra copia mesmo assim?",
+          "Essa instância já está aberta ou iniciando. Deseja abrir outra cópia mesmo assim?",
         );
 
         if (openAgain) {
@@ -94,7 +94,7 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
   };
 
   const killInstance = () => {
-    const shouldKill = window.confirm(`Encerrar o Minecraft da instancia "${instance.name}"?`);
+    const shouldKill = window.confirm(`Encerrar o Minecraft da instância "${instance.name}"?`);
 
     if (shouldKill) {
       void launcherApi.killInstance(instance.id);
@@ -221,7 +221,7 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
             <button
               type="button"
               className="flex h-9 w-9 items-center justify-center rounded-sm text-[#94A3B8] hover:bg-red-500/15 hover:text-red-200"
-              title="Remover arquivo manualmente pela pasta da instancia"
+              title="Remover arquivo manualmente pela pasta da instância"
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -229,7 +229,7 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
         ))}
         {items.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-[#94A3B8]">
-            Nenhum conteudo deste tipo instalado ainda.
+            Nenhum conteúdo deste tipo instalado ainda.
           </div>
         ) : null}
       </Card>

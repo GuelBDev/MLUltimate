@@ -22,7 +22,7 @@ const pageTitles: Record<PageId, string> = {
   library: "Biblioteca",
   explore: "Explorar",
   downloads: "Downloads",
-  settings: "Configuracoes",
+  settings: "Configurações",
 };
 
 function AppShell() {
@@ -147,7 +147,7 @@ function AppRoot() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            Carregando preferencias...
+            Carregando preferências...
           </motion.div>
         ) : needsLanguageSetup ? (
           <motion.div

@@ -5,8 +5,8 @@ export const languageOptions: Array<{
   label: string;
   description: string;
 }> = [
-  { id: "pt-BR", label: "Portugues Brasil", description: "Interface em portugues brasileiro." },
-  { id: "pt-PT", label: "Portugues Portugal", description: "Interface em portugues europeu." },
+  { id: "pt-BR", label: "Português Brasil", description: "Interface em português brasileiro." },
+  { id: "pt-PT", label: "Português Portugal", description: "Interface em português europeu." },
   { id: "en", label: "English", description: "Interface in English." },
-  { id: "fr", label: "French", description: "Interface en francais." },
+  { id: "fr", label: "Français", description: "Interface en français." },
 ];

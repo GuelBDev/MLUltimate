@@ -194,7 +194,7 @@ export class InstanceService {
     const row = this.database.get<InstanceRow>("SELECT * FROM instances WHERE id = ?", [id]);
 
     if (!row) {
-      throw new Error("Instancia nao encontrada.");
+      throw new Error("Instância não encontrada.");
     }
 
     return this.rowToInstance(row);
@@ -207,7 +207,7 @@ export class InstanceService {
 
     const relativePath = path.relative(resolvedRoot, resolvedGameDir);
     if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-      throw new Error("Caminho da instancia fora da pasta segura do launcher.");
+      throw new Error("Caminho da instância fora da pasta segura do launcher.");
     }
 
     await rm(resolvedGameDir, {
@@ -217,7 +217,7 @@ export class InstanceService {
       retryDelay: 250,
     }).catch((error) => {
       throw new Error(
-        "Nao foi possivel excluir a pasta da instancia. Feche o Minecraft e qualquer pasta aberta dessa instancia e tente novamente.",
+        "Não foi possível excluir a pasta da instância. Feche o Minecraft e qualquer pasta aberta dessa instância e tente novamente.",
         { cause: error },
       );
     });
@@ -259,7 +259,7 @@ export class InstanceService {
 
   async selectIcon(): Promise<InstanceIconSelection | null> {
     const result = await dialog.showOpenDialog({
-      title: "Selecionar imagem da instancia",
+      title: "Selecionar imagem da instância",
       properties: ["openFile"],
       filters: [{ name: "Imagem", extensions: ["png", "jpg", "jpeg", "webp"] }],
     });
@@ -304,7 +304,7 @@ export class InstanceService {
     }
 
     const result = await dialog.showOpenDialog({
-      title: "Importar instancia",
+      title: "Importar instância",
       properties: ["openFile"],
       filters: [
         { name: "Pacotes Minecraft", extensions: ["zip", "mrpack", "mlultimate", "rar"] },
@@ -348,7 +348,7 @@ export class InstanceService {
         const minecraftVersion = index.dependencies.minecraft;
 
         if (!minecraftVersion) {
-          throw new Error("O .mrpack nao informa a versao do Minecraft.");
+          throw new Error("O .mrpack não informa a versão do Minecraft.");
         }
 
         const instance = await this.create({
@@ -414,7 +414,7 @@ export class InstanceService {
     const trimmed = code.trim();
 
     if (!trimmed) {
-      throw new Error("Informe um codigo, URL ou caminho de arquivo para importar.");
+      throw new Error("Informe um código, URL ou caminho de arquivo para importar.");
     }
 
     if (existsSync(trimmed)) {
@@ -437,14 +437,14 @@ export class InstanceService {
       return this.importCurseForgeCode(trimmed);
     }
 
-    throw new Error("Codigo nao reconhecido. Use URL Modrinth, URL/ID CurseForge, MLU: ou caminho local.");
+    throw new Error("Código não reconhecido. Use URL Modrinth, URL/ID CurseForge, MLU: ou caminho local.");
   }
 
   private async importModrinthCode(code: string) {
     const slug = extractModrinthSlug(code);
 
     if (!slug) {
-      throw new Error("Nao consegui identificar o modpack Modrinth nessa URL/codigo.");
+      throw new Error("Não consegui identificar o modpack Modrinth nessa URL/código.");
     }
 
     const response = await fetchWithElectronNet(
@@ -460,7 +460,7 @@ export class InstanceService {
     const file = version?.files.find((candidate) => candidate.primary) ?? version?.files.at(0);
 
     if (!file) {
-      throw new Error("O modpack Modrinth nao possui arquivo .mrpack disponivel.");
+      throw new Error("O modpack Modrinth não possui arquivo .mrpack disponível.");
     }
 
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-code-"));
@@ -483,7 +483,7 @@ export class InstanceService {
     const projectRef = extractCurseForgeProjectRef(code);
 
     if (!projectRef) {
-      throw new Error("Nao consegui identificar o projeto CurseForge nesse codigo/URL.");
+      throw new Error("Não consegui identificar o projeto CurseForge nesse código/URL.");
     }
     const numericProjectId = /^\d+$/.test(projectRef)
       ? Number(projectRef)
@@ -575,7 +575,7 @@ export class InstanceService {
     );
 
     if (!response.ok) {
-      throw new Error(`CurseForge nao liberou URL de download (${response.status}).`);
+      throw new Error(`CurseForge não liberou URL de download (${response.status}).`);
     }
 
     return z.object({ data: z.string().url() }).parse(await response.json()).data;
@@ -601,7 +601,7 @@ export class InstanceService {
       .parse(await response.json()).data.at(0);
 
     if (!project) {
-      throw new Error("Nenhum projeto CurseForge foi encontrado para esse codigo.");
+      throw new Error("Nenhum projeto CurseForge foi encontrado para esse código.");
     }
 
     return project.id;
@@ -721,7 +721,7 @@ const extractArchive = async (archivePath: string, destination: string) => {
     return;
   }
 
-  throw new Error("Formato de importacao nao suportado.");
+  throw new Error("Formato de importação não suportado.");
 };
 
 const runArchiveExtractor = (archivePath: string, destination: string) =>
@@ -744,7 +744,7 @@ const runArchiveExtractor = (archivePath: string, destination: string) =>
 
       reject(
         new Error(
-          `Nao foi possivel extrair o .rar. Instale 7-Zip ou envie como .zip/.mrpack. ${errorOutput}`.trim(),
+          `Não foi possível extrair o .rar. Instale 7-Zip ou envie como .zip/.mrpack. ${errorOutput}`.trim(),
         ),
       );
     });

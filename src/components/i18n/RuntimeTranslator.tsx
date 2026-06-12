@@ -57,7 +57,7 @@ const translateTextNodes = (root: HTMLElement, language: AppLanguage) => {
     const original = textOriginals.get(node) ?? trimmed;
     textOriginals.set(node, original);
 
-    const translated = language === "pt-BR" ? original : dictionary[original] ?? original;
+    const translated = getTranslatedText(dictionary, original);
     const nextText = withOriginalSpacing(text, translated);
 
     if (node.nodeValue !== nextText) {
@@ -77,7 +77,7 @@ const translateAttributes = (root: HTMLElement, language: AppLanguage) => {
       if (!element.hasAttribute(attribute)) return;
 
       const original = getOriginalAttribute(element, attribute);
-      const translated = language === "pt-BR" ? original : dictionary[original] ?? original;
+      const translated = getTranslatedText(dictionary, original);
 
       if (element.getAttribute(attribute) !== translated) {
         element.setAttribute(attribute, translated);
@@ -98,6 +98,12 @@ const getOriginalAttribute = (element: HTMLElement, attribute: TranslatedAttribu
   element.setAttribute(originalAttribute, original);
   return original;
 };
+
+const getTranslatedText = (dictionary: Record<string, string>, original: string) =>
+  dictionary[original] ?? dictionary[withoutDiacritics(original)] ?? original;
+
+const withoutDiacritics = (text: string) =>
+  text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
 const withOriginalSpacing = (current: string, translated: string) => {
   const match = current.match(/^(\s*)(.*?)(\s*)$/s);

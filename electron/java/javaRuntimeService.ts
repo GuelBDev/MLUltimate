@@ -136,7 +136,7 @@ export class JavaRuntimeService {
     );
 
     if (!response.ok) {
-      throw new Error(`Nao foi possivel encontrar Java ${requiredMajor} (${response.status}).`);
+      throw new Error(`Não foi possível encontrar Java ${requiredMajor} (${response.status}).`);
     }
 
     const asset = adoptiumAssetSchema.parse(await response.json()).at(0);
@@ -170,7 +170,7 @@ export class JavaRuntimeService {
     const java = await this.findJavaInDirectory(extractDir);
 
     if (!java) {
-      throw new Error(`Java ${requiredMajor} foi baixado, mas java.exe nao foi encontrado.`);
+      throw new Error(`Java ${requiredMajor} foi baixado, mas java.exe não foi encontrado.`);
     }
 
     return java;

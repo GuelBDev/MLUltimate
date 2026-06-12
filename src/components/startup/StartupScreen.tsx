@@ -20,25 +20,25 @@ const baseSteps: StartupStep[] = [
   {
     id: "core",
     label: "Inicializando o launcher",
-    detail: "Carregando servicos internos",
+    detail: "Carregando serviços internos",
     status: "waiting",
   },
   {
     id: "session",
     label: "Carregando perfil",
-    detail: "Verificando sessao local",
+    detail: "Verificando sessão local",
     status: "waiting",
   },
   {
     id: "updates",
-    label: "Checando atualizacoes",
-    detail: "Procurando uma versao mais recente",
+    label: "Checando atualizações",
+    detail: "Procurando uma versão mais recente",
     status: "waiting",
   },
   {
     id: "library",
     label: "Preparando biblioteca",
-    detail: "Sincronizando instancias e downloads",
+    detail: "Sincronizando instâncias e downloads",
     status: "waiting",
   },
   {
@@ -147,28 +147,28 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
         setDone("session", "Perfil local pronto");
 
         setRunning("updates");
-        setStatusText("Checando atualizacoes");
+        setStatusText("Checando atualizações");
         setProgress(52);
         const updaterState = await launcherApi.checkForUpdates();
         const finalUpdaterState = await waitForUpdateToFinish(updaterState, (state) => {
           if (state.status === "available") {
-            setStatusText("Atualizacao encontrada");
+            setStatusText("Atualização encontrada");
             setProgress(56);
-            setRunning("updates", `Atualizacao ${state.availableVersion ?? "nova"} encontrada`);
+            setRunning("updates", `Atualização ${state.availableVersion ?? "nova"} encontrada`);
           }
 
           if (state.status === "downloading") {
             const downloadProgress = state.progress ?? 0;
-            setStatusText("Baixando atualizacao obrigatoria");
+            setStatusText("Baixando atualização obrigatória");
             setProgress(Math.min(74, 56 + Math.round(downloadProgress * 0.18)));
-            setRunning("updates", `Baixando atualizacao ${downloadProgress}%`);
+            setRunning("updates", `Baixando atualização ${downloadProgress}%`);
           }
         });
 
         if (finalUpdaterState.status === "downloaded") {
-          setStatusText("Instalando atualizacao");
+          setStatusText("Instalando atualização");
           setProgress(100);
-          setDone("updates", "Atualizacao baixada. Reiniciando para instalar.");
+          setDone("updates", "Atualização baixada. Reiniciando para instalar.");
           await sleep(600);
           await launcherApi.installUpdate();
           return;
@@ -177,8 +177,8 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
         setDone(
           "updates",
           finalUpdaterState.status === "error"
-            ? "Nao foi possivel verificar updates agora"
-            : "Nenhuma atualizacao bloqueando a entrada",
+            ? "Não foi possível verificar updates agora"
+            : "Nenhuma atualização bloqueando a entrada",
         );
 
         setRunning("library");
@@ -202,7 +202,7 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
         }
       } catch (startupError) {
         if (cancelled) return;
-        setError(startupError instanceof Error ? startupError.message : "Nao foi possivel iniciar o launcher.");
+        setError(startupError instanceof Error ? startupError.message : "Não foi possível iniciar o launcher.");
         setIsRetrying(false);
       }
     };
@@ -241,7 +241,7 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
           {statusText}
         </h1>
         <p className="mt-2 min-h-5 text-sm text-[#94A3B8]">
-          {currentStep?.detail ?? "Preparando sua experiencia"}
+          {currentStep?.detail ?? "Preparando sua experiência"}
         </p>
 
         <div className="mt-7 w-full">

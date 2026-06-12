@@ -29,7 +29,7 @@ const navItems: NavItem[] = [
   { id: "library", label: "Biblioteca", icon: Library },
   { id: "explore", label: "Explorar", icon: Compass },
   { id: "downloads", label: "Downloads", icon: Download },
-  { id: "settings", label: "Configuracoes", icon: Settings },
+  { id: "settings", label: "Configurações", icon: Settings },
 ];
 
 type SidebarProps = {

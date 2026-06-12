@@ -201,11 +201,11 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
       const message =
         launchException instanceof Error
           ? launchException.message
-          : "Nao foi possivel abrir o jogo.";
+          : "Não foi possível abrir o jogo.";
 
       if (message.startsWith("INSTANCE_ALREADY_RUNNING")) {
         const openAgain = window.confirm(
-          "Essa instancia ja esta aberta ou iniciando. Deseja abrir outra copia mesmo assim?",
+          "Essa instância já está aberta ou iniciando. Deseja abrir outra cópia mesmo assim?",
         );
 
         if (openAgain) {
@@ -227,7 +227,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   };
 
   const killInstance = (instance: LauncherInstance) => {
-    const shouldKill = window.confirm(`Encerrar o Minecraft da instancia "${instance.name}"?`);
+    const shouldKill = window.confirm(`Encerrar o Minecraft da instância "${instance.name}"?`);
 
     if (shouldKill) {
       void launcherApi.killInstance(instance.id);
@@ -325,7 +325,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
 
       {visibleInstances.length === 0 ? (
         <Card className="p-8 text-center">
-          <p className="text-base font-semibold text-white">Nenhuma instancia criada</p>
+          <p className="text-base font-semibold text-white">Nenhuma instância criada</p>
           <p className="mt-2 text-sm text-[#94A3B8]">
             Clique em Create para criar um perfil vanilla ou customizado.
           </p>
@@ -466,7 +466,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                   value={importCode}
                   onChange={(event) => setImportCode(event.target.value)}
                   className="mt-2 h-10 w-full border border-white/30 bg-[#303030] px-3 text-sm text-white outline-none focus:border-[#f05a28]"
-                  placeholder="CurseForge ID, URL ou codigo compartilhado"
+                  placeholder="CurseForge ID, URL ou código compartilhado"
                 />
               </label>
               {error ? (
@@ -480,7 +480,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                 Cancel
               </Button>
               <Button type="submit" className="rounded-sm bg-[#f05a28] hover:bg-[#ff733f]">
-                Importar codigo
+                Importar código
               </Button>
             </div>
           </form>

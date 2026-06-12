@@ -17,7 +17,7 @@ import type {
 } from "../types/launcher";
 
 const desktopOnly = () =>
-  new Error("Esta acao precisa ser executada dentro do app desktop Electron.");
+  new Error("Esta ação precisa ser executada dentro do app desktop Electron.");
 
 const hasBridge = () => typeof window !== "undefined" && Boolean(window.mlultimate);
 
@@ -193,7 +193,7 @@ export const launcherApi = {
       return {
         ...defaultUpdaterState,
         status: "not-available" as const,
-        message: "Atualizacao automatica funciona apenas no app instalado.",
+        message: "Atualização automática funciona apenas no app instalado.",
       };
     }
     return window.mlultimate.updater.check();

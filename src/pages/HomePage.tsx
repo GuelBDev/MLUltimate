@@ -37,11 +37,11 @@ export const HomePage = ({ focus, onNavigate, onExploreInstance }: HomePageProps
     try {
       await launcherApi.launch({ instanceId: instance.id });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Nao foi possivel abrir o jogo.";
+      const message = error instanceof Error ? error.message : "Não foi possível abrir o jogo.";
 
       if (message.startsWith("INSTANCE_ALREADY_RUNNING")) {
         const openAgain = window.confirm(
-          "Essa instancia ja esta aberta ou iniciando. Deseja abrir outra copia mesmo assim?",
+          "Essa instância já está aberta ou iniciando. Deseja abrir outra cópia mesmo assim?",
         );
 
         if (openAgain) {
@@ -55,7 +55,7 @@ export const HomePage = ({ focus, onNavigate, onExploreInstance }: HomePageProps
   };
 
   const killInstance = (instance: LauncherInstance) => {
-    const shouldKill = window.confirm(`Encerrar o Minecraft da instancia "${instance.name}"?`);
+    const shouldKill = window.confirm(`Encerrar o Minecraft da instância "${instance.name}"?`);
 
     if (shouldKill) {
       void launcherApi.killInstance(instance.id);
@@ -81,7 +81,7 @@ export const HomePage = ({ focus, onNavigate, onExploreInstance }: HomePageProps
         <div className="absolute inset-0 bg-gradient-to-r from-[#0D1117]/96 via-[#0D1117]/75 to-[#0D1117]/30" />
         <div className="relative flex min-h-[250px] flex-col justify-between p-7">
           <div className="flex items-center gap-2">
-            <Badge tone="blue">Instancias reais</Badge>
+            <Badge tone="blue">Instâncias reais</Badge>
             <Badge tone="green">Play vanilla conectado</Badge>
           </div>
           <div className="max-w-xl">
@@ -89,19 +89,19 @@ export const HomePage = ({ focus, onNavigate, onExploreInstance }: HomePageProps
               {focus === "explore" ? "Explorar" : "My Profiles"}
             </p>
             <h2 className="mt-2 text-4xl font-semibold leading-tight text-white">
-              Suas instancias
+              Suas instâncias
             </h2>
             <p className="mt-3 max-w-lg text-sm leading-6 text-[#C7D2FE]">
-              Crie perfis customizados, adicione mods, resource packs e shaders, e abra a instancia pela propria grade.
+              Crie perfis customizados, adicione mods, resource packs e shaders, e abra a instância pela própria grade.
             </p>
             <div className="mt-5 flex gap-3">
               <Button type="button" onClick={() => onNavigate?.("library")}>
                 <FolderPlus className="h-4 w-4" />
-                Criar instancia
+                Criar instância
               </Button>
               <Button type="button" variant="secondary" onClick={() => onNavigate?.("explore")}>
                 <Download className="h-4 w-4" />
-                Explorar conteudo
+                Explorar conteúdo
               </Button>
             </div>
           </div>
@@ -136,7 +136,7 @@ export const HomePage = ({ focus, onNavigate, onExploreInstance }: HomePageProps
 
       {realInstances.length === 0 ? (
         <Card className="p-8 text-center">
-          <p className="text-base font-semibold text-white">Nenhuma instancia criada</p>
+          <p className="text-base font-semibold text-white">Nenhuma instância criada</p>
           <p className="mt-2 text-sm text-[#94A3B8]">
             Va em Biblioteca e crie seu primeiro perfil.
           </p>
@@ -147,7 +147,7 @@ export const HomePage = ({ focus, onNavigate, onExploreInstance }: HomePageProps
         <Card className="p-5">
           <PackageOpen className="h-5 w-5 text-[#60A5FA]" />
           <p className="mt-4 text-2xl font-semibold text-white">{realInstances.length}</p>
-          <p className="mt-1 text-sm text-[#94A3B8]">Instancias</p>
+          <p className="mt-1 text-sm text-[#94A3B8]">Instâncias</p>
         </Card>
         <Card className="p-5">
           <Download className="h-5 w-5 text-[#60A5FA]" />

@@ -27,9 +27,9 @@ export function LanguageSetupScreen({
           </div>
           <div>
             <p className="text-sm font-semibold text-[#60A5FA]">MLUltimate Launcher</p>
-            <h1 className="mt-1 text-2xl font-semibold text-white">Escolha a linguagem</h1>
+            <h1 className="mt-1 text-2xl font-semibold text-white">Escolha o idioma</h1>
             <p className="mt-2 text-sm leading-6 text-[#94A3B8]">
-              Selecione o idioma inicial do app. Voce pode alterar isso depois nas Configuracoes.
+              Selecione o idioma inicial do app. Você pode alterar isso depois nas Configurações.
             </p>
           </div>
         </div>

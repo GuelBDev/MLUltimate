@@ -179,9 +179,9 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
       <Card className="p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-white">Explorar conteudo</h2>
+            <h2 className="text-lg font-semibold text-white">Explorar conteúdo</h2>
             <p className="mt-1 text-sm text-[#94A3B8]">
-              Pesquise livremente e escolha a instancia compativel na hora de instalar.
+              Pesquise livremente e escolha a instância compatível na hora de instalar.
             </p>
           </div>
           <Badge tone="blue">{providerLabels[provider]}</Badge>
@@ -264,7 +264,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
 
         {provider !== "modrinth" ? (
           <p className="mt-3 text-xs leading-5 text-[#94A3B8]">
-            CurseForge usa a API central segura do MLUltimate; nenhuma chave precisa ser colocada pelo usuario.
+            CurseForge usa a API central segura do MLUltimate; nenhuma chave precisa ser colocada pelo usuário.
           </p>
         ) : null}
 
@@ -313,7 +313,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
                 <Button
                   type="button"
                   disabled={install.isPending}
-                  title="Escolher instancia"
+                  title="Escolher instância"
                   onClick={(event) => {
                     event.stopPropagation();
                     requestInstall(project);
@@ -449,7 +449,7 @@ const ProjectDetails = ({
             type="button"
             onClick={() => onInstall(latestVersion)}
             disabled={installing}
-            title="Escolher instancia"
+            title="Escolher instância"
           >
             <Download className="h-4 w-4" />
             Instalar
@@ -507,14 +507,14 @@ const ProjectDetails = ({
             ))}
             {(project?.gallery ?? []).length === 0 ? (
               <div className="col-span-2">
-                <EmptyDetail text="Galeria nao disponivel para este projeto." icon />
+                <EmptyDetail text="Galeria não disponível para este projeto." icon />
               </div>
             ) : null}
           </div>
         ) : null}
 
         {activeTab === "comments" ? (
-          <EmptyDetail text={project?.commentsNote ?? "Comentarios indisponiveis."} />
+          <EmptyDetail text={project?.commentsNote ?? "Comentários indisponíveis."} />
         ) : null}
 
         {activeTab === "content" ? (
@@ -533,7 +533,7 @@ const ProjectDetails = ({
               </div>
             ))}
             {versions.length === 0 ? (
-              <EmptyDetail text={project?.contentNote ?? "Conteudo aparece depois de instalar na instancia."} />
+              <EmptyDetail text={project?.contentNote ?? "Conteúdo aparece depois de instalar na instância."} />
             ) : null}
           </div>
         ) : null}
@@ -610,11 +610,11 @@ const InstallInstanceDialog = ({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#60A5FA]">
-              Escolher instancia
+              Escolher instância
             </p>
             <h2 className="mt-2 truncate text-xl font-semibold text-white">{title}</h2>
             <p className="mt-1 text-sm text-[#94A3B8]">
-              Instancias vanilla e incompatíveis aparecem bloqueadas para evitar arquivo quebrado.
+              Instâncias vanilla e incompatíveis aparecem bloqueadas para evitar arquivo quebrado.
             </p>
           </div>
           <Button type="button" variant="ghost" onClick={onClose} disabled={installing}>
@@ -643,7 +643,7 @@ const InstallInstanceDialog = ({
                   </p>
                 </div>
                 <Badge tone={compatible ? "green" : "slate"}>
-                  {compatible ? "Compativel" : "Bloqueado"}
+                  {compatible ? "Compatível" : "Bloqueado"}
                 </Badge>
               </div>
               <p className={`mt-3 text-sm ${compatible ? "text-[#B8C2D0]" : "text-[#94A3B8]"}`}>
@@ -654,7 +654,7 @@ const InstallInstanceDialog = ({
 
           {compatibilityRows.length === 0 ? (
             <div className="rounded-xl border border-white/10 bg-[#0D1117] p-6 text-center text-sm text-[#94A3B8]">
-              Crie uma instancia Fabric, Forge, NeoForge ou Quilt na Biblioteca antes de instalar conteudo.
+              Crie uma instância Fabric, Forge, NeoForge ou Quilt na Biblioteca antes de instalar conteúdo.
             </div>
           ) : null}
         </div>
@@ -662,8 +662,8 @@ const InstallInstanceDialog = ({
         <div className="mt-5 flex items-center justify-between gap-3 border-t border-white/10 pt-4">
           <p className="text-sm text-[#94A3B8]">
             {availableCount > 0
-              ? `${availableCount} instancia${availableCount === 1 ? "" : "s"} disponivel${availableCount === 1 ? "" : "is"}.`
-              : "Nenhuma instancia compativel encontrada."}
+              ? `${availableCount} instância${availableCount === 1 ? "" : "s"} disponível${availableCount === 1 ? "" : "is"}.`
+              : "Nenhuma instância compatível encontrada."}
           </p>
           <Button type="button" variant="secondary" onClick={onClose} disabled={installing}>
             Cancelar
@@ -680,7 +680,7 @@ const getInstallCompatibility = (
   instance: LauncherInstance,
 ) => {
   if (instance.loader === "vanilla") {
-    return { compatible: false, reason: "Instancia vanilla nao aceita instalacao automatica de mods, shaders ou modpacks." };
+    return { compatible: false, reason: "Instância vanilla não aceita instalação automática de mods, shaders ou modpacks." };
   }
 
   const gameVersions = version?.gameVersions ?? project.compatibleGameVersions ?? [];
@@ -691,7 +691,7 @@ const getInstallCompatibility = (
   if (!versionCompatible) {
     return {
       compatible: false,
-      reason: `Incompativel com Minecraft ${instance.minecraftVersion}.`,
+      reason: `Incompatível com Minecraft ${instance.minecraftVersion}.`,
     };
   }
 
@@ -704,7 +704,7 @@ const getInstallCompatibility = (
   if (!loaderCompatible) {
     return {
       compatible: false,
-      reason: `Precisa de ${contentLoaders.join(", ")}; esta instancia usa ${instance.loader}.`,
+      reason: `Precisa de ${contentLoaders.join(", ")}; esta instância usa ${instance.loader}.`,
     };
   }
 
@@ -743,7 +743,7 @@ const CompatibilityMeta = ({ project }: { project: ContentSearchResult | Content
       ) : null}
       {compatible.length > 0 ? (
         <span className="rounded-sm border border-white/10 bg-white/6 px-2 py-1">
-          Compativel: {compatible.join(", ")}
+          Compatível: {compatible.join(", ")}
         </span>
       ) : null}
       {loaders.length > 0 ? (

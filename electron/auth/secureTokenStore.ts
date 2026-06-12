@@ -76,7 +76,7 @@ export class SecureTokenStore {
   private assertEncryptionAvailable() {
     if (!safeStorage.isEncryptionAvailable()) {
       throw new Error(
-        "Criptografia do sistema indisponivel. Tokens nao serao salvos sem protecao.",
+        "Criptografia do sistema indisponível. Tokens não serão salvos sem proteção.",
       );
     }
   }

@@ -12,7 +12,7 @@ const settingsKey = ["settings"] as const;
 const minecraftOpenActions = [
   {
     id: "none",
-    label: "Nao fazer nada",
+    label: "Não fazer nada",
     description: "O launcher continua aberto normalmente.",
   },
   {
@@ -47,28 +47,28 @@ export const SettingsPage = () => {
   const isDownloaded = updaterState?.status === "downloaded";
   const isUpToDate = updaterState?.status === "not-available";
   const updateMessage = (() => {
-    if (!updaterState) return "Clique em procurar para verificar se existe uma nova versao.";
-    if (isChecking) return "Procurando uma nova versao no GitHub Releases...";
-    if (isDownloading) return `Baixando atualizacao ${updaterState.progress ?? 0}%...`;
+    if (!updaterState) return "Clique em procurar para verificar se existe uma nova versão.";
+    if (isChecking) return "Procurando uma nova versão no GitHub Releases...";
+    if (isDownloading) return `Baixando atualização ${updaterState.progress ?? 0}%...`;
     if (isDownloaded) {
-      return `Versao ${updaterState.availableVersion ?? "nova"} baixada e pronta para instalar.`;
+      return `Versão ${updaterState.availableVersion ?? "nova"} baixada e pronta para instalar.`;
     }
-    if (isUpToDate) return "Voce ja esta com o app atualizado.";
+    if (isUpToDate) return "Você já está com o app atualizado.";
     if (updaterState.status === "available") {
-      return `Versao ${updaterState.availableVersion ?? "nova"} encontrada. O download vai comecar automaticamente.`;
+      return `Versão ${updaterState.availableVersion ?? "nova"} encontrada. O download vai começar automaticamente.`;
     }
     if (updaterState.status === "error") {
       return updaterState.message?.includes("releases.atom")
-        ? "Ainda nao existe uma release publicada no GitHub para comparar atualizacoes."
-        : (updaterState.message ?? "Nao foi possivel procurar atualizacoes agora.");
+        ? "Ainda não existe uma release publicada no GitHub para comparar atualizações."
+        : (updaterState.message ?? "Não foi possível procurar atualizações agora.");
     }
 
-    return "Clique em procurar para verificar se existe uma nova versao.";
+    return "Clique em procurar para verificar se existe uma nova versão.";
   })();
 
   const installDownloadedUpdate = () => {
     const shouldRestart = window.confirm(
-      "A atualizacao ja foi baixada. Quer fechar e reiniciar o MLUltimate agora para instalar?",
+      "A atualização já foi baixada. Quer fechar e reiniciar o MLUltimate agora para instalar?",
     );
 
     if (shouldRestart) {
@@ -85,9 +85,9 @@ export const SettingsPage = () => {
               <DownloadCloud className="h-5 w-5 text-[#60A5FA]" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-lg font-semibold text-white">Atualizacoes</h2>
+              <h2 className="text-lg font-semibold text-white">Atualizações</h2>
               <p className="mt-1 text-sm leading-6 text-[#94A3B8]">
-                Versao instalada:{" "}
+                Versão instalada:{" "}
                 <span className="font-semibold text-white">
                   {updaterState?.currentVersion ?? "dev"}
                 </span>
@@ -111,10 +111,10 @@ export const SettingsPage = () => {
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-white">
                   {isDownloaded
-                    ? "Atualizacao pronta"
+                    ? "Atualização pronta"
                     : isUpToDate
                       ? "Launcher atualizado"
-                      : "Verificacao de atualizacao"}
+                      : "Verificação de atualização"}
                 </p>
                 <p className="mt-1 break-words text-sm leading-6 text-[#94A3B8]">
                   {updateMessage}
@@ -135,7 +135,7 @@ export const SettingsPage = () => {
                 <RefreshCw
                   className={`h-4 w-4 ${isChecking || isDownloading ? "animate-spin" : ""}`}
                 />
-                Procurar atualizacoes
+                Procurar atualizações
               </Button>
               {isDownloaded ? (
                 <Button
@@ -159,13 +159,13 @@ export const SettingsPage = () => {
             <div>
               <h2 className="text-lg font-semibold text-white">Ao abrir Minecraft</h2>
               <p className="mt-1 text-sm leading-6 text-[#94A3B8]">
-                Escolha o que o launcher deve fazer depois que a instancia iniciar.
+                Escolha o que o launcher deve fazer depois que a instância iniciar.
               </p>
             </div>
           </div>
           <Badge tone="slate">
             {minecraftOpenActions.find((item) => item.id === settings.data?.minecraftOpenAction)?.label ??
-              "Nao fazer nada"}
+              "Não fazer nada"}
           </Badge>
         </div>
 
@@ -196,12 +196,12 @@ export const SettingsPage = () => {
             <div>
               <h2 className="text-lg font-semibold text-white">Linguagem</h2>
               <p className="mt-1 text-sm leading-6 text-[#94A3B8]">
-                Escolha o idioma do app. A preferencia fica salva neste computador.
+                Escolha o idioma do app. A preferência fica salva neste computador.
               </p>
             </div>
           </div>
           <Badge tone="blue">
-            {languageOptions.find((language) => language.id === settings.data?.language)?.label ?? "Portugues Brasil"}
+            {languageOptions.find((language) => language.id === settings.data?.language)?.label ?? "Português Brasil"}
           </Badge>
         </div>
 
@@ -227,8 +227,8 @@ export const SettingsPage = () => {
       <Card className="p-5">
         <h2 className="text-lg font-semibold text-white">Dados locais</h2>
         <p className="mt-2 text-sm leading-6 text-[#94A3B8]">
-          Instancias, versoes baixadas e conteudo instalado ficam na pasta de dados do launcher.
-          Abra a pasta de uma instancia pela Biblioteca para gerenciar mods, resourcepacks e
+          Instâncias, versões baixadas e conteúdo instalado ficam na pasta de dados do launcher.
+          Abra a pasta de uma instância pela Biblioteca para gerenciar mods, resourcepacks e
           shaderpacks manualmente quando quiser.
         </p>
       </Card>

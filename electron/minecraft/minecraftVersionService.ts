@@ -223,7 +223,7 @@ export class MinecraftVersionService {
     const summary = manifest.versions.find((version) => version.id === versionId);
 
     if (!summary) {
-      throw new Error(`Versao Minecraft ${versionId} nao encontrada no manifesto oficial.`);
+      throw new Error(`Versão Minecraft ${versionId} não encontrada no manifesto oficial.`);
     }
 
     const versionDir = path.join(this.rootDir, "versions", versionId);
@@ -313,7 +313,7 @@ export class MinecraftVersionService {
     const installed = this.getInstalledVersion(versionId);
 
     if (!installed) {
-      throw new Error(`Minecraft ${versionId} nao esta instalado.`);
+      throw new Error(`Minecraft ${versionId} não está instalado.`);
     }
 
     return versionJsonSchema.parse(JSON.parse(await readFile(installed.json_path, "utf8")));
@@ -395,7 +395,7 @@ export class MinecraftVersionService {
     const profilePath = this.getFabricProfilePath(minecraftVersion);
 
     if (!existsSync(profilePath)) {
-      throw new Error(`Fabric Loader nao esta instalado para Minecraft ${minecraftVersion}.`);
+      throw new Error(`Fabric Loader não está instalado para Minecraft ${minecraftVersion}.`);
     }
 
     return fabricProfileSchema.parse(JSON.parse(await readFile(profilePath, "utf8")));
@@ -472,7 +472,7 @@ export class MinecraftVersionService {
     );
 
     if (!(await this.isForgeProfileComplete(profilePath))) {
-      throw new Error(`Forge nao esta instalado para Minecraft ${minecraftVersion}.`);
+      throw new Error(`Forge não está instalado para Minecraft ${minecraftVersion}.`);
     }
 
     return loaderProfileSchema.parse(JSON.parse(await readFile(profilePath, "utf8")));
@@ -635,7 +635,7 @@ export class MinecraftVersionService {
     );
 
     if (!response.ok) {
-      throw new Error(`Nao foi possivel obter o manifesto oficial (${response.status}).`);
+      throw new Error(`Não foi possível obter o manifesto oficial (${response.status}).`);
     }
 
     return versionManifestSchema.parse(await response.json());

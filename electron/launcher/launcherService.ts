@@ -33,7 +33,7 @@ export class LauncherService {
     const activeLaunch = this.activeLaunches.get(request.instanceId);
 
     if (activeLaunch && !request.force) {
-      throw new Error("INSTANCE_ALREADY_RUNNING: Esta instancia ja esta aberta ou iniciando.");
+      throw new Error("INSTANCE_ALREADY_RUNNING: Esta instância já está aberta ou iniciando.");
     }
 
     const launchState: LaunchState = {
@@ -68,7 +68,7 @@ export class LauncherService {
         this.emit({
           id: request.instanceId,
           type: "step",
-          message: "Baixando versao do Minecraft...",
+          message: "Baixando versão do Minecraft...",
           progress: 18,
           createdAt: new Date().toISOString(),
         });
@@ -82,7 +82,7 @@ export class LauncherService {
       );
 
       if (!installedAfterDownload) {
-        throw new Error("A versao do Minecraft nao foi instalada corretamente.");
+        throw new Error("A versão do Minecraft não foi instalada corretamente.");
       }
 
       this.emit({
@@ -340,7 +340,7 @@ export class LauncherService {
       this.emit({
         id: request.instanceId,
         type: launchState.cancelled ? "cancelled" : "error",
-        message: error instanceof Error ? error.message : "Nao foi possivel iniciar.",
+        message: error instanceof Error ? error.message : "Não foi possível iniciar.",
         progress: launchState.cancelled ? 0 : undefined,
         createdAt: new Date().toISOString(),
       });
@@ -382,7 +382,7 @@ export class LauncherService {
     const state = this.activeLaunches.get(request.instanceId);
 
     if (!state?.child || state.child.killed) {
-      throw new Error("Essa instancia nao esta aberta pelo launcher.");
+      throw new Error("Essa instância não está aberta pelo launcher.");
     }
 
     state.cancelled = true;
@@ -441,7 +441,7 @@ export class LauncherService {
 
     if (!offlineSession || offlineSession.status !== "signed-in") {
       throw new Error(
-        "Escolha um nick offline ou entre com Microsoft antes de iniciar uma instancia.",
+        "Escolha um nick offline ou entre com Microsoft antes de iniciar uma instância.",
       );
     }
 

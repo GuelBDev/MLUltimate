@@ -74,7 +74,7 @@ export const InstanceTile = ({
               event.stopPropagation();
               setMenuOpen((value) => !value);
             }}
-            aria-label="Acoes da instancia"
+            aria-label="Ações da instância"
           >
             <MoreVertical className="h-4 w-4" />
           </button>

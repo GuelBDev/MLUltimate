@@ -9,8 +9,8 @@ import { launcherApi } from "../../services/launcherApi";
 import type { LauncherSkin } from "../../types/launcher";
 
 const licenseLabel = {
-  verified: "Licenca verificada",
-  unverified: "Licenca pendente",
+  verified: "Licença verificada",
+  unverified: "Licença pendente",
   "offline-not-required": "Offline",
 };
 
@@ -85,7 +85,7 @@ export const AccountPanel = () => {
               </Badge>
             </div>
             <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-3">
-              <span className="text-sm text-[#94A3B8]">Licenca</span>
+              <span className="text-sm text-[#94A3B8]">Licença</span>
               <Badge tone={account.license.status === "verified" ? "green" : "slate"}>
                 {licenseLabel[account.license.status]}
               </Badge>
@@ -130,7 +130,7 @@ export const AccountPanel = () => {
                 Usar modo offline
               </Button>
               <p className="text-xs leading-5 text-[#94A3B8]">
-                O Play so libera offline depois que voce salvar um nick valido.
+                O Play só libera offline depois que você salvar um nick válido.
               </p>
             </form>
           </div>
@@ -143,7 +143,7 @@ export const AccountPanel = () => {
           <div>
             <p className="text-sm font-semibold text-red-100">Modo offline</p>
             <p className="mt-2 text-sm leading-6 text-red-100/75">
-              Perfil offline nao envia autenticacao Microsoft. Servidores que exigem
+              Perfil offline não envia autenticação Microsoft. Servidores que exigem
               conta oficial, como Hypixel, devem bloquear a entrada.
             </p>
           </div>
