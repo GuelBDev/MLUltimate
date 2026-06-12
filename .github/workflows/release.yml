@@ -43,18 +43,34 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           $tag = "${{ github.ref_name }}"
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $requiredAssets = @(
+            "release/MLUltimate-Launcher-$version-win-x64.exe",
+            "release/MLUltimate-Launcher-$version-win-x64.exe.blockmap",
+            "release/MLUltimate Installer.exe",
+            "release/latest.yml"
+          )
+
+          Write-Host "Release folder contents:"
+          Get-ChildItem -Path release -File | Sort-Object Name | Format-Table Name,Length -AutoSize
+
+          foreach ($asset in $requiredAssets) {
+            if (-not (Test-Path $asset)) {
+              throw "Missing release asset: $asset"
+            }
+          }
+
+          $assetPaths = $requiredAssets | ForEach-Object { (Resolve-Path $_).Path }
+
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --repo $env:GITHUB_REPOSITORY --title "MLUltimate Launcher $tag" --notes "Alpha release." --prerelease
+            gh release create $tag --repo $env:GITHUB_REPOSITORY --target "${{ github.sha }}" --title "MLUltimate Launcher $tag" --notes "Alpha release." --prerelease
+          } else {
+            gh release edit $tag --repo $env:GITHUB_REPOSITORY --title "MLUltimate Launcher $tag" --notes "Alpha release." --prerelease
           }
-          $assets = @(
-            Get-ChildItem -Path release -File -Filter "*.exe"
-            Get-ChildItem -Path release -File -Filter "*.blockmap"
-            Get-Item -Path release/latest.yml
-          ) | Sort-Object FullName
 
-          $assetPaths = $assets | ForEach-Object { $_.FullName }
           Write-Host "Uploading release assets:"
           $assetPaths | ForEach-Object { Write-Host " - $_" }
 
