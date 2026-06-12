@@ -1,8 +1,8 @@
 {
   "name": "mlultimate-launcher",
   "private": true,
-  "version": "1.0.0-alpha.9.1",
-  "description": "MLUltimate Launcher Alpha 1.0 desktop launcher for Minecraft.",
+  "version": "1.0.1-alpha.10",
+  "description": "MLUltimate Launcher 1.0.1 alpha 10 desktop launcher for Minecraft.",
   "author": "MLUltimate",
   "desktopName": "MLUltimate Launcher Alpha 1.0",
   "repository": {
@@ -17,8 +17,9 @@
     "dev:electron": "wait-on tcp:5173 && npm run build:electron && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron dist-electron/main.cjs",
     "build": "tsc -b && npm run build:electron && vite build",
     "build:electron": "node scripts/build-electron.mjs",
+    "build:online-installer": "node scripts/build-online-installer.mjs",
     "dist": "npm run build && electron-builder --win nsis --linux tar.gz",
-    "dist:win": "npm run build && electron-builder --win nsis",
+    "dist:win": "npm run build && electron-builder --win nsis && npm run build:online-installer",
     "dist:linux": "npm run build && electron-builder --linux tar.gz",
     "dist:linux:appimage": "npm run build && electron-builder --linux AppImage",
     "release:github": "npm run build && electron-builder --win nsis --publish always",
@@ -29,7 +30,7 @@
     "appId": "com.mlultimate.launcher",
     "productName": "MLUltimate Launcher Alpha 1.0",
     "generateUpdatesFilesForAllChannels": true,
-    "artifactName": "MLUltimate-Launcher-Alpha-1.0-${os}-${arch}.${ext}",
+    "artifactName": "MLUltimate-Launcher-${version}-${os}-${arch}.${ext}",
     "publish": [
       {
         "provider": "github",

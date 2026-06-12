@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useMemo, useState } from "react";
 import { AccountPanel } from "./components/account/AccountPanel";
+import { RuntimeTranslator } from "./components/i18n/RuntimeTranslator";
 import { LanguageSetupScreen } from "./components/language/LanguageSetupScreen";
 import { Sidebar, type PageId } from "./components/layout/Sidebar";
 import { StartupScreen } from "./components/startup/StartupScreen";
@@ -133,6 +134,7 @@ function AppRoot() {
 
   return (
     <>
+      {settings.data ? <RuntimeTranslator language={settings.data.language} /> : null}
       {showTitleBar ? <WindowTitleBar /> : null}
       <AnimatePresence mode="wait">
         {isBooting ? (

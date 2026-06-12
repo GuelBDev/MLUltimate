@@ -32,7 +32,7 @@ jobs:
           npm run build
 
       - name: Build installer
-        run: npm run build && npx electron-builder --win nsis --publish never
+        run: npm run build && npx electron-builder --win nsis --publish never && npm run build:online-installer
 
       - name: Publish GitHub Release
         env:
