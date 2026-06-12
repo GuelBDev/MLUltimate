@@ -264,7 +264,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
 
         {provider !== "modrinth" ? (
           <p className="mt-3 text-xs leading-5 text-[#94A3B8]">
-            CurseForge usa a Core API oficial e precisa de chave local para retornar resultados.
+            CurseForge usa a API central segura do MLUltimate; nenhuma chave precisa ser colocada pelo usuario.
           </p>
         ) : null}
 

@@ -27,11 +27,15 @@ jobs:
         run: npm ci
 
       - name: Validate
+        env:
+          MLULTIMATE_CURSEFORGE_PROXY_URL: ${{ secrets.MLULTIMATE_CURSEFORGE_PROXY_URL }}
         run: |
           npm run lint
           npm run build
 
       - name: Build installer
+        env:
+          MLULTIMATE_CURSEFORGE_PROXY_URL: ${{ secrets.MLULTIMATE_CURSEFORGE_PROXY_URL }}
         run: npm run build && npx electron-builder --win nsis --publish never && npm run build:online-installer
 
       - name: Publish GitHub Release

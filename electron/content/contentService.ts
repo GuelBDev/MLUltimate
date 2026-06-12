@@ -5,7 +5,6 @@ import { z } from "zod";
 import { LauncherDatabase } from "../database/sqliteDatabase";
 import { DownloadManager } from "../downloads/downloadManager";
 import { InstanceService } from "../instances/instanceService";
-import { ApiKeyStore } from "../settings/apiKeyStore";
 import type {
   ContentProjectDetails,
   ContentProjectInput,
@@ -20,6 +19,10 @@ import type {
 
 const MODRINTH_API = "https://api.modrinth.com/v2";
 const CURSEFORGE_API = "https://api.curseforge.com/v1";
+const DEFAULT_CURSEFORGE_PROXY_URL =
+  "https://mlultimate-curseforge-proxy.miguelgossani068.workers.dev";
+const CURSEFORGE_PROXY_URL =
+  process.env.MLULTIMATE_CURSEFORGE_PROXY_URL || DEFAULT_CURSEFORGE_PROXY_URL;
 const MINECRAFT_GAME_ID = 432;
 
 const searchInputSchema = z.object({
@@ -188,7 +191,6 @@ export class ContentService {
     private readonly database: LauncherDatabase,
     private readonly downloads: DownloadManager,
     private readonly instances: InstanceService,
-    private readonly apiKeys: ApiKeyStore,
   ) {}
 
   async search(input: ContentSearchInput): Promise<ContentSearchResult[]> {
@@ -296,8 +298,6 @@ export class ContentService {
   private async searchCurseForge(
     input: z.infer<typeof searchInputSchema>,
   ): Promise<ContentSearchResult[]> {
-    const apiKey = this.requireCurseForgeKey();
-
     const params = new URLSearchParams({
       gameId: String(MINECRAFT_GAME_ID),
       pageSize: "20",
@@ -322,13 +322,7 @@ export class ContentService {
       params.set("modLoaderType", String(modLoaderType));
     }
 
-    const response = await fetchWithElectronNet(`${CURSEFORGE_API}/mods/search?${params}`, {
-      context: "Buscar projetos na CurseForge",
-      headers: {
-        Accept: "application/json",
-        "x-api-key": apiKey,
-      },
-    });
+    const response = await this.fetchCurseForge(`/mods/search?${params}`, "Buscar projetos na CurseForge");
 
     if (!response.ok) {
       throw new Error(`CurseForge retornou erro ${response.status}.`);
@@ -532,16 +526,8 @@ export class ContentService {
   private async getCurseForgeProject(
     input: z.infer<typeof projectInputSchema>,
   ): Promise<ContentProjectDetails> {
-    const apiKey = this.requireCurseForgeKey();
-
     const [projectResponse, filesResponse] = await Promise.all([
-      fetchWithElectronNet(`${CURSEFORGE_API}/mods/${input.projectId}`, {
-        context: "Buscar detalhes na CurseForge",
-        headers: {
-          Accept: "application/json",
-          "x-api-key": apiKey,
-        },
-      }),
+      this.fetchCurseForge(`/mods/${input.projectId}`, "Buscar detalhes na CurseForge"),
       this.getCurseForgeFiles(input.projectId, input.minecraftVersion, input.loader),
     ]);
 
@@ -600,15 +586,9 @@ export class ContentService {
       params.set("modLoaderType", String(modLoaderType));
     }
 
-    const response = await fetchWithElectronNet(
-      `${CURSEFORGE_API}/mods/${projectId}/files?${params}`,
-      {
-        context: "Buscar arquivos na CurseForge",
-        headers: {
-          Accept: "application/json",
-          "x-api-key": this.requireCurseForgeKey(),
-        },
-      },
+    const response = await this.fetchCurseForge(
+      `/mods/${projectId}/files?${params}`,
+      "Buscar arquivos na CurseForge",
     );
 
     if (!response.ok) {
@@ -621,8 +601,6 @@ export class ContentService {
   private async installCurseForge(
     input: z.infer<typeof installInputSchema>,
   ): Promise<InstalledContent> {
-    this.requireCurseForgeKey();
-
     const instance = await this.instances.getById(input.instanceId);
     const files = await this.getCurseForgeFiles(
       input.projectId,
@@ -655,16 +633,9 @@ export class ContentService {
   }
 
   private async getCurseForgeDownloadUrl(projectId: string, fileId: number) {
-    const apiKey = this.requireCurseForgeKey();
-    const response = await fetchWithElectronNet(
-      `${CURSEFORGE_API}/mods/${projectId}/files/${fileId}/download-url`,
-      {
-        context: "Buscar URL de download na CurseForge",
-        headers: {
-          Accept: "application/json",
-          "x-api-key": apiKey,
-        },
-      },
+    const response = await this.fetchCurseForge(
+      `/mods/${projectId}/files/${fileId}/download-url`,
+      "Buscar URL de download na CurseForge",
     );
 
     if (!response.ok) {
@@ -734,16 +705,34 @@ export class ContentService {
     };
   }
 
+  private fetchCurseForge(pathAndQuery: string, context: string) {
+    const proxyBase = CURSEFORGE_PROXY_URL.trim().replace(/\/$/, "");
+
+    if (proxyBase) {
+      return fetchWithElectronNet(`${proxyBase}${pathAndQuery}`, {
+        context,
+        headers: { Accept: "application/json" },
+      });
+    }
+
+    return fetchWithElectronNet(`${CURSEFORGE_API}${pathAndQuery}`, {
+      context,
+      headers: {
+        Accept: "application/json",
+        "x-api-key": this.requireCurseForgeKey(),
+      },
+    });
+  }
+
   private requireCurseForgeKey() {
     const apiKey =
-      this.apiKeys.loadCurseForgeApiKey() ||
       process.env.MLULTIMATE_CURSEFORGE_API_KEY ||
       process.env.CURSEFORGE_API_KEY ||
       "";
 
     if (!apiKey) {
       throw new Error(
-        "A API oficial da CurseForge exige uma chave. Salve sua chave em Configuracoes ou configure MLULTIMATE_CURSEFORGE_API_KEY.",
+        "CurseForge exige uma API central do MLUltimate. Configure MLULTIMATE_CURSEFORGE_PROXY_URL no app distribuido ou MLULTIMATE_CURSEFORGE_API_KEY no ambiente seguro.",
       );
     }
 

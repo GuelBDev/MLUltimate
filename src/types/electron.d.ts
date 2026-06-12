@@ -9,6 +9,7 @@ import type {
   InstallContentInput,
   InstalledContent,
   ImportInstanceInput,
+  InstanceIconSelection,
   LaunchEvent,
   LaunchCancelRequest,
   LaunchRequest,
@@ -36,6 +37,8 @@ declare global {
       launcher: {
         launch: (request: LaunchRequest) => Promise<void>;
         cancel: (request?: LaunchCancelRequest) => Promise<void>;
+        kill: (request: { instanceId: string }) => Promise<void>;
+        listRunning: () => Promise<string[]>;
         onEvent: (callback: (event: LaunchEvent) => void) => () => void;
       };
       minecraft: {
@@ -48,6 +51,7 @@ declare global {
         update: (input: UpdateInstanceInput) => Promise<LauncherInstance>;
         remove: (instanceId: string) => Promise<void>;
         openFolder: (instanceId: string) => Promise<void>;
+        selectIcon: () => Promise<InstanceIconSelection | null>;
         importInstance: (input: ImportInstanceInput) => Promise<LauncherInstance | null>;
       };
       content: {

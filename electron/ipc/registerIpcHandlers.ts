@@ -26,6 +26,10 @@ const launchCancelSchema = z
   })
   .optional();
 
+const killInstanceSchema = z.object({
+  instanceId: z.string().min(1),
+});
+
 const downloadIdSchema = z.string().min(1);
 
 const createInstanceSchema = z.object({
@@ -34,6 +38,7 @@ const createInstanceSchema = z.object({
   loader: z.enum(["vanilla", "fabric", "forge", "neoforge", "quilt"]),
   ramMb: z.number(),
   javaPath: z.string().optional(),
+  iconPath: z.string().optional(),
 });
 
 const updateInstanceSchema = z.object({
@@ -41,6 +46,7 @@ const updateInstanceSchema = z.object({
   name: z.string().optional(),
   ramMb: z.number().optional(),
   javaPath: z.string().optional(),
+  iconPath: z.string().optional(),
 });
 
 const searchContentSchema = z.object({
@@ -74,10 +80,9 @@ const importInstanceSchema = z.object({
 });
 
 const updateSettingsSchema = z.object({
-  curseForgeApiKey: z.string().optional(),
-  clearCurseForgeApiKey: z.boolean().optional(),
   language: z.enum(["pt-BR", "pt-PT", "en", "fr"]).optional(),
   languageSelected: z.boolean().optional(),
+  minecraftOpenAction: z.enum(["none", "minimize", "background"]).optional(),
 });
 
 const saveNicknameSkinSchema = z.object({
@@ -134,6 +139,10 @@ export const registerIpcHandlers = ({
   ipcMain.handle("launcher:cancel", async (_, input: unknown) =>
     launcher.cancel(launchCancelSchema.parse(input)),
   );
+  ipcMain.handle("launcher:kill", async (_, input: unknown) =>
+    launcher.kill(killInstanceSchema.parse(input)),
+  );
+  ipcMain.handle("launcher:list-running", async () => launcher.listRunningInstances());
   ipcMain.handle("minecraft:list-versions", async () => minecraftVersions.listVersions());
   ipcMain.handle("minecraft:install-version", async (_, versionId: unknown) =>
     minecraftVersions.installVersion(z.string().min(1).parse(versionId)),
@@ -151,6 +160,7 @@ export const registerIpcHandlers = ({
   ipcMain.handle("instances:open-folder", async (_, instanceId: unknown) =>
     instances.openFolder(z.string().min(1).parse(instanceId)),
   );
+  ipcMain.handle("instances:select-icon", async () => instances.selectIcon());
   ipcMain.handle("instances:import", async (_, input: unknown) =>
     instances.importInstance(importInstanceSchema.parse(input)),
   );
@@ -174,14 +184,12 @@ export const registerIpcHandlers = ({
   ipcMain.handle("settings:update", async (_, input: unknown) => {
     const parsed = updateSettingsSchema.parse(input);
 
-    if (parsed.clearCurseForgeApiKey) {
-      apiKeys.clearCurseForgeApiKey();
-    } else if (typeof parsed.curseForgeApiKey === "string") {
-      apiKeys.saveCurseForgeApiKey(parsed.curseForgeApiKey);
-    }
-
     if (parsed.language) {
       apiKeys.saveLanguage(parsed.language, parsed.languageSelected ?? true);
+    }
+
+    if (parsed.minecraftOpenAction) {
+      apiKeys.saveMinecraftOpenAction(parsed.minecraftOpenAction);
     }
 
     return apiKeys.getPublicSettings();

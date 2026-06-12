@@ -1,4 +1,4 @@
-import { MoreVertical, Pencil, Play, Trash2, X } from "lucide-react";
+import { FolderOpen, MoreVertical, Pencil, Play, Power, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import heroImage from "../../assets/launcher-hero.png";
 import type { DownloadItem, LaunchEvent, LauncherInstance } from "../../types/launcher";
@@ -12,8 +12,11 @@ type InstanceTileProps = {
   onPlay: (instance: LauncherInstance) => void;
   onEdit: (instance: LauncherInstance) => void;
   onDelete: (instance: LauncherInstance) => void;
+  onOpenFolder?: (instance: LauncherInstance) => void;
+  onKill?: (instance: LauncherInstance) => void;
   download?: DownloadItem;
   launchEvent?: LaunchEvent;
+  isRunning?: boolean;
   onCancelDownload?: (downloadId: string) => void;
   onCancelLaunch?: (instance: LauncherInstance) => void;
   compact?: boolean;
@@ -25,8 +28,11 @@ export const InstanceTile = ({
   onPlay,
   onEdit,
   onDelete,
+  onOpenFolder,
+  onKill,
   download,
   launchEvent,
+  isRunning = false,
   onCancelDownload,
   onCancelLaunch,
   compact = false,
@@ -53,7 +59,10 @@ export const InstanceTile = ({
         className="block w-full text-left"
         onClick={() => onOpen(instance)}
       >
-        <div className="relative h-[160px] bg-cover bg-center" style={{ backgroundImage: `url(${heroImage})` }}>
+        <div
+          className="relative h-[160px] bg-cover bg-center"
+          style={{ backgroundImage: `url(${instance.iconDataUrl ?? heroImage})` }}
+        >
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/10" />
           <div className="absolute left-2 top-2 rounded-sm bg-black/70 px-2 py-1 text-xs font-semibold text-white">
             {instance.minecraftVersion}
@@ -104,14 +113,25 @@ export const InstanceTile = ({
       </button>
 
       <div className="px-3 pb-3">
-        <Button
-          type="button"
-          className="h-9 w-full rounded-sm bg-[#f05a28] hover:bg-[#ff733f]"
-          onClick={() => onPlay(instance)}
-        >
-          <Play className="h-4 w-4 fill-white" />
-          Play
-        </Button>
+        {isRunning ? (
+          <Button
+            type="button"
+            className="h-9 w-full rounded-sm bg-red-600 hover:bg-red-500"
+            onClick={() => onKill?.(instance)}
+          >
+            <Power className="h-4 w-4" />
+            Encerrar
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            className="h-9 w-full rounded-sm bg-[#f05a28] hover:bg-[#ff733f]"
+            onClick={() => onPlay(instance)}
+          >
+            <Play className="h-4 w-4 fill-white" />
+            Play
+          </Button>
+        )}
       </div>
 
       {menuOpen ? (
@@ -126,6 +146,17 @@ export const InstanceTile = ({
           >
             <Pencil className="h-4 w-4" />
             Editar
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/10"
+            onClick={() => {
+              setMenuOpen(false);
+              onOpenFolder?.(instance);
+            }}
+          >
+            <FolderOpen className="h-4 w-4" />
+            Pasta
           </button>
           <button
             type="button"

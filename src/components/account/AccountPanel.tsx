@@ -1,9 +1,12 @@
-import { AlertTriangle, LogOut, ShieldCheck, UserRound } from "lucide-react";
+import { AlertTriangle, LogOut, ShieldCheck } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { useAuthSession } from "../../hooks/useAuthSession";
+import { launcherApi } from "../../services/launcherApi";
+import type { LauncherSkin } from "../../types/launcher";
 
 const licenseLabel = {
   verified: "Licenca verificada",
@@ -13,10 +16,19 @@ const licenseLabel = {
 
 export const AccountPanel = () => {
   const { session, loginMicrosoft, loginOffline, logout } = useAuthSession();
+  const skins = useQuery({
+    queryKey: ["avatar", "skins"],
+    queryFn: launcherApi.listSkins,
+  });
   const [offlineName, setOfflineName] = useState("");
   const activeSession = session.data;
   const isSignedIn = activeSession?.status === "signed-in";
   const account = isSignedIn ? activeSession.account : null;
+  const accountName =
+    account?.displayName?.trim() ||
+    (account?.provider === "offline" ? account.avatarLabel : "Nenhuma conta");
+  const accountSubtitle = account?.provider === "microsoft" ? account.email : null;
+  const equippedSkin = (skins.data ?? []).find((skin) => skin.equippedAt);
   const error =
     loginMicrosoft.error instanceof Error
       ? loginMicrosoft.error.message
@@ -41,16 +53,20 @@ export const AccountPanel = () => {
         </div>
 
         <div className="mt-5 flex items-center gap-4">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-[#1F2937] text-lg font-bold text-white shadow-lg shadow-black/20">
-            {account?.avatarLabel ?? <UserRound className="h-7 w-7 text-[#94A3B8]" />}
-          </div>
+          <MinecraftHead
+            skin={equippedSkin}
+            username={account?.displayName}
+            fallback={account?.avatarLabel ?? "ML"}
+          />
           <div className="min-w-0">
             <p className="truncate text-base font-semibold text-white">
-              {account?.displayName ?? "Nenhuma conta"}
+              {accountName}
             </p>
-            <p className="mt-1 truncate text-sm text-[#94A3B8]">
-              {account?.email ?? "Entre com Microsoft ou escolha um nick offline"}
-            </p>
+            {accountSubtitle ? (
+              <p className="mt-1 truncate text-sm text-[#94A3B8]">
+                {accountSubtitle}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -151,3 +167,54 @@ const MicrosoftIcon = () => (
     <span className="bg-[#FFB900]" />
   </span>
 );
+
+const MinecraftHead = ({
+  skin,
+  username,
+  fallback,
+}: {
+  skin?: LauncherSkin;
+  username?: string;
+  fallback: string;
+}) => {
+  const skinUrl = skin?.imageDataUrl ?? skin?.previewUrl;
+  const usernameHeadUrl =
+    username?.trim() && username !== "Nenhuma conta"
+      ? `https://mc-heads.net/avatar/${encodeURIComponent(username.trim())}/64`
+      : "";
+
+  if (skinUrl) {
+    return (
+      <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-[#1F2937] shadow-lg shadow-black/20">
+        <img
+          src={skinUrl}
+          alt=""
+          className="origin-top-left [image-rendering:pixelated]"
+          style={{
+            width: 512,
+            height: "auto",
+            transform: "translate(-64px, -64px)",
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (usernameHeadUrl) {
+    return (
+      <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-[#1F2937] shadow-lg shadow-black/20">
+        <img
+          src={usernameHeadUrl}
+          alt=""
+          className="h-full w-full object-cover [image-rendering:pixelated]"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-[#1F2937] text-lg font-bold text-white shadow-lg shadow-black/20">
+      {fallback}
+    </div>
+  );
+};

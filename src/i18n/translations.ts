@@ -49,7 +49,6 @@ const ptPt: TranslationMap = {
   "Linguagem": "Idioma",
   "Escolha o idioma do app. A preferencia fica salva neste computador.":
     "Escolha o idioma da app. A preferencia fica guardada neste computador.",
-  "CurseForge API": "API CurseForge",
   "Salvar": "Guardar",
   "Limpar": "Limpar",
   "Dados locais": "Dados locais",
@@ -132,10 +131,6 @@ const en: TranslationMap = {
   "Linguagem": "Language",
   "Escolha o idioma do app. A preferencia fica salva neste computador.":
     "Choose the app language. This preference is saved on this computer.",
-  "CurseForge API": "CurseForge API",
-  "Salve uma chave propria para buscar e instalar conteudo da CurseForge.":
-    "Save your own key to search and install CurseForge content.",
-  "Cole sua API key da CurseForge": "Paste your CurseForge API key",
   "Salvar": "Save",
   "Limpar": "Clear",
   "Dados locais": "Local data",
@@ -275,10 +270,6 @@ const fr: TranslationMap = {
   "Linguagem": "Langue",
   "Escolha o idioma do app. A preferencia fica salva neste computador.":
     "Choisissez la langue de l'application. La preference est enregistree sur cet ordinateur.",
-  "CurseForge API": "API CurseForge",
-  "Salve uma chave propria para buscar e instalar conteudo da CurseForge.":
-    "Enregistrez votre propre cle pour rechercher et installer le contenu CurseForge.",
-  "Cole sua API key da CurseForge": "Collez votre cle API CurseForge",
   "Salvar": "Enregistrer",
   "Limpar": "Effacer",
   "Dados locais": "Donnees locales",

@@ -149,6 +149,14 @@ export class LauncherDatabase {
         updated_at TEXT NOT NULL
       );
     `);
+
+    const instanceColumns = this.all<{ name: string }>("PRAGMA table_info(instances)").map(
+      (column) => column.name,
+    );
+
+    if (!instanceColumns.includes("icon_path")) {
+      database.run("ALTER TABLE instances ADD COLUMN icon_path TEXT");
+    }
   }
 
   private save() {

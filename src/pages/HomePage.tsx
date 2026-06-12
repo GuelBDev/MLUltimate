@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { useDownloads } from "../hooks/useDownloads";
 import { useInstances } from "../hooks/useInstances";
+import { useRunningInstances } from "../hooks/useRunningInstances";
 import { launcherApi } from "../services/launcherApi";
 import type { ContentType, LauncherInstance } from "../types/launcher";
 import type { PageId } from "../components/layout/Sidebar";
@@ -21,8 +22,9 @@ type HomePageProps = {
 
 export const HomePage = ({ focus, onNavigate, onExploreInstance }: HomePageProps) => {
   const queryClient = useQueryClient();
-  const { instances, removeInstance } = useInstances();
+  const { instances, removeInstance, openFolder } = useInstances();
   const downloads = useDownloads();
+  const runningInstances = useRunningInstances();
   const [selected, setSelected] = useState<LauncherInstance | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const realInstances = instances.data ?? [];
@@ -35,7 +37,28 @@ export const HomePage = ({ focus, onNavigate, onExploreInstance }: HomePageProps
     try {
       await launcherApi.launch({ instanceId: instance.id });
     } catch (error) {
-      setLaunchError(error instanceof Error ? error.message : "Nao foi possivel abrir o jogo.");
+      const message = error instanceof Error ? error.message : "Nao foi possivel abrir o jogo.";
+
+      if (message.startsWith("INSTANCE_ALREADY_RUNNING")) {
+        const openAgain = window.confirm(
+          "Essa instancia ja esta aberta ou iniciando. Deseja abrir outra copia mesmo assim?",
+        );
+
+        if (openAgain) {
+          await launcherApi.launch({ instanceId: instance.id, force: true });
+        }
+        return;
+      }
+
+      setLaunchError(message);
+    }
+  };
+
+  const killInstance = (instance: LauncherInstance) => {
+    const shouldKill = window.confirm(`Encerrar o Minecraft da instancia "${instance.name}"?`);
+
+    if (shouldKill) {
+      void launcherApi.killInstance(instance.id);
     }
   };
 
@@ -99,6 +122,9 @@ export const HomePage = ({ focus, onNavigate, onExploreInstance }: HomePageProps
             onOpen={setSelected}
             onPlay={play}
             onEdit={() => onNavigate?.("library")}
+            onOpenFolder={(item) => openFolder.mutate(item.id)}
+            onKill={killInstance}
+            isRunning={runningInstances.isRunning(instance.id)}
             onDelete={(item) =>
               removeInstance.mutate(item.id, {
                 onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["instances"] }),

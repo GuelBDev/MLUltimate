@@ -27,10 +27,10 @@ const signedOut: AuthSession = {
 };
 
 const defaultSettings: LauncherSettings = {
-  curseForgeApiKeyConfigured: false,
   encryptionAvailable: false,
   language: "pt-BR",
   languageSelected: false,
+  minecraftOpenAction: "none",
 };
 
 const defaultUpdaterState: UpdaterState = {
@@ -70,6 +70,16 @@ export const launcherApi = {
   cancel: async (request?: LaunchCancelRequest) => {
     if (!hasBridge()) return;
     return window.mlultimate.launcher.cancel(request);
+  },
+
+  killInstance: async (instanceId: string) => {
+    if (!hasBridge()) return;
+    return window.mlultimate.launcher.kill({ instanceId });
+  },
+
+  listRunningInstances: async () => {
+    if (!hasBridge()) return [];
+    return window.mlultimate.launcher.listRunning();
   },
 
   onLaunchEvent: (callback: (event: LaunchEvent) => void) => {
@@ -113,6 +123,11 @@ export const launcherApi = {
   openInstanceFolder: async (instanceId: string) => {
     if (!hasBridge()) throw desktopOnly();
     return window.mlultimate.instances.openFolder(instanceId);
+  },
+
+  selectInstanceIcon: async () => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.selectIcon();
   },
 
   importInstance: async (input: ImportInstanceInput) => {

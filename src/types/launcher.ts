@@ -44,6 +44,9 @@ export type LaunchEventType =
   | "step"
   | "console"
   | "security"
+  | "running"
+  | "closed"
+  | "killed"
   | "cancelled"
   | "complete"
   | "error";
@@ -76,6 +79,7 @@ export type CreateInstanceInput = {
   loader: LoaderType;
   ramMb: number;
   javaPath?: string;
+  iconPath?: string;
 };
 
 export type UpdateInstanceInput = {
@@ -83,6 +87,7 @@ export type UpdateInstanceInput = {
   name?: string;
   ramMb?: number;
   javaPath?: string;
+  iconPath?: string;
 };
 
 export type LauncherInstance = {
@@ -93,6 +98,8 @@ export type LauncherInstance = {
   ramMb: number;
   javaPath?: string;
   gameDir: string;
+  iconPath?: string;
+  iconDataUrl?: string;
   modsCount: number;
   resourcepacksCount: number;
   shaderpacksCount: number;
@@ -192,6 +199,11 @@ export type ImportInstanceInput = {
   code?: string;
 };
 
+export type InstanceIconSelection = {
+  iconPath: string;
+  iconDataUrl: string;
+};
+
 export type SkinSource = "namemc" | "custom";
 
 export type SkinSearchResult = {
@@ -221,19 +233,19 @@ export type SaveNicknameSkinInput = {
 };
 
 export type AppLanguage = "pt-BR" | "pt-PT" | "en" | "fr";
+export type MinecraftOpenAction = "none" | "minimize" | "background";
 
 export type LauncherSettings = {
-  curseForgeApiKeyConfigured: boolean;
   encryptionAvailable: boolean;
   language: AppLanguage;
   languageSelected: boolean;
+  minecraftOpenAction: MinecraftOpenAction;
 };
 
 export type UpdateLauncherSettingsInput = {
-  curseForgeApiKey?: string;
-  clearCurseForgeApiKey?: boolean;
   language?: AppLanguage;
   languageSelected?: boolean;
+  minecraftOpenAction?: MinecraftOpenAction;
 };
 
 export type UpdaterStatus =

@@ -1,0 +1,6 @@
+name = "mlultimate-curseforge-proxy"
+main = "src/worker.ts"
+compatibility_date = "2026-06-12"
+
+[vars]
+ALLOWED_ORIGIN = "*"

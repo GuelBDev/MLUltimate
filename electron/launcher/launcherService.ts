@@ -11,12 +11,14 @@ import { MinecraftVersionService } from "../minecraft/minecraftVersionService";
 import type { LaunchEvent, LaunchRequest } from "../../src/types/launcher";
 
 type EmitLaunchEvent = (event: LaunchEvent) => void;
+type LaunchState = {
+  cancelled: boolean;
+  child?: ChildProcess;
+  running: boolean;
+};
 
 export class LauncherService {
-  private activeLaunches = new Map<
-    string,
-    { cancelled: boolean; child?: ChildProcess }
-  >();
+  private activeLaunches = new Map<string, LaunchState>();
 
   constructor(
     private readonly microsoftAuth: MicrosoftAuthService,
@@ -34,52 +36,78 @@ export class LauncherService {
       throw new Error("INSTANCE_ALREADY_RUNNING: Esta instancia ja esta aberta ou iniciando.");
     }
 
-    const launchState = { cancelled: false, child: undefined as ChildProcess | undefined };
+    const launchState: LaunchState = {
+      cancelled: false,
+      child: undefined,
+      running: false,
+    };
     this.activeLaunches.set(request.instanceId, launchState);
+    this.emit({
+      id: request.instanceId,
+      type: "step",
+      message: "Preparando inicializacao...",
+      progress: 5,
+      createdAt: new Date().toISOString(),
+    });
 
     try {
-    const instance = await this.instances.getById(request.instanceId);
+      const instance = await this.instances.getById(request.instanceId);
 
-    if (!["vanilla", "fabric", "forge"].includes(instance.loader)) {
-      throw new Error(
-        `A execucao real de ${instance.loader} ainda precisa de instalador proprio. Vanilla, Fabric e Forge ja estao conectados.`,
+      if (!["vanilla", "fabric", "forge"].includes(instance.loader)) {
+        throw new Error(
+          `A execucao real de ${instance.loader} ainda precisa de instalador proprio. Vanilla, Fabric e Forge ja estao conectados.`,
+        );
+      }
+
+      const session = await this.getLaunchSession();
+      const installed = this.minecraftVersions.getInstalledVersion(instance.minecraftVersion);
+
+      this.assertLaunchNotCancelled(request.instanceId, launchState);
+
+      if (!installed) {
+        this.emit({
+          id: request.instanceId,
+          type: "step",
+          message: "Baixando versao do Minecraft...",
+          progress: 18,
+          createdAt: new Date().toISOString(),
+        });
+        await this.minecraftVersions.installVersion(instance.minecraftVersion);
+      }
+
+      this.assertLaunchNotCancelled(request.instanceId, launchState);
+
+      const installedAfterDownload = this.minecraftVersions.getInstalledVersion(
+        instance.minecraftVersion,
       );
-    }
 
-    const session = await this.getLaunchSession();
-    const installed = this.minecraftVersions.getInstalledVersion(instance.minecraftVersion);
+      if (!installedAfterDownload) {
+        throw new Error("A versao do Minecraft nao foi instalada corretamente.");
+      }
 
-    this.assertLaunchNotCancelled(request.instanceId, launchState);
+      this.emit({
+        id: request.instanceId,
+        type: "step",
+        message: "Preparando arquivos...",
+        progress: 38,
+        createdAt: new Date().toISOString(),
+      });
 
-    if (!installed) {
-      await this.minecraftVersions.installVersion(instance.minecraftVersion);
-    }
+      const versionJson = await this.minecraftVersions.readInstalledVersionJson(
+        instance.minecraftVersion,
+      );
+      if (instance.loader === "fabric") {
+        await this.minecraftVersions.installFabricLoader(instance.minecraftVersion);
+      }
+      if (instance.loader === "forge") {
+        await this.minecraftVersions.installForgeLoader(instance.minecraftVersion);
+      }
+      this.assertLaunchNotCancelled(request.instanceId, launchState);
+      const minecraftRoot = this.minecraftVersions.getMinecraftRoot();
+      const nativesDir = path.join(instance.gameDir, ".natives", instance.minecraftVersion);
 
-    this.assertLaunchNotCancelled(request.instanceId, launchState);
-
-    const installedAfterDownload = this.minecraftVersions.getInstalledVersion(
-      instance.minecraftVersion,
-    );
-
-    if (!installedAfterDownload) {
-      throw new Error("A versao do Minecraft nao foi instalada corretamente.");
-    }
-
-    const versionJson = await this.minecraftVersions.readInstalledVersionJson(
-      instance.minecraftVersion,
-    );
-    if (instance.loader === "fabric") {
-      await this.minecraftVersions.installFabricLoader(instance.minecraftVersion);
-    }
-    if (instance.loader === "forge") {
-      await this.minecraftVersions.installForgeLoader(instance.minecraftVersion);
-    }
-    this.assertLaunchNotCancelled(request.instanceId, launchState);
-    const minecraftRoot = this.minecraftVersions.getMinecraftRoot();
-    const nativesDir = path.join(instance.gameDir, ".natives", instance.minecraftVersion);
-
-    mkdirSync(nativesDir, { recursive: true });
-    extractNatives(versionJson.libraries, minecraftRoot, nativesDir);
+      mkdirSync(nativesDir, { recursive: true });
+      extractNatives(versionJson.libraries, minecraftRoot, nativesDir);
 
     const fabricProfile =
       instance.loader === "fabric"
@@ -157,6 +185,14 @@ export class LauncherService {
       ? resolveArguments(forgeProfile.arguments.game, replacements)
       : [];
     const gameArgs = [...vanillaGameArgs, ...fabricGameArgs, ...forgeGameArgs];
+    this.emit({
+      id: request.instanceId,
+      type: "step",
+      message: "Verificando Java...",
+      progress: 72,
+      createdAt: new Date().toISOString(),
+    });
+
     const javaBin = await this.javaRuntimes.resolveJava({
       javaPath: instance.javaPath,
       component: versionJson.javaVersion?.component,
@@ -173,6 +209,8 @@ export class LauncherService {
     });
 
     await new Promise<void>((resolve, reject) => {
+      let handedOff = false;
+      let settled = false;
       const child = spawn(javaBin, [...jvmArgs, mainClass, ...gameArgs], {
         cwd: instance.gameDir,
         detached: true,
@@ -182,6 +220,10 @@ export class LauncherService {
       launchState.child = child;
       const output: string[] = [];
       const rememberOutput = (chunk: Buffer) => {
+        if (handedOff) {
+          return;
+        }
+
         const text = chunk.toString("utf8").trim();
 
         if (!text) {
@@ -202,22 +244,59 @@ export class LauncherService {
         });
       };
 
-      child.once("error", (error) => {
-        this.activeLaunches.delete(request.instanceId);
+      const finishLaunch = () => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        resolve();
+      };
+
+      const failLaunch = (error: Error) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
         reject(error);
+      };
+
+      let handoffTimer: ReturnType<typeof setTimeout> | null = null;
+
+      child.once("error", (error) => {
+        if (handoffTimer) {
+          clearTimeout(handoffTimer);
+        }
+        this.activeLaunches.delete(request.instanceId);
+        failLaunch(error);
       });
       child.stdout?.on("data", rememberOutput);
       child.stderr?.on("data", rememberOutput);
       child.once("exit", (code) => {
+        if (handoffTimer) {
+          clearTimeout(handoffTimer);
+        }
         this.activeLaunches.delete(request.instanceId);
+        if (handedOff) {
+          this.emit({
+            id: request.instanceId,
+            type: "closed",
+            message: "Minecraft fechado.",
+            progress: 0,
+            createdAt: new Date().toISOString(),
+          });
+          return;
+        }
+
         if (launchState.cancelled) {
-          resolve();
+          finishLaunch();
           return;
         }
 
         if (code !== null && code !== 0) {
           const details = output.slice(-8).join("\n").slice(-2200);
-          reject(
+          failLaunch(
             new Error(
               details
                 ? `Minecraft fechou com erro ${code}.\n${details}`
@@ -227,11 +306,22 @@ export class LauncherService {
           return;
         }
 
-        resolve();
+        finishLaunch();
       });
-      setTimeout(() => {
+      handoffTimer = setTimeout(() => {
+        handedOff = true;
+        launchState.running = true;
+        child.stdout?.off("data", rememberOutput);
+        child.stderr?.off("data", rememberOutput);
         child.unref();
-        resolve();
+        this.emit({
+          id: request.instanceId,
+          type: "running",
+          message: "Minecraft aberto.",
+          progress: 100,
+          createdAt: new Date().toISOString(),
+        });
+        finishLaunch();
       }, 3500);
     });
 
@@ -273,8 +363,10 @@ export class LauncherService {
 
       state.cancelled = true;
       if (state.child && !state.child.killed) {
-        state.child.kill();
+        void killProcessTree(state.child);
       }
+
+      this.activeLaunches.delete(instanceId);
 
       this.emit({
         id: instanceId,
@@ -286,9 +378,34 @@ export class LauncherService {
     }
   }
 
+  async kill(request: { instanceId: string }) {
+    const state = this.activeLaunches.get(request.instanceId);
+
+    if (!state?.child || state.child.killed) {
+      throw new Error("Essa instancia nao esta aberta pelo launcher.");
+    }
+
+    state.cancelled = true;
+    await killProcessTree(state.child);
+    this.activeLaunches.delete(request.instanceId);
+    this.emit({
+      id: request.instanceId,
+      type: "killed",
+      message: "Minecraft encerrado pelo launcher.",
+      progress: 0,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  listRunningInstances() {
+    return [...this.activeLaunches.entries()]
+      .filter(([, state]) => state.running && state.child && !state.child.killed)
+      .map(([instanceId]) => instanceId);
+  }
+
   private assertLaunchNotCancelled(
     instanceId: string,
-    state: { cancelled: boolean; child?: ChildProcess },
+    state: LaunchState,
   ) {
     if (!state.cancelled) {
       return;
@@ -411,6 +528,31 @@ const replacePlaceholders = (value: string, replacements: Record<string, string>
 
 const splitMinecraftArguments = (input: string) =>
   input.match(/(?:[^\s"]+|"[^"]*")+/g)?.map((part) => part.replace(/^"|"$/g, "")) ?? [];
+
+const killProcessTree = (child: ChildProcess) =>
+  new Promise<void>((resolve) => {
+    if (!child.pid || child.killed) {
+      resolve();
+      return;
+    }
+
+    if (process.platform !== "win32") {
+      child.kill("SIGTERM");
+      resolve();
+      return;
+    }
+
+    const taskkill = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+      windowsHide: true,
+      stdio: "ignore",
+    });
+
+    taskkill.once("exit", () => resolve());
+    taskkill.once("error", () => {
+      child.kill();
+      resolve();
+    });
+  });
 
 const rulesAllow = (
   rules?: Array<{

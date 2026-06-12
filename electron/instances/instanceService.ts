@@ -1,8 +1,8 @@
 import AdmZip from "adm-zip";
 import { dialog, net, shell } from "electron";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { cp, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -10,15 +10,21 @@ import { z } from "zod";
 import { LauncherDatabase } from "../database/sqliteDatabase";
 import { DownloadManager } from "../downloads/downloadManager";
 import { MinecraftVersionService } from "../minecraft/minecraftVersionService";
-import { ApiKeyStore } from "../settings/apiKeyStore";
 import { getLauncherDataSubpath } from "../utils/launcherPaths";
 import type {
   CreateInstanceInput,
   ImportInstanceInput,
+  InstanceIconSelection,
   LauncherInstance,
   LoaderType,
   UpdateInstanceInput,
 } from "../../src/types/launcher";
+
+const CURSEFORGE_API = "https://api.curseforge.com/v1";
+const DEFAULT_CURSEFORGE_PROXY_URL =
+  "https://mlultimate-curseforge-proxy.miguelgossani068.workers.dev";
+const CURSEFORGE_PROXY_URL =
+  process.env.MLULTIMATE_CURSEFORGE_PROXY_URL || DEFAULT_CURSEFORGE_PROXY_URL;
 
 const createInstanceSchema = z.object({
   name: z.string().trim().min(2).max(64),
@@ -26,6 +32,7 @@ const createInstanceSchema = z.object({
   loader: z.enum(["vanilla", "fabric", "forge", "neoforge", "quilt"]),
   ramMb: z.number().int().min(1024).max(65536),
   javaPath: z.string().optional(),
+  iconPath: z.string().optional(),
 });
 
 const updateInstanceSchema = z.object({
@@ -33,6 +40,7 @@ const updateInstanceSchema = z.object({
   name: z.string().trim().min(2).max(64).optional(),
   ramMb: z.number().int().min(1024).max(65536).optional(),
   javaPath: z.string().optional(),
+  iconPath: z.string().optional(),
 });
 
 const importInstanceSchema = z.object({
@@ -112,6 +120,7 @@ type InstanceRow = {
   ram_mb: number;
   java_path?: string;
   game_dir: string;
+  icon_path?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -123,7 +132,6 @@ export class InstanceService {
     private readonly database: LauncherDatabase,
     private readonly minecraftVersions: MinecraftVersionService,
     private readonly downloads: DownloadManager,
-    private readonly apiKeys: ApiKeyStore,
   ) {}
 
   async create(input: CreateInstanceInput): Promise<LauncherInstance> {
@@ -145,11 +153,15 @@ export class InstanceService {
       mkdir(path.join(gameDir, "config"), { recursive: true }),
     ]);
 
+    const iconPath = parsed.iconPath
+      ? await copyInstanceIcon(parsed.iconPath, gameDir)
+      : null;
+
     this.database.run(
       `
       INSERT INTO instances
-        (id, name, minecraft_version, loader, ram_mb, java_path, game_dir, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, name, minecraft_version, loader, ram_mb, java_path, game_dir, icon_path, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         id,
@@ -159,6 +171,7 @@ export class InstanceService {
         parsed.ramMb,
         parsed.javaPath ?? null,
         gameDir,
+        iconPath,
         now,
         now,
       ],
@@ -192,11 +205,22 @@ export class InstanceService {
     const resolvedGameDir = path.resolve(instance.gameDir);
     const resolvedRoot = path.resolve(this.instancesRoot);
 
-    if (!resolvedGameDir.startsWith(resolvedRoot)) {
+    const relativePath = path.relative(resolvedRoot, resolvedGameDir);
+    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
       throw new Error("Caminho da instancia fora da pasta segura do launcher.");
     }
 
-    await rm(resolvedGameDir, { recursive: true, force: true });
+    await rm(resolvedGameDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 250,
+    }).catch((error) => {
+      throw new Error(
+        "Nao foi possivel excluir a pasta da instancia. Feche o Minecraft e qualquer pasta aberta dessa instancia e tente novamente.",
+        { cause: error },
+      );
+    });
     this.database.run("DELETE FROM installed_content WHERE instance_id = ?", [id]);
     this.database.run("DELETE FROM instances WHERE id = ?", [id]);
   }
@@ -205,16 +229,21 @@ export class InstanceService {
     const parsed = updateInstanceSchema.parse(input);
     const current = await this.getById(parsed.id);
 
+    const iconPath = parsed.iconPath
+      ? await copyInstanceIcon(parsed.iconPath, current.gameDir)
+      : current.iconPath ?? null;
+
     this.database.run(
       `
       UPDATE instances
-      SET name = ?, ram_mb = ?, java_path = ?, updated_at = ?
+      SET name = ?, ram_mb = ?, java_path = ?, icon_path = ?, updated_at = ?
       WHERE id = ?
       `,
       [
         parsed.name ?? current.name,
         parsed.ramMb ?? current.ramMb,
         parsed.javaPath ?? current.javaPath ?? null,
+        iconPath,
         new Date().toISOString(),
         parsed.id,
       ],
@@ -226,6 +255,31 @@ export class InstanceService {
   async openFolder(id: string) {
     const instance = await this.getById(id);
     await shell.openPath(instance.gameDir);
+  }
+
+  async selectIcon(): Promise<InstanceIconSelection | null> {
+    const result = await dialog.showOpenDialog({
+      title: "Selecionar imagem da instancia",
+      properties: ["openFile"],
+      filters: [{ name: "Imagem", extensions: ["png", "jpg", "jpeg", "webp"] }],
+    });
+
+    if (result.canceled || !result.filePaths[0]) {
+      return null;
+    }
+
+    const sourcePath = result.filePaths[0];
+    const stagedDir = getLauncherDataSubpath("Temp", "InstanceIcons");
+    const extension = normalizeImageExtension(path.extname(sourcePath));
+    const stagedPath = path.join(stagedDir, `${randomUUID()}${extension}`);
+
+    await mkdir(stagedDir, { recursive: true });
+    await copyFile(sourcePath, stagedPath);
+
+    return {
+      iconPath: stagedPath,
+      iconDataUrl: imageDataUrl(stagedPath),
+    };
   }
 
   private async prepareInstance(parsed: z.infer<typeof createInstanceSchema>) {
@@ -426,14 +480,6 @@ export class InstanceService {
   }
 
   private async importCurseForgeCode(code: string) {
-    const apiKey = this.getCurseForgeApiKey();
-
-    if (!apiKey) {
-      throw new Error(
-        "Importar codigo CurseForge exige a API oficial. Configure CURSEFORGE_API_KEY ou MLULTIMATE_CURSEFORGE_API_KEY e reinicie.",
-      );
-    }
-
     const projectRef = extractCurseForgeProjectRef(code);
 
     if (!projectRef) {
@@ -441,12 +487,11 @@ export class InstanceService {
     }
     const numericProjectId = /^\d+$/.test(projectRef)
       ? Number(projectRef)
-      : await resolveCurseForgeProjectId(projectRef, apiKey);
+      : await this.resolveCurseForgeProjectId(projectRef);
 
-    const filesResponse = await fetchWithElectronNet(
-      `https://api.curseforge.com/v1/mods/${numericProjectId}/files?pageSize=20`,
+    const filesResponse = await this.fetchCurseForge(
+      `/mods/${numericProjectId}/files?pageSize=20`,
       "Buscar arquivos CurseForge",
-      { "x-api-key": apiKey, Accept: "application/json" },
     );
 
     if (!filesResponse.ok) {
@@ -471,7 +516,7 @@ export class InstanceService {
     }
 
     const downloadUrl =
-      file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(numericProjectId, file.id, apiKey));
+      file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(numericProjectId, file.id));
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-cf-"));
     const archivePath = path.join(tempDir, file.fileName);
 
@@ -496,19 +541,11 @@ export class InstanceService {
       return;
     }
 
-    const apiKey = this.getCurseForgeApiKey();
-
-    if (!apiKey) {
-      throw new Error(
-        "Este zip CurseForge lista arquivos externos. Configure CURSEFORGE_API_KEY para baixar os mods do manifesto.",
-      );
-    }
-
     for (const fileRef of manifest.files) {
-      const file = await this.getCurseForgeFile(fileRef.projectID, fileRef.fileID, apiKey);
+      const file = await this.getCurseForgeFile(fileRef.projectID, fileRef.fileID);
       const downloadUrl =
         file.downloadUrl ??
-        (await this.getCurseForgeDownloadUrl(fileRef.projectID, fileRef.fileID, apiKey));
+        (await this.getCurseForgeDownloadUrl(fileRef.projectID, fileRef.fileID));
 
       await this.downloads.download({
         label: `CurseForge ${file.fileName}`,
@@ -518,11 +555,10 @@ export class InstanceService {
     }
   }
 
-  private async getCurseForgeFile(projectId: number, fileId: number, apiKey: string) {
-    const response = await fetchWithElectronNet(
-      `https://api.curseforge.com/v1/mods/${projectId}/files/${fileId}`,
+  private async getCurseForgeFile(projectId: number, fileId: number) {
+    const response = await this.fetchCurseForge(
+      `/mods/${projectId}/files/${fileId}`,
       "Buscar arquivo CurseForge",
-      { "x-api-key": apiKey, Accept: "application/json" },
     );
 
     if (!response.ok) {
@@ -532,11 +568,10 @@ export class InstanceService {
     return curseForgeFileSchema.parse(await response.json()).data;
   }
 
-  private async getCurseForgeDownloadUrl(projectId: number, fileId: number, apiKey: string) {
-    const response = await fetchWithElectronNet(
-      `https://api.curseforge.com/v1/mods/${projectId}/files/${fileId}/download-url`,
+  private async getCurseForgeDownloadUrl(projectId: number, fileId: number) {
+    const response = await this.fetchCurseForge(
+      `/mods/${projectId}/files/${fileId}/download-url`,
       "Buscar download CurseForge",
-      { "x-api-key": apiKey, Accept: "application/json" },
     );
 
     if (!response.ok) {
@@ -546,13 +581,60 @@ export class InstanceService {
     return z.object({ data: z.string().url() }).parse(await response.json()).data;
   }
 
+  private async resolveCurseForgeProjectId(slugOrName: string) {
+    const params = new URLSearchParams({
+      gameId: "432",
+      pageSize: "1",
+      searchFilter: slugOrName.replaceAll("-", " "),
+    });
+    const response = await this.fetchCurseForge(
+      `/mods/search?${params}`,
+      "Resolver projeto CurseForge",
+    );
+
+    if (!response.ok) {
+      throw new Error(`CurseForge retornou erro ${response.status} ao resolver o projeto.`);
+    }
+
+    const project = z
+      .object({ data: z.array(z.object({ id: z.number(), slug: z.string().optional() })) })
+      .parse(await response.json()).data.at(0);
+
+    if (!project) {
+      throw new Error("Nenhum projeto CurseForge foi encontrado para esse codigo.");
+    }
+
+    return project.id;
+  }
+
+  private fetchCurseForge(pathAndQuery: string, context: string) {
+    const proxyBase = CURSEFORGE_PROXY_URL.trim().replace(/\/$/, "");
+
+    if (proxyBase) {
+      return fetchWithElectronNet(`${proxyBase}${pathAndQuery}`, context, {
+        Accept: "application/json",
+      });
+    }
+
+    return fetchWithElectronNet(`${CURSEFORGE_API}${pathAndQuery}`, context, {
+      "x-api-key": this.getCurseForgeApiKey(),
+      Accept: "application/json",
+    });
+  }
+
   private getCurseForgeApiKey() {
-    return (
-      this.apiKeys.loadCurseForgeApiKey() ||
+    const apiKey =
       process.env.MLULTIMATE_CURSEFORGE_API_KEY ||
       process.env.CURSEFORGE_API_KEY ||
-      ""
-    );
+      "";
+
+    if (!apiKey) {
+      throw new Error(
+        "CurseForge exige a API central do MLUltimate. Configure MLULTIMATE_CURSEFORGE_PROXY_URL no app distribuido ou MLULTIMATE_CURSEFORGE_API_KEY no ambiente seguro.",
+      );
+    }
+
+    return apiKey;
   }
 
   private async rowToInstance(row: InstanceRow): Promise<LauncherInstance> {
@@ -570,6 +652,8 @@ export class InstanceService {
       ramMb: Number(row.ram_mb),
       javaPath: row.java_path,
       gameDir: row.game_dir,
+      iconPath: row.icon_path ?? undefined,
+      iconDataUrl: row.icon_path && existsSync(row.icon_path) ? imageDataUrl(row.icon_path) : undefined,
       modsCount,
       resourcepacksCount,
       shaderpacksCount,
@@ -591,6 +675,37 @@ const countFiles = async (directory: string, extensions: string[]) => {
   } catch {
     return 0;
   }
+};
+
+const normalizeImageExtension = (extension: string) => {
+  const lower = extension.toLowerCase();
+
+  if ([".png", ".jpg", ".jpeg", ".webp"].includes(lower)) {
+    return lower;
+  }
+
+  return ".png";
+};
+
+const copyInstanceIcon = async (sourcePath: string, gameDir: string) => {
+  const extension = normalizeImageExtension(path.extname(sourcePath));
+  const destination = path.join(gameDir, `instance-icon${extension}`);
+
+  if (path.resolve(sourcePath) === path.resolve(destination)) {
+    return destination;
+  }
+
+  await copyFile(sourcePath, destination);
+
+  return destination;
+};
+
+const imageDataUrl = (imagePath: string) => {
+  const extension = normalizeImageExtension(path.extname(imagePath));
+  const mimeType =
+    extension === ".webp" ? "image/webp" : extension === ".png" ? "image/png" : "image/jpeg";
+
+  return `data:${mimeType};base64,${readFileSync(imagePath).toString("base64")}`;
 };
 
 const extractArchive = async (archivePath: string, destination: string) => {
@@ -706,33 +821,6 @@ const extractCurseForgeProjectRef = (code: string) => {
 
   const idMatch = code.match(/(?:projectId|projectID|id)=([0-9]+)/i) ?? code.match(/\/projects\/([0-9]+)/i);
   return idMatch?.[1] ?? null;
-};
-
-const resolveCurseForgeProjectId = async (slugOrName: string, apiKey: string) => {
-  const params = new URLSearchParams({
-    gameId: "432",
-    pageSize: "1",
-    searchFilter: slugOrName.replaceAll("-", " "),
-  });
-  const response = await fetchWithElectronNet(
-    `https://api.curseforge.com/v1/mods/search?${params}`,
-    "Resolver projeto CurseForge",
-    { "x-api-key": apiKey, Accept: "application/json" },
-  );
-
-  if (!response.ok) {
-    throw new Error(`CurseForge retornou erro ${response.status} ao resolver o projeto.`);
-  }
-
-  const project = z
-    .object({ data: z.array(z.object({ id: z.number(), slug: z.string().optional() })) })
-    .parse(await response.json()).data.at(0);
-
-  if (!project) {
-    throw new Error("Nenhum projeto CurseForge foi encontrado para esse codigo.");
-  }
-
-  return project.id;
 };
 
 const sanitizeFileName = (fileName: string) =>

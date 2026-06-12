@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Plus, Upload, X } from "lucide-react";
+import { ImagePlus, Plus, Upload, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import heroImage from "../assets/launcher-hero.png";
 import { InstanceTile } from "../components/library/InstanceTile";
@@ -9,6 +9,7 @@ import { Card } from "../components/ui/card";
 import { useInstances } from "../hooks/useInstances";
 import { useDownloads } from "../hooks/useDownloads";
 import { useMinecraftVersions } from "../hooks/useMinecraftVersions";
+import { useRunningInstances } from "../hooks/useRunningInstances";
 import { launcherApi } from "../services/launcherApi";
 import type { ContentType, DownloadItem, LaunchEvent, LauncherInstance, LoaderType } from "../types/launcher";
 import { InstanceDetailPage } from "./InstanceDetailPage";
@@ -56,8 +57,16 @@ const normalizePath = (value: string) => value.replaceAll("\\", "/").toLowerCase
 export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   const queryClient = useQueryClient();
   const { versions } = useMinecraftVersions();
-  const { instances, createInstance, updateInstance, removeInstance, importInstance } = useInstances();
+  const {
+    instances,
+    createInstance,
+    updateInstance,
+    removeInstance,
+    openFolder,
+    importInstance,
+  } = useInstances();
   const downloads = useDownloads();
+  const runningInstances = useRunningInstances();
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importCode, setImportCode] = useState("");
@@ -67,6 +76,8 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   const [minecraftVersion, setMinecraftVersion] = useState("");
   const [loader, setLoader] = useState<LoaderType>("vanilla");
   const [ramGb, setRamGb] = useState(4);
+  const [selectedIconPath, setSelectedIconPath] = useState("");
+  const [selectedIconPreview, setSelectedIconPreview] = useState("");
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchEvents, setLaunchEvents] = useState<Record<string, LaunchEvent>>({});
 
@@ -100,6 +111,8 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
     setMinecraftVersion("");
     setLoader("vanilla");
     setRamGb(4);
+    setSelectedIconPath("");
+    setSelectedIconPreview("");
     setModalOpen(true);
   };
 
@@ -109,7 +122,20 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
     setMinecraftVersion(instance.minecraftVersion);
     setLoader(instance.loader);
     setRamGb(Math.round(instance.ramMb / 1024));
+    setSelectedIconPath("");
+    setSelectedIconPreview(instance.iconDataUrl ?? "");
     setModalOpen(true);
+  };
+
+  const selectIcon = async () => {
+    const icon = await launcherApi.selectInstanceIcon();
+
+    if (!icon) {
+      return;
+    }
+
+    setSelectedIconPath(icon.iconPath);
+    setSelectedIconPreview(icon.iconDataUrl);
   };
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -117,7 +143,12 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
 
     if (editing) {
       updateInstance.mutate(
-        { id: editing.id, name, ramMb: ramGb * 1024 },
+        {
+          id: editing.id,
+          name,
+          ramMb: ramGb * 1024,
+          iconPath: selectedIconPath || undefined,
+        },
         {
           onSuccess: () => {
             setModalOpen(false);
@@ -135,6 +166,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
         minecraftVersion: selectedVersion,
         loader,
         ramMb: ramGb * 1024,
+        iconPath: selectedIconPath || undefined,
       },
       {
         onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["instances"] }),
@@ -147,14 +179,14 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
       launcherApi.onLaunchEvent((event) => {
         setLaunchEvents((current) => ({ ...current, [event.id]: event }));
 
-        if (["complete", "cancelled", "error"].includes(event.type)) {
+        if (["complete", "cancelled", "error", "closed", "killed"].includes(event.type)) {
           window.setTimeout(() => {
             setLaunchEvents((current) => {
               const next = { ...current };
               delete next[event.id];
               return next;
             });
-          }, 4500);
+          }, 1800);
         }
       }),
     [],
@@ -192,6 +224,14 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
 
   const cancelDownload = (downloadId: string) => {
     void launcherApi.cancelDownload(downloadId);
+  };
+
+  const killInstance = (instance: LauncherInstance) => {
+    const shouldKill = window.confirm(`Encerrar o Minecraft da instancia "${instance.name}"?`);
+
+    if (shouldKill) {
+      void launcherApi.killInstance(instance.id);
+    }
   };
 
   const importArchive = () => {
@@ -272,8 +312,11 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
             onPlay={play}
             onEdit={openEdit}
             onDelete={(item) => removeInstance.mutate(item.id)}
+            onOpenFolder={(item) => openFolder.mutate(item.id)}
+            onKill={killInstance}
             download={activeDownloadsByInstance[instance.id]}
             launchEvent={launchEvents[instance.id]}
+            isRunning={runningInstances.isRunning(instance.id)}
             onCancelDownload={cancelDownload}
             onCancelLaunch={cancelLaunch}
           />
@@ -305,10 +348,21 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
             </div>
 
             <div className="grid grid-cols-[108px_1fr] gap-6">
-              <div
-                className="h-28 w-28 bg-cover bg-center"
-                style={{ backgroundImage: `url(${heroImage})` }}
-              />
+              <div className="space-y-3">
+                <div
+                  className="h-28 w-28 bg-cover bg-center"
+                  style={{ backgroundImage: `url(${selectedIconPreview || heroImage})` }}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-9 w-28 rounded-sm px-2 text-xs"
+                  onClick={selectIcon}
+                >
+                  <ImagePlus className="h-4 w-4" />
+                  Imagem
+                </Button>
+              </div>
               <div className="space-y-5">
                 <label className="block">
                   <span className="text-sm font-semibold text-white">Modpack Name</span>

@@ -1,5 +1,4 @@
-import { useState, type FormEvent } from "react";
-import { CheckCircle2, DownloadCloud, KeyRound, Languages, RefreshCw, Save, Trash2 } from "lucide-react";
+import { CheckCircle2, DownloadCloud, Languages, MonitorPlay, RefreshCw } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { languageOptions } from "../constants/languages";
 import { Button } from "../components/ui/button";
@@ -10,10 +9,26 @@ import { useUpdater } from "../hooks/useUpdater";
 import { launcherApi } from "../services/launcherApi";
 
 const settingsKey = ["settings"] as const;
+const minecraftOpenActions = [
+  {
+    id: "none",
+    label: "Nao fazer nada",
+    description: "O launcher continua aberto normalmente.",
+  },
+  {
+    id: "minimize",
+    label: "Minimizar launcher",
+    description: "Quando o Minecraft abrir, o launcher vai para a barra de tarefas.",
+  },
+  {
+    id: "background",
+    label: "Fechar para segundo plano",
+    description: "Quando o Minecraft abrir, a janela do launcher fica escondida.",
+  },
+] as const;
 
 export const SettingsPage = () => {
   const queryClient = useQueryClient();
-  const [curseForgeKey, setCurseForgeKey] = useState("");
   const { updater, check, install } = useUpdater();
   const settings = useQuery({
     queryKey: settingsKey,
@@ -22,15 +37,9 @@ export const SettingsPage = () => {
   const updateSettings = useMutation({
     mutationFn: launcherApi.updateSettings,
     onSuccess: (data) => {
-      setCurseForgeKey("");
       queryClient.setQueryData(settingsKey, data);
     },
   });
-
-  const saveCurseForgeKey = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    updateSettings.mutate({ curseForgeApiKey: curseForgeKey });
-  };
 
   const updaterState = updater.data;
   const isChecking = check.isPending || updaterState?.status === "checking";
@@ -66,13 +75,6 @@ export const SettingsPage = () => {
       install.mutate();
     }
   };
-
-  const error =
-    updateSettings.error instanceof Error
-      ? updateSettings.error.message
-      : settings.error instanceof Error
-        ? settings.error.message
-        : null;
 
   return (
     <div className="grid min-w-0 gap-5">
@@ -153,6 +155,43 @@ export const SettingsPage = () => {
       <Card className="p-5">
         <div className="flex items-start justify-between gap-5">
           <div className="flex items-center gap-3">
+            <MonitorPlay className="h-5 w-5 text-[#60A5FA]" />
+            <div>
+              <h2 className="text-lg font-semibold text-white">Ao abrir Minecraft</h2>
+              <p className="mt-1 text-sm leading-6 text-[#94A3B8]">
+                Escolha o que o launcher deve fazer depois que a instancia iniciar.
+              </p>
+            </div>
+          </div>
+          <Badge tone="slate">
+            {minecraftOpenActions.find((item) => item.id === settings.data?.minecraftOpenAction)?.label ??
+              "Nao fazer nada"}
+          </Badge>
+        </div>
+
+        <div className="mt-5 grid gap-3">
+          {minecraftOpenActions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              disabled={settings.isLoading || updateSettings.isPending}
+              onClick={() => updateSettings.mutate({ minecraftOpenAction: action.id })}
+              className={`rounded-xl border px-4 py-3 text-left transition ${
+                (settings.data?.minecraftOpenAction ?? "none") === action.id
+                  ? "border-[#60A5FA]/60 bg-[#3B82F6]/12"
+                  : "border-white/10 bg-[#0D1117]/70 hover:border-white/20"
+              }`}
+            >
+              <span className="text-sm font-semibold text-white">{action.label}</span>
+              <span className="mt-1 block text-sm text-[#94A3B8]">{action.description}</span>
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <div className="flex items-start justify-between gap-5">
+          <div className="flex items-center gap-3">
             <Languages className="h-5 w-5 text-[#60A5FA]" />
             <div>
               <h2 className="text-lg font-semibold text-white">Linguagem</h2>
@@ -183,56 +222,6 @@ export const SettingsPage = () => {
             </option>
           ))}
         </select>
-      </Card>
-
-      <Card className="p-5">
-        <div className="flex items-start justify-between gap-5">
-          <div className="flex items-center gap-3">
-            <KeyRound className="h-5 w-5 text-[#60A5FA]" />
-            <div>
-              <h2 className="text-lg font-semibold text-white">CurseForge API</h2>
-              <p className="mt-1 text-sm leading-6 text-[#94A3B8]">
-                Salve uma chave propria para buscar e instalar conteudo da CurseForge.
-              </p>
-            </div>
-          </div>
-          <Badge tone={settings.data?.curseForgeApiKeyConfigured ? "green" : "slate"}>
-            {settings.data?.curseForgeApiKeyConfigured ? "Configurada" : "N/A"}
-          </Badge>
-        </div>
-
-        <form className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]" onSubmit={saveCurseForgeKey}>
-          <input
-            value={curseForgeKey}
-            onChange={(event) => setCurseForgeKey(event.target.value)}
-            type="password"
-            className="h-11 min-w-0 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none transition placeholder:text-[#94A3B8] focus:border-[#60A5FA]/70"
-            placeholder="Cole sua API key da CurseForge"
-            autoComplete="off"
-          />
-          <Button type="submit" disabled={!curseForgeKey.trim() || updateSettings.isPending}>
-            <Save className="h-4 w-4" />
-            Salvar
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={updateSettings.isPending}
-            onClick={() => updateSettings.mutate({ clearCurseForgeApiKey: true })}
-          >
-            <Trash2 className="h-4 w-4" />
-            Limpar
-          </Button>
-        </form>
-
-        <p className="mt-3 text-xs leading-5 text-[#94A3B8]">
-          A chave fica criptografada pelo sistema operacional quando essa protecao esta disponivel.
-        </p>
-        {error ? (
-          <div className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-            {error}
-          </div>
-        ) : null}
       </Card>
 
       <Card className="p-5">

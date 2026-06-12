@@ -1,4 +1,4 @@
-import { ArrowLeft, FolderOpen, Plus, Play, Trash2, X } from "lucide-react";
+import { ArrowLeft, FolderOpen, Plus, Play, Power, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import heroImage from "../assets/launcher-hero.png";
 import { Badge } from "../components/ui/badge";
@@ -8,6 +8,7 @@ import { Progress } from "../components/ui/progress";
 import { useDownloads } from "../hooks/useDownloads";
 import { useInstalledContent } from "../hooks/useInstalledContent";
 import { useInstances } from "../hooks/useInstances";
+import { useRunningInstances } from "../hooks/useRunningInstances";
 import { launcherApi } from "../services/launcherApi";
 import type { ContentType, DownloadItem, LaunchEvent, LauncherInstance } from "../types/launcher";
 
@@ -28,6 +29,7 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
   const content = useInstalledContent(instance.id);
   const { openFolder } = useInstances();
   const downloads = useDownloads();
+  const runningInstances = useRunningInstances();
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchEvent, setLaunchEvent] = useState<LaunchEvent | null>(null);
   const items = useMemo(
@@ -50,8 +52,8 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
         }
 
         setLaunchEvent(event);
-        if (["complete", "cancelled", "error"].includes(event.type)) {
-          window.setTimeout(() => setLaunchEvent(null), 4500);
+        if (["complete", "cancelled", "error", "closed", "killed"].includes(event.type)) {
+          window.setTimeout(() => setLaunchEvent(null), 1800);
         }
       }),
     [instance.id],
@@ -91,6 +93,14 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
     }
   };
 
+  const killInstance = () => {
+    const shouldKill = window.confirm(`Encerrar o Minecraft da instancia "${instance.name}"?`);
+
+    if (shouldKill) {
+      void launcherApi.killInstance(instance.id);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <button
@@ -106,7 +116,7 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
         <div className="flex items-center gap-5 p-4">
           <div
             className="h-28 w-28 shrink-0 bg-cover bg-center"
-            style={{ backgroundImage: `url(${heroImage})` }}
+            style={{ backgroundImage: `url(${instance.iconDataUrl ?? heroImage})` }}
           />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
@@ -143,10 +153,17 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
               <FolderOpen className="h-4 w-4" />
               Pasta
             </Button>
-            <Button onClick={play} className="rounded-sm bg-[#f05a28] hover:bg-[#ff733f]">
-              <Play className="h-4 w-4 fill-white" />
-              Play
-            </Button>
+            {runningInstances.isRunning(instance.id) ? (
+              <Button onClick={killInstance} className="rounded-sm bg-red-600 hover:bg-red-500">
+                <Power className="h-4 w-4" />
+                Encerrar
+              </Button>
+            ) : (
+              <Button onClick={play} className="rounded-sm bg-[#f05a28] hover:bg-[#ff733f]">
+                <Play className="h-4 w-4 fill-white" />
+                Play
+              </Button>
+            )}
           </div>
         </div>
       </section>

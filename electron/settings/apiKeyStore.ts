@@ -1,63 +1,16 @@
 import { safeStorage } from "electron";
 import { LauncherDatabase } from "../database/sqliteDatabase";
-import type { AppLanguage } from "../../src/types/launcher";
+import type { AppLanguage, MinecraftOpenAction } from "../../src/types/launcher";
 
-type SecureRecord = {
-  value: Uint8Array;
-};
-
-const curseForgeKey = "api.curseforge.key";
 const languageKey = "app.language";
 const languageSelectedKey = "app.language.selected";
+const minecraftOpenActionKey = "minecraft.open.action";
 const defaultLanguage: AppLanguage = "pt-BR";
 const appLanguages = new Set<AppLanguage>(["pt-BR", "pt-PT", "en", "fr"]);
+const minecraftOpenActions = new Set<MinecraftOpenAction>(["none", "minimize", "background"]);
 
 export class ApiKeyStore {
   constructor(private readonly database: LauncherDatabase) {}
-
-  saveCurseForgeApiKey(apiKey: string) {
-    if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error("Criptografia do sistema indisponivel para salvar a chave.");
-    }
-
-    const trimmed = apiKey.trim();
-
-    if (!trimmed) {
-      this.clearCurseForgeApiKey();
-      return;
-    }
-
-    const encrypted = safeStorage.encryptString(trimmed);
-    this.database.run(
-      `
-      INSERT INTO secure_records (key, value, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-      `,
-      [curseForgeKey, encrypted, new Date().toISOString()],
-    );
-  }
-
-  loadCurseForgeApiKey() {
-    if (!safeStorage.isEncryptionAvailable()) {
-      return "";
-    }
-
-    const record = this.database.get<SecureRecord>(
-      "SELECT value FROM secure_records WHERE key = ?",
-      [curseForgeKey],
-    );
-
-    if (!record) {
-      return "";
-    }
-
-    return safeStorage.decryptString(Buffer.from(record.value));
-  }
-
-  clearCurseForgeApiKey() {
-    this.database.run("DELETE FROM secure_records WHERE key = ?", [curseForgeKey]);
-  }
 
   saveLanguage(language: AppLanguage, selected = true) {
     if (!appLanguages.has(language)) {
@@ -68,17 +21,31 @@ export class ApiKeyStore {
     this.saveSetting(languageSelectedKey, selected ? "true" : "false");
   }
 
+  saveMinecraftOpenAction(action: MinecraftOpenAction) {
+    if (!minecraftOpenActions.has(action)) {
+      throw new Error("Acao de abertura do Minecraft invalida.");
+    }
+
+    this.saveSetting(minecraftOpenActionKey, action);
+  }
+
   getPublicSettings() {
     return {
-      curseForgeApiKeyConfigured: Boolean(
-        this.loadCurseForgeApiKey() ||
-          process.env.MLULTIMATE_CURSEFORGE_API_KEY ||
-          process.env.CURSEFORGE_API_KEY,
-      ),
       encryptionAvailable: safeStorage.isEncryptionAvailable(),
       language: this.loadLanguage(),
       languageSelected: this.loadLanguageSelected(),
+      minecraftOpenAction: this.loadMinecraftOpenAction(),
     };
+  }
+
+  loadMinecraftOpenAction() {
+    const record = this.database.get<{ value: string }>(
+      "SELECT value FROM settings WHERE key = ?",
+      [minecraftOpenActionKey],
+    );
+    const action = record?.value as MinecraftOpenAction | undefined;
+
+    return action && minecraftOpenActions.has(action) ? action : "none";
   }
 
   private loadLanguage() {

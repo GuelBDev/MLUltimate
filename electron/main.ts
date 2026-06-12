@@ -95,8 +95,8 @@ const bootstrap = async () => {
   });
   const javaRuntimes = new JavaRuntimeService(downloads);
   const minecraftVersions = new MinecraftVersionService(database, downloads, javaRuntimes);
-  const instances = new InstanceService(database, minecraftVersions, downloads, apiKeys);
-  const content = new ContentService(database, downloads, instances, apiKeys);
+  const instances = new InstanceService(database, minecraftVersions, downloads);
+  const content = new ContentService(database, downloads, instances);
   const launcher = new LauncherService(
     microsoftAuth,
     offlineAuth,
@@ -105,6 +105,18 @@ const bootstrap = async () => {
     minecraftVersions,
     (event) => {
       mainWindow?.webContents.send("launcher:event", event);
+
+      if (event.type === "running") {
+        const action = apiKeys.loadMinecraftOpenAction();
+
+        if (action === "minimize") {
+          mainWindow?.minimize();
+        }
+
+        if (action === "background") {
+          mainWindow?.hide();
+        }
+      }
     },
   );
 

@@ -10,6 +10,7 @@ import type {
   InstallContentInput,
   InstalledContent,
   ImportInstanceInput,
+  InstanceIconSelection,
   LaunchEvent,
   LaunchCancelRequest,
   LaunchRequest,
@@ -39,6 +40,10 @@ const api = {
       ipcRenderer.invoke("launcher:launch", request) as Promise<void>,
     cancel: (request?: LaunchCancelRequest) =>
       ipcRenderer.invoke("launcher:cancel", request) as Promise<void>,
+    kill: (request: { instanceId: string }) =>
+      ipcRenderer.invoke("launcher:kill", request) as Promise<void>,
+    listRunning: () =>
+      ipcRenderer.invoke("launcher:list-running") as Promise<string[]>,
     onEvent: (callback: (event: LaunchEvent) => void) => {
       const listener = (_: Electron.IpcRendererEvent, event: LaunchEvent) => {
         callback(event);
@@ -68,6 +73,8 @@ const api = {
       ipcRenderer.invoke("instances:remove", instanceId) as Promise<void>,
     openFolder: (instanceId: string) =>
       ipcRenderer.invoke("instances:open-folder", instanceId) as Promise<void>,
+    selectIcon: () =>
+      ipcRenderer.invoke("instances:select-icon") as Promise<InstanceIconSelection | null>,
     importInstance: (input: ImportInstanceInput) =>
       ipcRenderer.invoke("instances:import", input) as Promise<LauncherInstance | null>,
   },
