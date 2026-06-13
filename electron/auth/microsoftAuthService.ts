@@ -18,6 +18,8 @@ const MINECRAFT_PROFILE_URL =
   "https://api.minecraftservices.com/minecraft/profile";
 const MICROSOFT_GRAPH_ME_URL = "https://graph.microsoft.com/v1.0/me";
 const SESSION_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+const DEFAULT_MICROSOFT_CLIENT_ID = "fd9f6eb4-bfa8-4985-85e9-18c5db6cf6ad";
+const MICROSOFT_MINECRAFT_SCOPE = "XboxLive.signin offline_access";
 
 const microsoftTokenSchema = z.object({
   access_token: z.string(),
@@ -50,7 +52,8 @@ const graphMeSchema = z.object({
 });
 
 export class MicrosoftAuthService {
-  private clientId = process.env.MLULTIMATE_MICROSOFT_CLIENT_ID ?? "";
+  private clientId =
+    process.env.MLULTIMATE_MICROSOFT_CLIENT_ID ?? DEFAULT_MICROSOFT_CLIENT_ID;
 
   constructor(private readonly tokenStore: SecureTokenStore) {}
 
@@ -81,10 +84,11 @@ export class MicrosoftAuthService {
       client_id: this.clientId,
       response_type: "code",
       redirect_uri: callback.redirectUri,
-      scope: "XboxLive.signin offline_access User.Read",
+      scope: MICROSOFT_MINECRAFT_SCOPE,
       code_challenge: pkce.challenge,
       code_challenge_method: "S256",
       state: callback.state,
+      prompt: "select_account",
     }).toString();
 
     await shell.openExternal(authUrl.toString());
@@ -185,7 +189,7 @@ export class MicrosoftAuthService {
       client_id: this.clientId,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
-      scope: "XboxLive.signin offline_access User.Read",
+      scope: MICROSOFT_MINECRAFT_SCOPE,
     });
 
     const response = await fetch(MICROSOFT_TOKEN_URL, {
@@ -359,7 +363,7 @@ export class MicrosoftAuthService {
 
     return {
       state,
-      redirectUri: `http://127.0.0.1:${liveCallback.port}/callback`,
+      redirectUri: `http://localhost:${liveCallback.port}/callback`,
       codePromise: liveCallback.codePromise,
     };
   }
