@@ -188,13 +188,13 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
         </div>
 
         <form
-          className="mt-5 grid grid-cols-[0.8fr_0.9fr_minmax(150px,1fr)_0.8fr_0.8fr_44px_44px] gap-3 max-[900px]:grid-cols-2"
+          className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(110px,0.8fr)_minmax(120px,0.9fr)_minmax(160px,1fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_44px_44px]"
           onSubmit={submit}
         >
           <select
             value={provider}
             onChange={(event) => setProvider(event.target.value as ContentProviderFilter)}
-            className="h-11 min-w-0 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            className="h-11 min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             {providerFilters.map((item) => (
               <option key={item} value={item}>
@@ -205,7 +205,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
           <select
             value={type}
             onChange={(event) => setType(event.target.value as ContentType)}
-            className="h-11 min-w-0 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            className="h-11 min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             {types.map((item) => (
               <option key={item} value={item}>
@@ -216,13 +216,13 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="h-11 min-w-0 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            className="h-11 min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
             placeholder="Pesquisar"
           />
           <select
             value={selectedVersion}
             onChange={(event) => setVersion(event.target.value)}
-            className="h-11 min-w-0 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            className="h-11 min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             <option value="">Todas versoes</option>
             {releaseVersions.map((item) => (
@@ -234,7 +234,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
           <select
             value={loader}
             onChange={(event) => setLoader(event.target.value as LoaderType | "")}
-            className="h-11 min-w-0 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            className="h-11 min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             <option value="">Todos loaders</option>
             {loaders.map((item) => (
@@ -283,7 +283,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
           >
             <button
               type="button"
-              className="flex w-full gap-4 text-left"
+              className="flex w-full min-w-0 flex-col gap-4 text-left sm:flex-row"
               onClick={() => openProject(project)}
             >
               {project.iconUrl ? (
@@ -309,7 +309,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
                   {project.description}
                 </p>
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-2">
+              <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
                 <Button
                   type="button"
                   disabled={install.isPending}
@@ -418,15 +418,15 @@ const ProjectDetails = ({
       </button>
 
       <section className="rounded-sm bg-[#1f1f1f] p-4">
-        <div className="flex gap-4">
+        <div className="flex min-w-0 flex-col gap-4 sm:flex-row">
           {current.iconUrl ? (
             <img src={current.iconUrl} alt="" className="h-24 w-24 object-cover" />
           ) : (
             <div className="h-24 w-24 bg-white/8" />
           )}
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-3">
-              <h2 className="truncate text-xl font-semibold text-white">{current.title}</h2>
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <h2 className="min-w-0 break-words text-xl font-semibold text-white">{current.title}</h2>
               <Badge tone="slate">{typeLabels[current.type]}</Badge>
             </div>
             <p className="mt-1 text-sm text-[#94A3B8]">
@@ -447,6 +447,7 @@ const ProjectDetails = ({
           </div>
           <Button
             type="button"
+            className="shrink-0"
             onClick={() => onInstall(latestVersion)}
             disabled={installing}
             title="Escolher instância"
@@ -559,7 +560,7 @@ const VersionRow = ({
   onInstall: () => void;
   installing: boolean;
 }) => (
-  <div className="grid grid-cols-[1fr_130px_120px_120px] items-center gap-3 border-b border-white/8 px-2 py-3 text-sm last:border-b-0">
+  <div className="grid grid-cols-1 items-center gap-3 border-b border-white/8 px-2 py-3 text-sm last:border-b-0 md:grid-cols-[1fr_130px_120px_120px]">
     <div className="min-w-0">
       <p className="truncate font-semibold text-white">{version.name}</p>
       <p className="mt-1 truncate text-[#94A3B8]">{version.fileName}</p>

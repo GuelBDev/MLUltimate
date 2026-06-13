@@ -6,6 +6,7 @@ import { InstanceTile } from "../components/library/InstanceTile";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
+import { useAppDialog } from "../components/ui/appDialogContext";
 import { useDownloads } from "../hooks/useDownloads";
 import { useInstances } from "../hooks/useInstances";
 import { useRunningInstances } from "../hooks/useRunningInstances";
@@ -22,6 +23,7 @@ type HomePageProps = {
 
 export const HomePage = ({ focus, onNavigate, onExploreInstance }: HomePageProps) => {
   const queryClient = useQueryClient();
+  const dialog = useAppDialog();
   const { instances, removeInstance, openFolder } = useInstances();
   const downloads = useDownloads();
   const runningInstances = useRunningInstances();
@@ -40,9 +42,14 @@ export const HomePage = ({ focus, onNavigate, onExploreInstance }: HomePageProps
       const message = error instanceof Error ? error.message : "Não foi possível abrir o jogo.";
 
       if (message.startsWith("INSTANCE_ALREADY_RUNNING")) {
-        const openAgain = window.confirm(
-          "Essa instância já está aberta ou iniciando. Deseja abrir outra cópia mesmo assim?",
-        );
+        const openAgain = await dialog.confirm({
+          title: "Instância já aberta",
+          description:
+            "Essa instância já está aberta ou iniciando. Deseja abrir outra cópia mesmo assim?",
+          confirmLabel: "Abrir outra",
+          cancelLabel: "Cancelar",
+          tone: "info",
+        });
 
         if (openAgain) {
           await launcherApi.launch({ instanceId: instance.id, force: true });
@@ -55,11 +62,7 @@ export const HomePage = ({ focus, onNavigate, onExploreInstance }: HomePageProps
   };
 
   const killInstance = (instance: LauncherInstance) => {
-    const shouldKill = window.confirm(`Encerrar o Minecraft da instância "${instance.name}"?`);
-
-    if (shouldKill) {
-      void launcherApi.killInstance(instance.id);
-    }
+    void launcherApi.killInstance(instance.id);
   };
 
   if (selected) {

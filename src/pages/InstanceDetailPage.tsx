@@ -5,6 +5,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Progress } from "../components/ui/progress";
+import { useAppDialog } from "../components/ui/appDialogContext";
 import { useDownloads } from "../hooks/useDownloads";
 import { useInstalledContent } from "../hooks/useInstalledContent";
 import { useInstances } from "../hooks/useInstances";
@@ -25,6 +26,7 @@ const tabs: Array<{ id: ContentType; label: string }> = [
 ];
 
 export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDetailPageProps) => {
+  const dialog = useAppDialog();
   const [activeTab, setActiveTab] = useState<ContentType>("mod");
   const content = useInstalledContent(instance.id);
   const { openFolder } = useInstances();
@@ -68,9 +70,14 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
       const message = error instanceof Error ? error.message : "Não foi possível abrir o jogo.";
 
       if (message.startsWith("INSTANCE_ALREADY_RUNNING")) {
-        const openAgain = window.confirm(
-          "Essa instância já está aberta ou iniciando. Deseja abrir outra cópia mesmo assim?",
-        );
+        const openAgain = await dialog.confirm({
+          title: "Instância já aberta",
+          description:
+            "Essa instância já está aberta ou iniciando. Deseja abrir outra cópia mesmo assim?",
+          confirmLabel: "Abrir outra",
+          cancelLabel: "Cancelar",
+          tone: "info",
+        });
 
         if (openAgain) {
           await launcherApi.launch({ instanceId: instance.id, force: true });
@@ -94,11 +101,7 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
   };
 
   const killInstance = () => {
-    const shouldKill = window.confirm(`Encerrar o Minecraft da instância "${instance.name}"?`);
-
-    if (shouldKill) {
-      void launcherApi.killInstance(instance.id);
-    }
+    void launcherApi.killInstance(instance.id);
   };
 
   return (
@@ -156,7 +159,7 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
             {runningInstances.isRunning(instance.id) ? (
               <Button onClick={killInstance} className="rounded-sm bg-red-600 hover:bg-red-500">
                 <Power className="h-4 w-4" />
-                Encerrar
+                Kill Instance
               </Button>
             ) : (
               <Button onClick={play} className="rounded-sm bg-[#f05a28] hover:bg-[#ff733f]">

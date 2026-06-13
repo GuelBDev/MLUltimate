@@ -1,5 +1,6 @@
 import AdmZip from "adm-zip";
 import { createHash } from "node:crypto";
+import { app } from "electron";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -159,7 +160,7 @@ export class LauncherService {
       version_type: versionJson.type,
       natives_directory: nativesDir,
       launcher_name: "MLUltimateLauncher",
-      launcher_version: "1.0.0-alpha.7",
+      launcher_version: app.getVersion(),
       classpath,
     };
 

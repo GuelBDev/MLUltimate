@@ -105,11 +105,15 @@ export const AccountPanel = () => {
             <Button
               type="button"
               className="w-full"
-              onClick={() => loginMicrosoft.mutate()}
-              disabled={loginMicrosoft.isPending}
+              onClick={() => {
+                if (loginMicrosoft.isPending) {
+                  loginMicrosoft.reset();
+                }
+                loginMicrosoft.mutate();
+              }}
             >
               <MicrosoftIcon />
-              Entrar com Microsoft
+              {loginMicrosoft.isPending ? "Tentar login novamente" : "Entrar com Microsoft"}
             </Button>
 
             <form className="space-y-3" onSubmit={submitOffline}>

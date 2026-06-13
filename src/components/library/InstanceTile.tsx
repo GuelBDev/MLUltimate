@@ -120,7 +120,7 @@ export const InstanceTile = ({
             onClick={() => onKill?.(instance)}
           >
             <Power className="h-4 w-4" />
-            Encerrar
+            Kill Instance
           </Button>
         ) : (
           <Button

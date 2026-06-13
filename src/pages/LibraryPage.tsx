@@ -6,6 +6,7 @@ import { InstanceTile } from "../components/library/InstanceTile";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
+import { useAppDialog } from "../components/ui/appDialogContext";
 import { useInstances } from "../hooks/useInstances";
 import { useDownloads } from "../hooks/useDownloads";
 import { useMinecraftVersions } from "../hooks/useMinecraftVersions";
@@ -56,6 +57,7 @@ const normalizePath = (value: string) => value.replaceAll("\\", "/").toLowerCase
 
 export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   const queryClient = useQueryClient();
+  const dialog = useAppDialog();
   const { versions } = useMinecraftVersions();
   const {
     instances,
@@ -204,9 +206,14 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
           : "Não foi possível abrir o jogo.";
 
       if (message.startsWith("INSTANCE_ALREADY_RUNNING")) {
-        const openAgain = window.confirm(
-          "Essa instância já está aberta ou iniciando. Deseja abrir outra cópia mesmo assim?",
-        );
+        const openAgain = await dialog.confirm({
+          title: "Instância já aberta",
+          description:
+            "Essa instância já está aberta ou iniciando. Deseja abrir outra cópia mesmo assim?",
+          confirmLabel: "Abrir outra",
+          cancelLabel: "Cancelar",
+          tone: "info",
+        });
 
         if (openAgain) {
           await launcherApi.launch({ instanceId: instance.id, force: true });
@@ -227,11 +234,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   };
 
   const killInstance = (instance: LauncherInstance) => {
-    const shouldKill = window.confirm(`Encerrar o Minecraft da instância "${instance.name}"?`);
-
-    if (shouldKill) {
-      void launcherApi.killInstance(instance.id);
-    }
+    void launcherApi.killInstance(instance.id);
   };
 
   const importArchive = () => {

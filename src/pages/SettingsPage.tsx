@@ -1,12 +1,15 @@
 import { CheckCircle2, DownloadCloud, Languages, MonitorPlay, RefreshCw } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { languageOptions } from "../constants/languages";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
+import { useAppDialog } from "../components/ui/appDialogContext";
 import { useUpdater } from "../hooks/useUpdater";
 import { launcherApi } from "../services/launcherApi";
+import { formatAppVersion } from "../utils/version";
 
 const settingsKey = ["settings"] as const;
 const minecraftOpenActions = [
@@ -29,7 +32,11 @@ const minecraftOpenActions = [
 
 export const SettingsPage = () => {
   const queryClient = useQueryClient();
+  const dialog = useAppDialog();
   const { updater, check, install } = useUpdater();
+  const [checkCooldown, setCheckCooldown] = useState(0);
+  const [checkingProgress, setCheckingProgress] = useState(0);
+  const [installingUpdate, setInstallingUpdate] = useState(false);
   const settings = useQuery({
     queryKey: settingsKey,
     queryFn: launcherApi.getSettings,
@@ -46,34 +53,90 @@ export const SettingsPage = () => {
   const isDownloading = updaterState?.status === "downloading";
   const isDownloaded = updaterState?.status === "downloaded";
   const isUpToDate = updaterState?.status === "not-available";
+  const disableCheck = isChecking || isDownloading || checkCooldown > 0 || installingUpdate;
+  const statusLabel = isDownloaded
+    ? "Pronta"
+    : isChecking
+      ? "Procurando"
+      : isDownloading
+        ? "Baixando"
+        : isUpToDate
+          ? "Atualizado"
+          : updaterState?.status === "error"
+            ? "Erro"
+            : "Idle";
   const updateMessage = (() => {
     if (!updaterState) return "Clique em procurar para verificar se existe uma nova versão.";
-    if (isChecking) return "Procurando uma nova versão no GitHub Releases...";
+    if (isChecking) return "Procurando atualizações no GitHub Releases...";
     if (isDownloading) return `Baixando atualização ${updaterState.progress ?? 0}%...`;
     if (isDownloaded) {
-      return `Versão ${updaterState.availableVersion ?? "nova"} baixada e pronta para instalar.`;
+      return `Atualização ${formatAppVersion(updaterState.availableVersion)} baixada e pronta para instalar.`;
     }
     if (isUpToDate) return "Você já está com o app atualizado.";
     if (updaterState.status === "available") {
-      return `Versão ${updaterState.availableVersion ?? "nova"} encontrada. O download vai começar automaticamente.`;
+      return `Atualização ${formatAppVersion(updaterState.availableVersion)} encontrada. O download vai começar automaticamente.`;
     }
     if (updaterState.status === "error") {
-      return updaterState.message?.includes("releases.atom")
-        ? "Ainda não existe uma release publicada no GitHub para comparar atualizações."
-        : (updaterState.message ?? "Não foi possível procurar atualizações agora.");
+      return updaterState.message ?? "Não foi possível procurar atualizações agora.";
     }
 
     return "Clique em procurar para verificar se existe uma nova versão.";
   })();
 
-  const installDownloadedUpdate = () => {
-    const shouldRestart = window.confirm(
-      "A atualização já foi baixada. Quer fechar e reiniciar o MLUltimate agora para instalar?",
-    );
+  useEffect(() => {
+    if (checkCooldown <= 0) return;
 
-    if (shouldRestart) {
-      install.mutate();
-    }
+    const timer = window.setTimeout(() => {
+      setCheckCooldown((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [checkCooldown]);
+
+  useEffect(() => {
+    if (!isChecking) return;
+
+    const timer = window.setInterval(() => {
+      setCheckingProgress((current) => (current >= 86 ? 42 : current + 11));
+    }, 360);
+
+    return () => window.clearInterval(timer);
+  }, [isChecking]);
+
+  const runUpdateCheck = () => {
+    if (disableCheck) return;
+    setCheckCooldown(5);
+    setCheckingProgress(18);
+    check.mutate();
+  };
+
+  const installDownloadedUpdate = async () => {
+    const shouldRestart = await dialog.confirm({
+      title: "Atualização pronta",
+      description:
+        "O MLUltimate vai fechar por alguns segundos e aplicar a atualização em modo silencioso.",
+      confirmLabel: "Atualizar agora",
+      cancelLabel: "Depois",
+      tone: "success",
+      progress: 100,
+    });
+
+    if (!shouldRestart) return;
+
+    setInstallingUpdate(true);
+    install.mutate(undefined, {
+      onError: (error) => {
+        setInstallingUpdate(false);
+        void dialog.alert({
+          title: "Não foi possível atualizar",
+          description:
+            error instanceof Error
+              ? error.message
+              : "O instalador não conseguiu reiniciar o launcher.",
+          tone: "danger",
+        });
+      },
+    });
   };
 
   return (
@@ -89,15 +152,21 @@ export const SettingsPage = () => {
               <p className="mt-1 text-sm leading-6 text-[#94A3B8]">
                 Versão instalada:{" "}
                 <span className="font-semibold text-white">
-                  {updaterState?.currentVersion ?? "dev"}
+                  {formatAppVersion(updaterState?.currentVersion ?? "dev")}
                 </span>
               </p>
             </div>
             <Badge
-              tone={isDownloaded ? "green" : isUpToDate ? "green" : updaterState?.status === "error" ? "red" : "blue"}
+              tone={
+                isDownloaded || isUpToDate
+                  ? "green"
+                  : updaterState?.status === "error"
+                    ? "red"
+                    : "blue"
+              }
               className="ml-auto shrink-0"
             >
-              {isDownloaded ? "Pronta" : isUpToDate ? "Atualizado" : updaterState?.status ?? "idle"}
+              {statusLabel}
             </Badge>
           </div>
 
@@ -114,37 +183,48 @@ export const SettingsPage = () => {
                     ? "Atualização pronta"
                     : isUpToDate
                       ? "Launcher atualizado"
-                      : "Verificação de atualização"}
+                      : isChecking
+                        ? "Procurando atualizações"
+                        : "Verificação de atualização"}
                 </p>
                 <p className="mt-1 break-words text-sm leading-6 text-[#94A3B8]">
                   {updateMessage}
                 </p>
               </div>
             </div>
-            {typeof updaterState?.progress === "number" && isDownloading ? (
-              <Progress value={updaterState.progress} className="mt-4" />
+
+            {isChecking || (typeof updaterState?.progress === "number" && isDownloading) ? (
+              <Progress
+                value={isChecking ? checkingProgress : updaterState?.progress ?? 0}
+                className="mt-4"
+              />
             ) : null}
+
             <div className="mt-4 flex flex-col gap-3 sm:flex-row">
               <Button
                 type="button"
                 variant="secondary"
                 className="w-full sm:w-auto"
-                disabled={isChecking || isDownloading}
-                onClick={() => check.mutate()}
+                disabled={disableCheck}
+                onClick={runUpdateCheck}
               >
                 <RefreshCw
                   className={`h-4 w-4 ${isChecking || isDownloading ? "animate-spin" : ""}`}
                 />
-                Procurar atualizações
+                {isChecking
+                  ? "Procurando atualizações"
+                  : checkCooldown > 0
+                    ? `Aguarde ${checkCooldown}s`
+                    : "Procurar atualizações"}
               </Button>
               {isDownloaded ? (
                 <Button
                   type="button"
                   className="w-full sm:w-auto"
-                  disabled={install.isPending}
+                  disabled={install.isPending || installingUpdate}
                   onClick={installDownloadedUpdate}
                 >
-                  Reiniciar e atualizar
+                  {installingUpdate ? "Aplicando atualização..." : "Reiniciar e atualizar"}
                 </Button>
               ) : null}
             </div>

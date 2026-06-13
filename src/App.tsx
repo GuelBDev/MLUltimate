@@ -6,6 +6,7 @@ import { RuntimeTranslator } from "./components/i18n/RuntimeTranslator";
 import { LanguageSetupScreen } from "./components/language/LanguageSetupScreen";
 import { Sidebar, type PageId } from "./components/layout/Sidebar";
 import { StartupScreen } from "./components/startup/StartupScreen";
+import { AppDialogProvider } from "./components/ui/AppDialog";
 import { WindowTitleBar } from "./components/window/WindowTitleBar";
 import { AvatarPage } from "./pages/AvatarPage";
 import { DownloadsPage } from "./pages/DownloadsPage";
@@ -194,7 +195,9 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppRoot />
+      <AppDialogProvider>
+        <AppRoot />
+      </AppDialogProvider>
     </QueryClientProvider>
   );
 }

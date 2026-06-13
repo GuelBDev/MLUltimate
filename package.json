@@ -1,10 +1,10 @@
 {
   "name": "mlultimate-launcher",
   "private": true,
-  "version": "1.0.2-alpha.13",
-  "description": "MLUltimate Launcher 1.0.2 alpha 13 desktop launcher for Minecraft.",
+  "version": "2.0.0-alpha.1",
+  "description": "MLUltimate Launcher 2.0.0 desktop launcher for Minecraft.",
   "author": "MLUltimate",
-  "desktopName": "MLUltimate Launcher Alpha 1.0",
+  "desktopName": "MLUltimate Launcher",
   "repository": {
     "type": "git",
     "url": "https://github.com/GuelBDev/MLUltimate.git"
@@ -28,7 +28,7 @@
   },
   "build": {
     "appId": "com.mlultimate.launcher",
-    "productName": "MLUltimate Launcher Alpha 1.0",
+    "productName": "MLUltimate Launcher",
     "generateUpdatesFilesForAllChannels": true,
     "artifactName": "MLUltimate-Launcher-${version}-${os}-${arch}.${ext}",
     "publish": [
@@ -63,9 +63,9 @@
       ]
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },

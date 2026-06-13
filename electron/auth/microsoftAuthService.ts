@@ -54,6 +54,7 @@ const graphMeSchema = z.object({
 export class MicrosoftAuthService {
   private clientId =
     process.env.MLULTIMATE_MICROSOFT_CLIENT_ID ?? DEFAULT_MICROSOFT_CLIENT_ID;
+  private cancelPendingOAuth: (() => void) | null = null;
 
   constructor(private readonly tokenStore: SecureTokenStore) {}
 
@@ -358,13 +359,20 @@ export class MicrosoftAuthService {
   }
 
   private async waitForOAuthCallback() {
+    this.cancelPendingOAuth?.();
+
     const state = randomBytes(24).toString("base64url");
     const liveCallback = await createLiveOAuthServer(state);
+    this.cancelPendingOAuth = liveCallback.cancel;
 
     return {
       state,
       redirectUri: `http://localhost:${liveCallback.port}/callback`,
-      codePromise: liveCallback.codePromise,
+      codePromise: liveCallback.codePromise.finally(() => {
+        if (this.cancelPendingOAuth === liveCallback.cancel) {
+          this.cancelPendingOAuth = null;
+        }
+      }),
     };
   }
 
@@ -463,11 +471,26 @@ const createLiveOAuthServer = (state: string) => {
     server.close();
   });
 
-  return new Promise<{ port: number; codePromise: Promise<string> }>((resolve, reject) => {
+  return new Promise<{ port: number; codePromise: Promise<string>; cancel: () => void }>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(0, () => {
       const port = addressPort(server);
-      resolve({ port, codePromise });
+      const timeout = setTimeout(() => {
+        rejectCode(
+          new Error("Login Microsoft expirou. Clique em Entrar com Microsoft para tentar novamente."),
+        );
+        server.close();
+      }, 90_000);
+
+      resolve({
+        port,
+        codePromise,
+        cancel: () => {
+          clearTimeout(timeout);
+          rejectCode(new Error("Tentativa de login anterior cancelada. Uma nova janela foi aberta."));
+          server.close();
+        },
+      });
     });
   });
 };

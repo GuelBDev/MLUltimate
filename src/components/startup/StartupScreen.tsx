@@ -6,6 +6,7 @@ import { Progress } from "../ui/progress";
 import { launcherApi } from "../../services/launcherApi";
 import appIcon from "../../assets/mlultimate-icon.png";
 import type { UpdaterState } from "../../types/launcher";
+import { appDisplayVersion, formatAppVersion } from "../../utils/version";
 
 type StartupStepStatus = "waiting" | "running" | "done";
 
@@ -154,7 +155,10 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
           if (state.status === "available") {
             setStatusText("Atualização encontrada");
             setProgress(56);
-            setRunning("updates", `Atualização ${state.availableVersion ?? "nova"} encontrada`);
+            setRunning(
+              "updates",
+              `Atualização ${formatAppVersion(state.availableVersion)} encontrada`,
+            );
           }
 
           if (state.status === "downloading") {
@@ -168,7 +172,7 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
         if (finalUpdaterState.status === "downloaded") {
           setStatusText("Instalando atualização");
           setProgress(100);
-          setDone("updates", "Atualização baixada. Reiniciando para instalar.");
+          setDone("updates", "Atualização baixada. Aplicando em modo silencioso.");
           await sleep(600);
           await launcherApi.installUpdate();
           return;
@@ -247,7 +251,7 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
         <div className="mt-7 w-full">
           <Progress value={progress} className="h-2 bg-[#1F2937]" />
           <div className="mt-3 flex items-center justify-between text-xs text-[#94A3B8]">
-            <span>Alpha 1.0</span>
+            <span>Versão {appDisplayVersion}</span>
             <span>{progress}%</span>
           </div>
         </div>

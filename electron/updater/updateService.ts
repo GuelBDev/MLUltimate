@@ -35,10 +35,11 @@ export class UpdateService {
     status: "idle",
     currentVersion: app.getVersion(),
   };
+  private expectedUpdateVersion: string | null = null;
 
   constructor(private readonly emit: EmitUpdaterState) {
     autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.allowPrerelease = app.getVersion().includes("-");
     autoUpdater.channel = "latest";
 
@@ -47,6 +48,7 @@ export class UpdateService {
     });
 
     autoUpdater.on("update-available", (info: UpdateInfo) => {
+      this.expectedUpdateVersion = info.version;
       this.setState({
         status: "available",
         availableVersion: info.version,
@@ -55,6 +57,15 @@ export class UpdateService {
     });
 
     autoUpdater.on("update-not-available", () => {
+      if (this.expectedUpdateVersion) {
+        this.setState({
+          status: "available",
+          availableVersion: this.expectedUpdateVersion,
+          message: `Atualização ${this.expectedUpdateVersion} encontrada. Preparando download...`,
+        });
+        return;
+      }
+
       this.setState({
         status: "not-available",
         message: "Você já está na versão mais recente.",
@@ -70,6 +81,7 @@ export class UpdateService {
     });
 
     autoUpdater.on("update-downloaded", (info: UpdateInfo) => {
+      this.expectedUpdateVersion = null;
       this.setState({
         status: "downloaded",
         availableVersion: info.version,
@@ -101,6 +113,7 @@ export class UpdateService {
       return this.state;
     }
 
+    this.expectedUpdateVersion = null;
     this.setState({ status: "checking", message: "Procurando atualização..." });
     try {
       const release = await this.findLatestUpdateRelease();
@@ -113,6 +126,7 @@ export class UpdateService {
         return this.state;
       }
 
+      this.expectedUpdateVersion = release.version;
       autoUpdater.setFeedURL({
         provider: "generic",
         url: release.feedUrl,
@@ -137,7 +151,7 @@ export class UpdateService {
       return;
     }
 
-    autoUpdater.quitAndInstall(false, true);
+    autoUpdater.quitAndInstall(true, true);
   }
 
   private async findLatestUpdateRelease(): Promise<UpdateRelease | null> {
