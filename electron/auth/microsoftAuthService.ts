@@ -1,4 +1,4 @@
-import { shell } from "electron";
+import { BrowserWindow } from "electron";
 import { createServer } from "node:http";
 import { randomBytes, createHash } from "node:crypto";
 import { URLSearchParams } from "node:url";
@@ -54,7 +54,7 @@ const graphMeSchema = z.object({
 export class MicrosoftAuthService {
   private clientId =
     process.env.MLULTIMATE_MICROSOFT_CLIENT_ID ?? DEFAULT_MICROSOFT_CLIENT_ID;
-  private cancelPendingOAuth: (() => void) | null = null;
+  private cancelPendingOAuth: ((error?: Error) => void) | null = null;
 
   constructor(private readonly tokenStore: SecureTokenStore) {}
 
@@ -92,9 +92,14 @@ export class MicrosoftAuthService {
       prompt: "select_account",
     }).toString();
 
-    await shell.openExternal(authUrl.toString());
+    const loginPopup = this.openMicrosoftLoginWindow(
+      authUrl.toString(),
+      callback.cancel,
+    );
 
-    const code = await callback.codePromise;
+    const code = await callback.codePromise.finally(() => {
+      loginPopup.close();
+    });
     const microsoftTokens = await this.exchangeCodeForMicrosoftTokens(
       code,
       callback.redirectUri,
@@ -367,12 +372,69 @@ export class MicrosoftAuthService {
 
     return {
       state,
-      redirectUri: `http://localhost:${liveCallback.port}/callback`,
+      redirectUri: `http://localhost:${liveCallback.port}/`,
+      cancel: liveCallback.cancel,
       codePromise: liveCallback.codePromise.finally(() => {
         if (this.cancelPendingOAuth === liveCallback.cancel) {
           this.cancelPendingOAuth = null;
         }
       }),
+    };
+  }
+
+  private openMicrosoftLoginWindow(
+    authUrl: string,
+    cancel: (error?: Error) => void,
+  ) {
+    const parent = BrowserWindow.getFocusedWindow() ?? undefined;
+    const popup = new BrowserWindow({
+      width: 540,
+      height: 720,
+      minWidth: 420,
+      minHeight: 560,
+      title: "Entrar com Microsoft",
+      autoHideMenuBar: true,
+      backgroundColor: "#0D1117",
+      parent,
+      modal: false,
+      show: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+
+    let completedByLauncher = false;
+
+    popup.removeMenu();
+    popup.once("ready-to-show", () => popup.show());
+    popup.once("closed", () => {
+      if (!completedByLauncher) {
+        cancel(
+          new Error(
+            "Login Microsoft cancelado. Clique em Entrar com Microsoft para tentar novamente.",
+          ),
+        );
+      }
+    });
+    popup.webContents.setWindowOpenHandler(({ url }) => {
+      if (url.startsWith("https://")) {
+        void popup.loadURL(url);
+      }
+
+      return { action: "deny" };
+    });
+
+    void popup.loadURL(authUrl);
+
+    return {
+      close: () => {
+        completedByLauncher = true;
+        if (!popup.isDestroyed()) {
+          popup.close();
+        }
+      },
     };
   }
 
@@ -436,10 +498,10 @@ const createLiveOAuthServer = (state: string) => {
   const server = createServer((request, response) => {
     const requestUrl = new URL(
       request.url ?? "/",
-      `http://127.0.0.1:${addressPort(server)}`,
+      `http://localhost:${addressPort(server)}`,
     );
 
-    if (requestUrl.pathname !== "/callback") {
+    if (!["/", "/callback"].includes(requestUrl.pathname)) {
       response.writeHead(404);
       response.end();
       return;
@@ -471,7 +533,7 @@ const createLiveOAuthServer = (state: string) => {
     server.close();
   });
 
-  return new Promise<{ port: number; codePromise: Promise<string>; cancel: () => void }>((resolve, reject) => {
+  return new Promise<{ port: number; codePromise: Promise<string>; cancel: (error?: Error) => void }>((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, () => {
       const port = addressPort(server);
@@ -485,9 +547,9 @@ const createLiveOAuthServer = (state: string) => {
       resolve({
         port,
         codePromise,
-        cancel: () => {
+        cancel: (error?: Error) => {
           clearTimeout(timeout);
-          rejectCode(new Error("Tentativa de login anterior cancelada. Uma nova janela foi aberta."));
+          rejectCode(error ?? new Error("Tentativa de login anterior cancelada. Uma nova janela foi aberta."));
           server.close();
         },
       });
