@@ -1,6 +1,6 @@
 import { ArrowLeft, FolderOpen, Package, Palette, Plus, Play, Power, Search, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import heroImage from "../assets/launcher-hero.png";
+import instanceDefaultImage from "../assets/instance-default.png";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -137,7 +137,7 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
         <div className="flex items-center gap-5 p-4">
           <div
             className="h-28 w-28 shrink-0 bg-cover bg-center"
-            style={{ backgroundImage: `url(${instance.iconDataUrl ?? heroImage})` }}
+            style={{ backgroundImage: `url(${instance.iconDataUrl ?? instanceDefaultImage})` }}
           />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">

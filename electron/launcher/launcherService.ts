@@ -173,7 +173,12 @@ export class LauncherService {
     const forgeJvmArgs = forgeProfile?.arguments?.jvm
       ? resolveArguments(forgeProfile.arguments.jvm, replacements)
       : [];
-    const jvmArgs = [...vanillaJvmArgs, ...fabricJvmArgs, ...forgeJvmArgs];
+    const loaderJvmArgs = stripMemoryJvmArgs([
+      ...vanillaJvmArgs,
+      ...fabricJvmArgs,
+      ...forgeJvmArgs,
+    ]);
+    const jvmArgs = [...buildMemoryJvmArgs(instance.ramMb), ...loaderJvmArgs];
     const vanillaGameArgs = versionJson.arguments?.game
       ? resolveArguments(versionJson.arguments.game, replacements)
       : splitMinecraftArguments(versionJson.minecraftArguments ?? "").map((argument) =>
@@ -529,6 +534,16 @@ const replacePlaceholders = (value: string, replacements: Record<string, string>
 
 const splitMinecraftArguments = (input: string) =>
   input.match(/(?:[^\s"]+|"[^"]*")+/g)?.map((part) => part.replace(/^"|"$/g, "")) ?? [];
+
+const stripMemoryJvmArgs = (args: string[]) =>
+  args.filter((argument) => !/^-Xm[sx]/i.test(argument));
+
+const buildMemoryJvmArgs = (ramMb: number) => {
+  const maxMemory = Math.min(65536, Math.max(1024, Math.round(ramMb)));
+  const initialMemory = Math.min(512, maxMemory);
+
+  return [`-Xms${initialMemory}M`, `-Xmx${maxMemory}M`];
+};
 
 const isFabricBasedLoader = (loader: string) =>
   loader === "fabric" || loader === "iris" || loader === "iris-sodium";

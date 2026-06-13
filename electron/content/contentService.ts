@@ -392,14 +392,26 @@ export class ContentService {
 
     installedProjectIds.add(input.projectId);
 
-    const versions = await this.getModrinthVersions(
+    const loader = normalizeContentLoader(instance.loader) ?? instance.loader;
+    let versions = await this.getModrinthVersions(
       input.projectId,
       input.type,
       instance.minecraftVersion,
-      normalizeContentLoader(instance.loader) ?? instance.loader,
+      loader,
+    );
+    const selectedVersionMissing =
+      input.versionId && !versions.some((candidate) => candidate.id === input.versionId);
+
+    if (versions.length === 0 || selectedVersionMissing) {
+      versions = await this.getAllModrinthVersions(input.projectId);
+    }
+
+    const compatibleVersions = versions.filter((candidate) =>
+      isModrinthVersionCompatible(candidate, input.type, instance.minecraftVersion, loader),
     );
     const version =
-      versions.find((candidate) => candidate.id === input.versionId) ?? versions.at(0);
+      compatibleVersions.find((candidate) => candidate.id === input.versionId) ??
+      compatibleVersions.at(0);
 
     if (!version) {
       throw new Error("Nenhum arquivo Modrinth compatível foi encontrado para esta instância.");
@@ -465,6 +477,19 @@ export class ContentService {
     const response = await fetchWithElectronNet(
       `${MODRINTH_API}/project/${projectId}/version?${params}`,
       "Buscar arquivos no Modrinth",
+    );
+
+    if (!response.ok) {
+      throw new Error(`Modrinth retornou erro ${response.status} ao buscar arquivos.`);
+    }
+
+    return z.array(modrinthVersionSchema).parse(await response.json());
+  }
+
+  private async getAllModrinthVersions(projectId: string) {
+    const response = await fetchWithElectronNet(
+      `${MODRINTH_API}/project/${projectId}/version`,
+      "Buscar todos os arquivos no Modrinth",
     );
 
     if (!response.ok) {
@@ -596,8 +621,9 @@ export class ContentService {
   ) {
     const files: z.infer<typeof curseForgeFilesSchema>["data"] = [];
     const pageSize = 50;
+    const maxFiles = minecraftVersion ? 1000 : 1500;
 
-    for (let index = 0; index < 500; index += pageSize) {
+    for (let index = 0; index < maxFiles; index += pageSize) {
       const params = new URLSearchParams({
         pageSize: String(pageSize),
         index: String(index),
@@ -625,7 +651,7 @@ export class ContentService {
       const page = curseForgeFilesSchema.parse(await response.json()).data;
       files.push(...page);
 
-      if (page.length < pageSize || minecraftVersion) {
+      if (page.length < pageSize) {
         break;
       }
     }
@@ -640,15 +666,37 @@ export class ContentService {
     if (!canInstallContentInLoader(input.type, instance.loader)) {
       throw new Error(contentInstallBlockReason(input.type, instance.loader));
     }
-    const files = await this.getCurseForgeFiles(
+    const loader = normalizeContentLoader(instance.loader) ?? instance.loader;
+    let files = await this.getCurseForgeFiles(
       input.projectId,
       instance.minecraftVersion,
-      normalizeContentLoader(instance.loader),
+      loader,
+    );
+    const selectedFileMissing =
+      input.versionId && !files.some((candidate) => String(candidate.id) === input.versionId);
+
+    if (files.length === 0 || selectedFileMissing) {
+      files = await this.getCurseForgeFiles(input.projectId, instance.minecraftVersion);
+    }
+
+    if (
+      files.length === 0 ||
+      (input.versionId && !files.some((candidate) => String(candidate.id) === input.versionId))
+    ) {
+      files = await this.getCurseForgeFiles(input.projectId);
+    }
+
+    const compatibleFiles = files.filter((candidate) =>
+      isCurseForgeFileCompatible(candidate, input.type, instance.minecraftVersion, loader),
     );
     const file =
-      files.find((candidate) => String(candidate.id) === input.versionId) ??
-      files.find((candidate) => candidate.gameVersions.includes(instance.minecraftVersion)) ??
-      files.at(0);
+      compatibleFiles.find((candidate) => String(candidate.id) === input.versionId) ??
+      compatibleFiles.find((candidate) =>
+        candidate.gameVersions.some((version) =>
+          isMinecraftVersionCompatible(version, instance.minecraftVersion),
+        ),
+      ) ??
+      compatibleFiles.at(0);
 
     if (!file) {
       throw new Error("Nenhum arquivo CurseForge compatível foi encontrado.");
@@ -965,6 +1013,74 @@ const toCurseForgeContentVersion = (
   loaders: file.gameVersions.map((version) => version.toLowerCase()).filter(isLoaderType),
   downloads: file.downloadCount,
 });
+
+const isModrinthVersionCompatible = (
+  version: z.infer<typeof modrinthVersionSchema>,
+  type: ContentType,
+  minecraftVersion: string,
+  loader: LoaderType,
+) => {
+  const gameOk =
+    version.game_versions.length === 0 ||
+    version.game_versions.some((candidate) =>
+      isMinecraftVersionCompatible(candidate, minecraftVersion),
+    );
+
+  if (!gameOk) {
+    return false;
+  }
+
+  if (type === "resourcepack" || type === "shader" || loader === "vanilla") {
+    return true;
+  }
+
+  const loaders = version.loaders
+    .map((candidate) => candidate.toLowerCase())
+    .filter(isLoaderType);
+
+  return loaders.length === 0 || loaders.includes(loader);
+};
+
+const isCurseForgeFileCompatible = (
+  file: z.infer<typeof curseForgeFilesSchema>["data"][number],
+  type: ContentType,
+  minecraftVersion: string,
+  loader: LoaderType,
+) => {
+  const gameVersions = file.gameVersions.filter(isMinecraftVersion);
+  const gameOk =
+    gameVersions.length === 0 ||
+    gameVersions.some((candidate) => isMinecraftVersionCompatible(candidate, minecraftVersion));
+
+  if (!gameOk) {
+    return false;
+  }
+
+  if (type === "resourcepack" || type === "shader" || loader === "vanilla") {
+    return true;
+  }
+
+  const loaders = file.gameVersions
+    .map((candidate) => candidate.toLowerCase())
+    .filter(isLoaderType);
+
+  return loaders.length === 0 || loaders.includes(loader);
+};
+
+const isMinecraftVersionCompatible = (candidate: string, target: string) => {
+  const normalizedCandidate = candidate.trim().toLowerCase();
+  const normalizedTarget = target.trim().toLowerCase();
+
+  if (normalizedCandidate === normalizedTarget) {
+    return true;
+  }
+
+  if (normalizedCandidate.endsWith(".x")) {
+    return normalizedTarget.startsWith(normalizedCandidate.slice(0, -1));
+  }
+
+  return false;
+};
 
 const isLoaderType = (value: string): value is LoaderType =>
   ["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"].includes(value);

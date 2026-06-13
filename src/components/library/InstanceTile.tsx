@@ -1,6 +1,6 @@
 import { FolderOpen, MoreVertical, Pencil, Play, Power, Trash2, X } from "lucide-react";
 import { useState } from "react";
-import heroImage from "../../assets/launcher-hero.png";
+import instanceDefaultImage from "../../assets/instance-default.png";
 import type { DownloadItem, LaunchEvent, LauncherInstance } from "../../types/launcher";
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
@@ -61,7 +61,7 @@ export const InstanceTile = ({
       >
         <div
           className="relative h-[160px] bg-cover bg-center"
-          style={{ backgroundImage: `url(${instance.iconDataUrl ?? heroImage})` }}
+          style={{ backgroundImage: `url(${instance.iconDataUrl ?? instanceDefaultImage})` }}
         >
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/10" />
           <div className="absolute left-2 top-2 rounded-sm bg-black/70 px-2 py-1 text-xs font-semibold text-white">

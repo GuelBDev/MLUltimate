@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ImagePlus, Plus, Upload, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import heroImage from "../assets/launcher-hero.png";
+import instanceDefaultImage from "../assets/instance-default.png";
 import { InstanceTile } from "../components/library/InstanceTile";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -66,6 +66,20 @@ const mapDownloadsToInstances = (
 };
 
 const normalizePath = (value: string) => value.replaceAll("\\", "/").toLowerCase();
+const DEFAULT_RAM_MB = 4096;
+const MIN_RAM_MB = 1024;
+const MAX_RAM_MB = 65536;
+const RAM_STEP_MB = 512;
+
+const clampRamMb = (value: number) => {
+  const safeValue = Number.isFinite(value) ? value : DEFAULT_RAM_MB;
+  const steppedValue = Math.round(safeValue / RAM_STEP_MB) * RAM_STEP_MB;
+
+  return Math.min(MAX_RAM_MB, Math.max(MIN_RAM_MB, steppedValue));
+};
+
+const formatRam = (ramMb: number) =>
+  ramMb % 1024 === 0 ? `${ramMb / 1024} GB` : `${(ramMb / 1024).toFixed(1)} GB`;
 
 export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   const queryClient = useQueryClient();
@@ -89,7 +103,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   const [name, setName] = useState("");
   const [minecraftVersion, setMinecraftVersion] = useState("");
   const [loader, setLoader] = useState<LoaderType>("vanilla");
-  const [ramGb, setRamGb] = useState(4);
+  const [ramMb, setRamMb] = useState(DEFAULT_RAM_MB);
   const [selectedIconPath, setSelectedIconPath] = useState("");
   const [selectedIconPreview, setSelectedIconPreview] = useState("");
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -108,6 +122,8 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
     () => mapDownloadsToInstances(downloads.data ?? [], visibleInstances),
     [downloads.data, visibleInstances],
   );
+  const customRam = ramMb !== DEFAULT_RAM_MB;
+  const updateRamMb = (value: number) => setRamMb(clampRamMb(value));
   const error =
     createInstance.error instanceof Error
       ? createInstance.error.message
@@ -124,7 +140,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
     setName("");
     setMinecraftVersion("");
     setLoader("vanilla");
-    setRamGb(4);
+    setRamMb(DEFAULT_RAM_MB);
     setSelectedIconPath("");
     setSelectedIconPreview("");
     setModalOpen(true);
@@ -135,7 +151,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
     setName(instance.name);
     setMinecraftVersion(instance.minecraftVersion);
     setLoader(instance.loader);
-    setRamGb(Math.round(instance.ramMb / 1024));
+    setRamMb(clampRamMb(instance.ramMb));
     setSelectedIconPath("");
     setSelectedIconPreview(instance.iconDataUrl ?? "");
     setModalOpen(true);
@@ -160,7 +176,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
         {
           id: editing.id,
           name,
-          ramMb: ramGb * 1024,
+          ramMb,
           iconPath: selectedIconPath || undefined,
         },
         {
@@ -179,7 +195,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
         name,
         minecraftVersion: selectedVersion,
         loader,
-        ramMb: ramGb * 1024,
+        ramMb,
         iconPath: selectedIconPath || undefined,
       },
       {
@@ -381,7 +397,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
               <div className="space-y-3">
                 <div
                   className="h-36 w-36 rounded-2xl border border-white/10 bg-cover bg-center shadow-xl shadow-black/30"
-                  style={{ backgroundImage: `url(${selectedIconPreview || heroImage})` }}
+                  style={{ backgroundImage: `url(${selectedIconPreview || instanceDefaultImage})` }}
                 />
                 <Button
                   type="button"
@@ -453,17 +469,77 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                   </div>
                 </div>
 
-                <label className="block">
-                  <span className="text-sm font-semibold text-white">RAM</span>
-                  <input
-                    value={ramGb}
-                    onChange={(event) => setRamGb(Number(event.target.value))}
-                    type="number"
-                    min={1}
-                    max={64}
-                    className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
-                  />
-                </label>
+                <div className="rounded-2xl border border-white/10 bg-[#0D1117]/70 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <span className="text-sm font-semibold text-white">Memory Settings</span>
+                      <p className="mt-1 text-xs leading-5 text-[#94A3B8]">
+                        O valor escolhido aqui e aplicado diretamente no Java ao iniciar o Minecraft.
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-[#60A5FA]/30 bg-[#3B82F6]/15 px-3 py-1 text-xs font-semibold text-[#BFDBFE]">
+                      {ramMb} MB
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3">
+                    <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 transition hover:border-white/20">
+                      <input
+                        type="radio"
+                        name="ram-mode"
+                        checked={!customRam}
+                        onChange={() => setRamMb(DEFAULT_RAM_MB)}
+                        className="h-4 w-4 accent-[#f05a28]"
+                      />
+                      <span className="text-sm font-semibold text-white">
+                        MLUltimate recomendado - {DEFAULT_RAM_MB}MB
+                      </span>
+                    </label>
+
+                    <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 transition hover:border-white/20">
+                      <input
+                        type="radio"
+                        name="ram-mode"
+                        checked={customRam}
+                        onChange={() => setRamMb(ramMb === DEFAULT_RAM_MB ? 8192 : ramMb)}
+                        className="h-4 w-4 accent-[#f05a28]"
+                      />
+                      <span className="text-sm font-semibold text-white">
+                        Custom RAM Allocation
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className={`mt-4 space-y-3 ${customRam ? "" : "opacity-45"}`}>
+                    <input
+                      type="range"
+                      min={MIN_RAM_MB}
+                      max={MAX_RAM_MB}
+                      step={RAM_STEP_MB}
+                      value={ramMb}
+                      disabled={!customRam}
+                      onChange={(event) => updateRamMb(Number(event.target.value))}
+                      className="h-2 w-full cursor-pointer accent-[#f05a28] disabled:cursor-not-allowed"
+                    />
+                    <div className="flex items-center justify-between text-[11px] text-[#94A3B8]">
+                      <span>{formatRam(MIN_RAM_MB)}</span>
+                      <span>{formatRam(MAX_RAM_MB)}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        value={ramMb}
+                        onChange={(event) => updateRamMb(Number(event.target.value))}
+                        disabled={!customRam}
+                        type="number"
+                        min={MIN_RAM_MB}
+                        max={MAX_RAM_MB}
+                        step={RAM_STEP_MB}
+                        className="h-11 w-36 rounded-xl border border-white/10 bg-[#161B22] px-3 text-sm font-semibold text-white outline-none focus:border-[#60A5FA]/70 disabled:cursor-not-allowed"
+                      />
+                      <span className="text-sm text-[#94A3B8]">{formatRam(ramMb)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
