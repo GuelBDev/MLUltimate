@@ -25,11 +25,14 @@ const DEFAULT_CURSEFORGE_PROXY_URL =
   "https://mlultimate-curseforge-proxy.miguelgossani068.workers.dev";
 const CURSEFORGE_PROXY_URL =
   process.env.MLULTIMATE_CURSEFORGE_PROXY_URL || DEFAULT_CURSEFORGE_PROXY_URL;
+const MODRINTH_API = "https://api.modrinth.com/v2";
+const IRIS_PROJECT_ID = "YL57xq9U";
+const SODIUM_PROJECT_ID = "AANobbMI";
 
 const createInstanceSchema = z.object({
   name: z.string().trim().min(2).max(64),
   minecraftVersion: z.string().trim().min(1),
-  loader: z.enum(["vanilla", "fabric", "forge", "neoforge", "quilt"]),
+  loader: z.enum(["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"]),
   ramMb: z.number().int().min(1024).max(65536),
   javaPath: z.string().optional(),
   iconPath: z.string().optional(),
@@ -51,7 +54,7 @@ const importInstanceSchema = z.object({
 const mlultimateManifestSchema = z.object({
   name: z.string().min(2),
   minecraftVersion: z.string().min(1),
-  loader: z.enum(["vanilla", "fabric", "forge", "neoforge", "quilt"]).default("vanilla"),
+  loader: z.enum(["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"]).default("vanilla"),
   ramMb: z.number().int().min(1024).max(65536).default(4096),
 });
 
@@ -108,6 +111,19 @@ const modrinthVersionSchema = z.object({
       url: z.string().url(),
       filename: z.string(),
       primary: z.boolean().optional(),
+    }),
+  ),
+});
+
+const modrinthInstallVersionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  files: z.array(
+    z.object({
+      url: z.string().url(),
+      filename: z.string(),
+      primary: z.boolean().optional(),
+      hashes: z.object({ sha1: z.string().optional() }).optional(),
     }),
   ),
 });
@@ -177,7 +193,7 @@ export class InstanceService {
       ],
     );
 
-    void this.prepareInstance(parsed).catch(() => undefined);
+    void this.prepareInstance(parsed, gameDir).catch(() => undefined);
 
     return this.getById(id);
   }
@@ -282,9 +298,25 @@ export class InstanceService {
     };
   }
 
-  private async prepareInstance(parsed: z.infer<typeof createInstanceSchema>) {
-    if (parsed.loader === "fabric") {
+  private async prepareInstance(parsed: z.infer<typeof createInstanceSchema>, gameDir: string) {
+    if (isFabricBasedLoader(parsed.loader)) {
       await this.minecraftVersions.installFabricLoader(parsed.minecraftVersion);
+      if (parsed.loader === "iris" || parsed.loader === "iris-sodium") {
+        await this.installModrinthMod(
+          IRIS_PROJECT_ID,
+          parsed.minecraftVersion,
+          gameDir,
+          "Iris Shaders",
+        );
+      }
+      if (parsed.loader === "iris-sodium") {
+        await this.installModrinthMod(
+          SODIUM_PROJECT_ID,
+          parsed.minecraftVersion,
+          gameDir,
+          "Sodium",
+        );
+      }
       return;
     }
 
@@ -294,6 +326,41 @@ export class InstanceService {
     }
 
     await this.minecraftVersions.installVersion(parsed.minecraftVersion);
+  }
+
+  private async installModrinthMod(
+    projectId: string,
+    minecraftVersion: string,
+    gameDir: string,
+    label: string,
+  ) {
+    const params = new URLSearchParams({
+      game_versions: JSON.stringify([minecraftVersion]),
+      loaders: JSON.stringify(["fabric"]),
+    });
+    const response = await fetchWithElectronNet(
+      `${MODRINTH_API}/project/${projectId}/version?${params}`,
+      `Buscar ${label} no Modrinth`,
+    );
+
+    if (!response.ok) {
+      throw new Error(`${label} nÃ£o possui versÃ£o compatÃ­vel com Minecraft ${minecraftVersion}.`);
+    }
+
+    const version = z.array(modrinthInstallVersionSchema).parse(await response.json()).at(0);
+    const file = version?.files.find((candidate) => candidate.primary) ?? version?.files.at(0);
+
+    if (!version || !file) {
+      throw new Error(`${label} nÃ£o possui arquivo para baixar.`);
+    }
+
+    await mkdir(path.join(gameDir, "mods"), { recursive: true });
+    await this.downloads.download({
+      label: `${label} ${minecraftVersion}`,
+      url: file.url,
+      destination: path.join(gameDir, "mods", sanitizeFileName(file.filename)),
+      sha1: file.hashes?.sha1,
+    });
   }
 
   async importInstance(input: ImportInstanceInput): Promise<LauncherInstance | null> {
@@ -789,6 +856,9 @@ const loaderFromCurseForgeManifest = (
   if (id.startsWith("neoforge")) return "neoforge";
   return "vanilla";
 };
+
+const isFabricBasedLoader = (loader: LoaderType) =>
+  loader === "fabric" || loader === "iris" || loader === "iris-sodium";
 
 const extractModrinthSlug = (code: string) => {
   if (code.startsWith("modrinth:")) {

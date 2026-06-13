@@ -35,7 +35,7 @@ const downloadIdSchema = z.string().min(1);
 const createInstanceSchema = z.object({
   name: z.string(),
   minecraftVersion: z.string(),
-  loader: z.enum(["vanilla", "fabric", "forge", "neoforge", "quilt"]),
+  loader: z.enum(["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"]),
   ramMb: z.number(),
   javaPath: z.string().optional(),
   iconPath: z.string().optional(),
@@ -54,8 +54,10 @@ const searchContentSchema = z.object({
   type: z.enum(["mod", "modpack", "shader", "resourcepack"]),
   query: z.string(),
   minecraftVersion: z.string().optional(),
-  loader: z.enum(["vanilla", "fabric", "forge", "neoforge", "quilt"]).optional(),
+  loader: z.enum(["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"]).optional(),
   sort: z.enum(["relevance", "downloads", "updated", "newest"]).optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+  offset: z.number().int().min(0).optional(),
 });
 
 const installContentSchema = z.object({
@@ -71,7 +73,7 @@ const contentProjectSchema = z.object({
   type: z.enum(["mod", "modpack", "shader", "resourcepack"]),
   projectId: z.string(),
   minecraftVersion: z.string().optional(),
-  loader: z.enum(["vanilla", "fabric", "forge", "neoforge", "quilt"]).optional(),
+  loader: z.enum(["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"]).optional(),
 });
 
 const importInstanceSchema = z.object({

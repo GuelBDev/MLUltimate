@@ -141,7 +141,7 @@ export const HomePage = ({ focus, onNavigate, onExploreInstance }: HomePageProps
         <Card className="p-8 text-center">
           <p className="text-base font-semibold text-white">Nenhuma instância criada</p>
           <p className="mt-2 text-sm text-[#94A3B8]">
-            Va em Biblioteca e crie seu primeiro perfil.
+            Vá em Meus Modpacks e crie seu primeiro perfil.
           </p>
         </Card>
       ) : null}

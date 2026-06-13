@@ -1,4 +1,4 @@
-import { AlertTriangle, LogOut, ShieldCheck } from "lucide-react";
+import { LogOut, ShieldCheck } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Badge } from "../ui/badge";
@@ -25,8 +25,9 @@ export const AccountPanel = () => {
   const isSignedIn = activeSession?.status === "signed-in";
   const account = isSignedIn ? activeSession.account : null;
   const accountName =
-    account?.displayName?.trim() ||
-    (account?.provider === "offline" ? account.avatarLabel : "Nenhuma conta");
+    account?.provider === "offline"
+      ? `Logado com: ${account.displayName}`
+      : account?.displayName?.trim() || "Nenhuma conta";
   const accountSubtitle = account?.provider === "microsoft" ? account.email : null;
   const equippedSkin = (skins.data ?? []).find((skin) => skin.equippedAt);
   const error =
@@ -76,12 +77,6 @@ export const AccountPanel = () => {
               <span className="text-sm text-[#94A3B8]">Modo</span>
               <Badge tone={account.provider === "microsoft" ? "blue" : "slate"}>
                 {account.provider === "microsoft" ? "Microsoft" : "Offline"}
-              </Badge>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-3">
-              <span className="text-sm text-[#94A3B8]">Acesso</span>
-              <Badge tone={account.serverAccess === "online-mode" ? "green" : "red"}>
-                {account.serverAccess === "online-mode" ? "Online-mode" : "Offline-only"}
               </Badge>
             </div>
             <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-3">
@@ -139,19 +134,6 @@ export const AccountPanel = () => {
             </form>
           </div>
         )}
-      </Card>
-
-      <Card className="border-red-400/20 bg-red-500/8 p-5">
-        <div className="flex gap-3">
-          <AlertTriangle className="mt-0.5 h-5 w-5 text-red-300" />
-          <div>
-            <p className="text-sm font-semibold text-red-100">Modo offline</p>
-            <p className="mt-2 text-sm leading-6 text-red-100/75">
-              Perfil offline não envia autenticação Microsoft. Servidores que exigem
-              conta oficial, como Hypixel, devem bloquear a entrada.
-            </p>
-          </div>
-        </div>
       </Card>
 
       {error ? (

@@ -2,7 +2,7 @@ import {
   Compass,
   Download,
   Home,
-  Library,
+  PackageOpen,
   UserRound,
   Settings,
 } from "lucide-react";
@@ -26,7 +26,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { id: "home", label: "Home", icon: Home },
   { id: "avatar", label: "Avatar", icon: UserRound },
-  { id: "library", label: "Biblioteca", icon: Library },
+  { id: "library", label: "Meus Modpacks", icon: PackageOpen },
   { id: "explore", label: "Explorar", icon: Compass },
   { id: "downloads", label: "Downloads", icon: Download },
   { id: "settings", label: "Configurações", icon: Settings },

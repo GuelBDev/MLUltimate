@@ -19,7 +19,19 @@ type LibraryPageProps = {
   onExploreInstance?: (type: ContentType, instanceId: string) => void;
 };
 
-const loaders: LoaderType[] = ["forge", "fabric", "quilt", "neoforge", "vanilla"];
+const loaderOptions: Array<{
+  id: LoaderType;
+  title: string;
+  description: string;
+}> = [
+  { id: "vanilla", title: "Vanilla", description: "Minecraft limpo, ideal para texturas." },
+  { id: "fabric", title: "Fabric", description: "Leve, moderno e bom para mods." },
+  { id: "iris", title: "Iris", description: "Fabric com suporte a shaders." },
+  { id: "iris-sodium", title: "Iris + Sodium", description: "Shaders com otimização de FPS." },
+  { id: "forge", title: "Forge", description: "Compatível com mods clássicos." },
+  { id: "neoforge", title: "NeoForge", description: "Ecossistema Forge moderno." },
+  { id: "quilt", title: "Quilt", description: "Loader leve derivado do Fabric." },
+];
 
 const mapDownloadsToInstances = (
   downloads: DownloadItem[],
@@ -336,30 +348,45 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
       ) : null}
 
       {modalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm">
           <form
             onSubmit={submit}
-            className="w-[530px] border border-white/15 bg-[#1f1f1f] p-8 shadow-2xl shadow-black/50"
+            className="w-full max-w-3xl overflow-hidden rounded-2xl border border-white/12 bg-[#161B22] shadow-2xl shadow-black/50"
           >
-            <div className="mb-7 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-white">
-                {editing ? "Edit Profile" : "Create Profile"}
-              </h2>
-              <button type="button" onClick={() => setModalOpen(false)}>
-                <X className="h-5 w-5 text-[#94A3B8] hover:text-white" />
-              </button>
+            <div className="relative border-b border-white/10 bg-[#0D1117] p-6">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.22),transparent_38%)]" />
+              <div className="relative flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#60A5FA]">
+                    MLUltimate
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">
+                    {editing ? "Edit Profile" : "Create Profile"}
+                  </h2>
+                  <p className="mt-1 max-w-xl text-sm leading-6 text-[#94A3B8]">
+                    Escolha a versão, o motor do perfil e a memória. Iris e Iris + Sodium usam Fabric por baixo.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-xl p-2 text-[#94A3B8] transition hover:bg-white/8 hover:text-white"
+                  onClick={() => setModalOpen(false)}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-[108px_1fr] gap-6">
+            <div className="grid gap-6 p-6 md:grid-cols-[150px_1fr]">
               <div className="space-y-3">
                 <div
-                  className="h-28 w-28 bg-cover bg-center"
+                  className="h-36 w-36 rounded-2xl border border-white/10 bg-cover bg-center shadow-xl shadow-black/30"
                   style={{ backgroundImage: `url(${selectedIconPreview || heroImage})` }}
                 />
                 <Button
                   type="button"
                   variant="secondary"
-                  className="h-9 w-28 rounded-sm px-2 text-xs"
+                  className="h-10 w-36 rounded-xl px-2 text-xs"
                   onClick={selectIcon}
                 >
                   <ImagePlus className="h-4 w-4" />
@@ -372,7 +399,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                   <input
                     value={name}
                     onChange={(event) => setName(event.target.value)}
-                    className="mt-2 h-10 w-full border border-white/30 bg-[#303030] px-3 text-sm text-white outline-none focus:border-[#f05a28]"
+                    className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
                     placeholder="Profile name"
                     minLength={2}
                     required
@@ -385,7 +412,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                     value={selectedVersion}
                     onChange={(event) => setMinecraftVersion(event.target.value)}
                     disabled={Boolean(editing)}
-                    className="mt-2 h-10 w-full border border-transparent bg-[#303030] px-3 text-sm text-white outline-none focus:border-[#f05a28] disabled:opacity-60"
+                    className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70 disabled:opacity-60"
                   >
                     {releaseVersions.map((version) => (
                       <option key={version.id} value={version.id}>
@@ -397,18 +424,30 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
 
                 <div>
                   <span className="text-sm font-semibold text-white">Modloader</span>
-                  <div className="mt-3 flex flex-wrap gap-4">
-                    {loaders.map((item) => (
-                      <label key={item} className="flex items-center gap-2 text-sm text-[#D8DEE9]">
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {loaderOptions.map((item) => (
+                      <label
+                        key={item.id}
+                        className={`rounded-xl border p-3 transition ${
+                          loader === item.id
+                            ? "border-[#60A5FA] bg-[#3B82F6]/15 shadow-lg shadow-blue-500/10"
+                            : "border-white/10 bg-white/[0.04] hover:border-white/20"
+                        } ${editing ? "opacity-60" : "cursor-pointer"}`}
+                      >
+                        <div className="flex items-center gap-2 text-sm font-semibold text-white">
                         <input
                           type="radio"
                           name="loader"
-                          checked={loader === item}
-                          onChange={() => setLoader(item)}
+                          checked={loader === item.id}
+                          onChange={() => setLoader(item.id)}
                           disabled={Boolean(editing)}
                           className="h-4 w-4 accent-[#f05a28]"
                         />
-                        {item}
+                          {item.title}
+                        </div>
+                        <p className="mt-1 pl-6 text-xs leading-5 text-[#94A3B8]">
+                          {item.description}
+                        </p>
                       </label>
                     ))}
                   </div>
@@ -422,7 +461,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                     type="number"
                     min={1}
                     max={64}
-                    className="mt-2 h-10 w-full border border-transparent bg-[#303030] px-3 text-sm text-white outline-none focus:border-[#f05a28]"
+                    className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
                   />
                 </label>
               </div>
@@ -434,11 +473,11 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
               </div>
             ) : null}
 
-            <div className="mt-8 flex justify-end gap-3 border-t border-white/10 pt-6">
-              <Button type="button" variant="secondary" className="rounded-sm" onClick={() => setModalOpen(false)}>
+            <div className="flex justify-end gap-3 border-t border-white/10 px-6 py-5">
+              <Button type="button" variant="secondary" className="rounded-xl" onClick={() => setModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" className="rounded-sm bg-[#f05a28] hover:bg-[#ff733f]">
+              <Button type="submit" className="rounded-xl bg-[#3B82F6] hover:bg-[#60A5FA]">
                 {editing ? "Save" : createInstance.isPending ? "Creating..." : "Create"}
               </Button>
             </div>

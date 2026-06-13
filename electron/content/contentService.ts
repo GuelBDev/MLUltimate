@@ -30,8 +30,10 @@ const searchInputSchema = z.object({
   type: z.enum(["mod", "modpack", "shader", "resourcepack"]),
   query: z.string().trim().max(80).default(""),
   minecraftVersion: z.string().optional(),
-  loader: z.enum(["vanilla", "fabric", "forge", "neoforge", "quilt"]).optional(),
+  loader: z.enum(["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"]).optional(),
   sort: z.enum(["relevance", "downloads", "updated", "newest"]).optional(),
+  limit: z.number().int().min(1).max(200).default(20),
+  offset: z.number().int().min(0).default(0),
 });
 
 const installInputSchema = z.object({
@@ -47,7 +49,7 @@ const projectInputSchema = z.object({
   type: z.enum(["mod", "modpack", "shader", "resourcepack"]),
   projectId: z.string().min(1),
   minecraftVersion: z.string().optional(),
-  loader: z.enum(["vanilla", "fabric", "forge", "neoforge", "quilt"]).optional(),
+  loader: z.enum(["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"]).optional(),
 });
 
 const modrinthSearchSchema = z.object({
@@ -245,22 +247,24 @@ export class ContentService {
     input: z.infer<typeof searchInputSchema>,
   ): Promise<ContentSearchResult[]> {
     const facets = [[`project_type:${input.type}`]];
+    const loader = normalizeContentLoader(input.loader);
 
     if (input.minecraftVersion) {
       facets.push([`versions:${input.minecraftVersion}`]);
     }
 
     if (
-      input.loader &&
-      input.loader !== "vanilla" &&
+      loader &&
+      loader !== "vanilla" &&
       (input.type === "mod" || input.type === "modpack")
     ) {
-      facets.push([`categories:${input.loader}`]);
+      facets.push([`categories:${loader}`]);
     }
 
     const params = new URLSearchParams({
       query: input.query,
-      limit: "20",
+      limit: String(input.limit),
+      offset: String(input.offset),
       facets: JSON.stringify(facets),
       index: mapModrinthSort(input.sort),
     });
@@ -298,39 +302,52 @@ export class ContentService {
   private async searchCurseForge(
     input: z.infer<typeof searchInputSchema>,
   ): Promise<ContentSearchResult[]> {
-    const params = new URLSearchParams({
-      gameId: String(MINECRAFT_GAME_ID),
-      pageSize: "20",
-      searchFilter: input.query,
-      sortField: mapCurseForgeSort(input.sort),
-      sortOrder: "desc",
-    });
+    const loader = normalizeContentLoader(input.loader);
+    const pageSize = Math.min(input.limit, 50);
+    const pages = Math.max(1, Math.ceil(input.limit / pageSize));
+    const projects: z.infer<typeof curseForgeSearchSchema>["data"] = [];
 
-    const classId = mapCurseForgeClassId(input.type);
+    for (let page = 0; page < pages; page += 1) {
+      const params = new URLSearchParams({
+        gameId: String(MINECRAFT_GAME_ID),
+        pageSize: String(pageSize),
+        index: String(input.offset + page * pageSize),
+        searchFilter: input.query,
+        sortField: mapCurseForgeSort(input.sort),
+        sortOrder: "desc",
+      });
 
-    if (classId) {
-      params.set("classId", String(classId));
+      const classId = mapCurseForgeClassId(input.type);
+
+      if (classId) {
+        params.set("classId", String(classId));
+      }
+
+      if (input.minecraftVersion) {
+        params.set("gameVersion", input.minecraftVersion);
+      }
+
+      const modLoaderType = mapCurseForgeModLoader(loader);
+
+      if (modLoaderType && (input.type === "mod" || input.type === "modpack")) {
+        params.set("modLoaderType", String(modLoaderType));
+      }
+
+      const response = await this.fetchCurseForge(`/mods/search?${params}`, "Buscar projetos na CurseForge");
+
+      if (!response.ok) {
+        throw new Error(`CurseForge retornou erro ${response.status}.`);
+      }
+
+      const json = curseForgeSearchSchema.parse(await response.json());
+      projects.push(...json.data);
+
+      if (json.data.length < pageSize) {
+        break;
+      }
     }
 
-    if (input.minecraftVersion) {
-      params.set("gameVersion", input.minecraftVersion);
-    }
-
-    const modLoaderType = mapCurseForgeModLoader(input.loader);
-
-    if (modLoaderType && (input.type === "mod" || input.type === "modpack")) {
-      params.set("modLoaderType", String(modLoaderType));
-    }
-
-    const response = await this.fetchCurseForge(`/mods/search?${params}`, "Buscar projetos na CurseForge");
-
-    if (!response.ok) {
-      throw new Error(`CurseForge retornou erro ${response.status}.`);
-    }
-
-    const json = curseForgeSearchSchema.parse(await response.json());
-
-    return json.data.map((project) => ({
+    return projects.map((project) => ({
       provider: "curseforge",
       providers: ["curseforge"],
       type: input.type,
@@ -365,8 +382,8 @@ export class ContentService {
   ): Promise<InstalledContent[]> {
     const instance = await this.instances.getById(input.instanceId);
 
-    if (input.type === "mod" && instance.loader === "vanilla") {
-      throw new Error("Mods exigem uma instância com Fabric, Forge, NeoForge ou Quilt.");
+    if (!canInstallContentInLoader(input.type, instance.loader)) {
+      throw new Error(contentInstallBlockReason(input.type, instance.loader));
     }
 
     if (installedProjectIds.has(input.projectId)) {
@@ -379,7 +396,7 @@ export class ContentService {
       input.projectId,
       input.type,
       instance.minecraftVersion,
-      instance.loader,
+      normalizeContentLoader(instance.loader) ?? instance.loader,
     );
     const version =
       versions.find((candidate) => candidate.id === input.versionId) ?? versions.at(0);
@@ -436,12 +453,13 @@ export class ContentService {
     minecraftVersion: string,
     loader: LoaderType,
   ) {
+    const contentLoader = normalizeContentLoader(loader);
     const params = new URLSearchParams({
       game_versions: JSON.stringify([minecraftVersion]),
     });
 
-    if ((type === "mod" || type === "modpack") && loader !== "vanilla") {
-      params.set("loaders", JSON.stringify([loader]));
+    if ((type === "mod" || type === "modpack") && contentLoader !== "vanilla") {
+      params.set("loaders", JSON.stringify([contentLoader]));
     }
 
     const response = await fetchWithElectronNet(
@@ -464,7 +482,7 @@ export class ContentService {
           input.projectId,
           input.type,
           input.minecraftVersion,
-          input.loader ?? "vanilla",
+          normalizeContentLoader(input.loader) ?? "vanilla",
         )
       : fetchWithElectronNet(
           `${MODRINTH_API}/project/${input.projectId}/version`,
@@ -528,7 +546,11 @@ export class ContentService {
   ): Promise<ContentProjectDetails> {
     const [projectResponse, filesResponse] = await Promise.all([
       this.fetchCurseForge(`/mods/${input.projectId}`, "Buscar detalhes na CurseForge"),
-      this.getCurseForgeFiles(input.projectId, input.minecraftVersion, input.loader),
+      this.getCurseForgeFiles(
+        input.projectId,
+        input.minecraftVersion,
+        normalizeContentLoader(input.loader),
+      ),
     ]);
 
     if (!projectResponse.ok) {
@@ -572,40 +594,56 @@ export class ContentService {
     minecraftVersion?: string,
     loader?: LoaderType,
   ) {
-    const params = new URLSearchParams({
-      pageSize: "40",
-    });
+    const files: z.infer<typeof curseForgeFilesSchema>["data"] = [];
+    const pageSize = 50;
 
-    if (minecraftVersion) {
-      params.set("gameVersion", minecraftVersion);
+    for (let index = 0; index < 500; index += pageSize) {
+      const params = new URLSearchParams({
+        pageSize: String(pageSize),
+        index: String(index),
+      });
+
+      if (minecraftVersion) {
+        params.set("gameVersion", minecraftVersion);
+      }
+
+      const modLoaderType = mapCurseForgeModLoader(loader);
+
+      if (modLoaderType) {
+        params.set("modLoaderType", String(modLoaderType));
+      }
+
+      const response = await this.fetchCurseForge(
+        `/mods/${projectId}/files?${params}`,
+        "Buscar arquivos na CurseForge",
+      );
+
+      if (!response.ok) {
+        throw new Error(`CurseForge retornou erro ${response.status} ao buscar arquivos.`);
+      }
+
+      const page = curseForgeFilesSchema.parse(await response.json()).data;
+      files.push(...page);
+
+      if (page.length < pageSize || minecraftVersion) {
+        break;
+      }
     }
 
-    const modLoaderType = mapCurseForgeModLoader(loader);
-
-    if (modLoaderType) {
-      params.set("modLoaderType", String(modLoaderType));
-    }
-
-    const response = await this.fetchCurseForge(
-      `/mods/${projectId}/files?${params}`,
-      "Buscar arquivos na CurseForge",
-    );
-
-    if (!response.ok) {
-      throw new Error(`CurseForge retornou erro ${response.status} ao buscar arquivos.`);
-    }
-
-    return curseForgeFilesSchema.parse(await response.json()).data;
+    return files;
   }
 
   private async installCurseForge(
     input: z.infer<typeof installInputSchema>,
   ): Promise<InstalledContent> {
     const instance = await this.instances.getById(input.instanceId);
+    if (!canInstallContentInLoader(input.type, instance.loader)) {
+      throw new Error(contentInstallBlockReason(input.type, instance.loader));
+    }
     const files = await this.getCurseForgeFiles(
       input.projectId,
       instance.minecraftVersion,
-      instance.loader,
+      normalizeContentLoader(instance.loader),
     );
     const file =
       files.find((candidate) => String(candidate.id) === input.versionId) ??
@@ -782,7 +820,7 @@ const mapCurseForgeClassId = (type: ContentType) => {
 };
 
 const mapCurseForgeModLoader = (loader?: LoaderType) => {
-  switch (loader) {
+  switch (normalizeContentLoader(loader)) {
     case "forge":
       return 1;
     case "fabric":
@@ -795,6 +833,44 @@ const mapCurseForgeModLoader = (loader?: LoaderType) => {
     default:
       return null;
   }
+};
+
+const normalizeContentLoader = (loader?: LoaderType): LoaderType | undefined => {
+  if (loader === "iris" || loader === "iris-sodium") {
+    return "fabric";
+  }
+
+  return loader;
+};
+
+const canInstallContentInLoader = (type: ContentType, loader: LoaderType) => {
+  if (type === "resourcepack") {
+    return true;
+  }
+
+  if (type === "shader") {
+    return loader === "iris" || loader === "iris-sodium";
+  }
+
+  return loader !== "vanilla";
+};
+
+const contentInstallBlockReason = (type: ContentType, loader: LoaderType) => {
+  if (type === "shader") {
+    return loader === "vanilla"
+      ? "Shaders precisam de um motor grÃ¡fico. Crie uma instÃ¢ncia Iris ou Iris + Sodium."
+      : "Este shader nÃ£o Ã© compatÃ­vel com o motor grÃ¡fico desta instÃ¢ncia.";
+  }
+
+  if (type === "modpack") {
+    return "Modpacks precisam de uma instÃ¢ncia com loader compatÃ­vel.";
+  }
+
+  if (type === "mod") {
+    return "Mods exigem uma instÃ¢ncia com Fabric, Forge, NeoForge, Quilt, Iris ou Iris + Sodium.";
+  }
+
+  return "Este conteÃºdo nÃ£o Ã© compatÃ­vel com a instÃ¢ncia selecionada.";
 };
 
 const folderForType = (type: ContentType) => {
@@ -891,7 +967,7 @@ const toCurseForgeContentVersion = (
 });
 
 const isLoaderType = (value: string): value is LoaderType =>
-  ["vanilla", "fabric", "forge", "neoforge", "quilt"].includes(value);
+  ["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"].includes(value);
 
 const isMinecraftVersion = (value: unknown): value is string =>
   typeof value === "string" && /^\d+(?:\.\d+){0,2}(?:[-\w.]*)?$/.test(value);

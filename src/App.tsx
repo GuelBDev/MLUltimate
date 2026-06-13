@@ -20,7 +20,7 @@ import type { ContentType } from "./types/launcher";
 const pageTitles: Record<PageId, string> = {
   home: "Home",
   avatar: "Avatar",
-  library: "Biblioteca",
+  library: "Meus Modpacks",
   explore: "Explorar",
   downloads: "Downloads",
   settings: "Configurações",

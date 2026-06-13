@@ -1,4 +1,4 @@
-import { ArrowLeft, FolderOpen, Plus, Play, Power, Trash2, X } from "lucide-react";
+import { ArrowLeft, FolderOpen, Package, Palette, Plus, Play, Power, Search, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import heroImage from "../assets/launcher-hero.png";
 import { Badge } from "../components/ui/badge";
@@ -34,9 +34,27 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
   const runningInstances = useRunningInstances();
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchEvent, setLaunchEvent] = useState<LaunchEvent | null>(null);
+  const [contentQuery, setContentQuery] = useState("");
   const items = useMemo(
-    () => (content.data ?? []).filter((item) => item.type === activeTab),
-    [activeTab, content.data],
+    () => {
+      const normalized = contentQuery.trim().toLowerCase();
+
+      return (content.data ?? []).filter((item) => {
+        if (item.type !== activeTab) {
+          return false;
+        }
+
+        if (!normalized) {
+          return true;
+        }
+
+        return [item.name, item.fileName, item.provider]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalized);
+      });
+    },
+    [activeTab, content.data, contentQuery],
   );
   const activeDownload = useMemo(
     () => findInstanceDownload(downloads.data ?? [], instance),
@@ -206,6 +224,17 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
       </div>
 
       <Card className="overflow-hidden rounded-sm border-white/10 bg-[#1f1f1f]">
+        <div className="border-b border-white/10 p-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
+            <input
+              value={contentQuery}
+              onChange={(event) => setContentQuery(event.target.value)}
+              className="h-10 w-full rounded-xl border border-white/10 bg-[#0D1117] pl-9 pr-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+              placeholder={`Pesquisar ${tabs.find((tab) => tab.id === activeTab)?.label ?? "conteúdo"}`}
+            />
+          </div>
+        </div>
         <div className="grid grid-cols-[1fr_180px_120px] border-b border-white/10 bg-white/7 px-4 py-3 text-sm font-semibold text-white">
           <span>Name</span>
           <span>Provider</span>
@@ -216,9 +245,12 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
             key={item.id}
             className="grid grid-cols-[1fr_180px_120px] items-center border-b border-white/6 px-4 py-4 text-sm last:border-b-0"
           >
-            <div>
-              <p className="font-semibold text-white">{item.name}</p>
-              <p className="mt-1 text-[#94A3B8]">{item.fileName}</p>
+            <div className="flex min-w-0 items-center gap-3">
+              <ContentIcon type={item.type} />
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-white">{item.name}</p>
+                <p className="mt-1 truncate text-[#94A3B8]">{item.fileName}</p>
+              </div>
             </div>
             <span className="text-[#B8C2D0]">{item.provider}</span>
             <button
@@ -263,3 +295,14 @@ const findInstanceDownload = (downloads: DownloadItem[], instance: LauncherInsta
 };
 
 const normalizePath = (value: string) => value.replaceAll("\\", "/").toLowerCase();
+
+const ContentIcon = ({ type }: { type: ContentType }) => {
+  const Icon =
+    type === "resourcepack" ? Palette : type === "shader" ? Sparkles : Package;
+
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 text-[#60A5FA]">
+      <Icon className="h-4 w-4" />
+    </span>
+  );
+};

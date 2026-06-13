@@ -59,7 +59,14 @@ export type LaunchEvent = {
   createdAt: string;
 };
 
-export type LoaderType = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt";
+export type LoaderType =
+  | "vanilla"
+  | "fabric"
+  | "iris"
+  | "iris-sodium"
+  | "forge"
+  | "neoforge"
+  | "quilt";
 
 export type ContentProvider = "modrinth" | "curseforge";
 export type ContentProviderFilter = ContentProvider | "all";
@@ -131,6 +138,8 @@ export type ContentSearchInput = {
   minecraftVersion?: string;
   loader?: LoaderType;
   sort?: "relevance" | "downloads" | "updated" | "newest";
+  limit?: number;
+  offset?: number;
 };
 
 export type ContentSearchResult = {

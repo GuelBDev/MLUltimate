@@ -54,7 +54,7 @@ export class LauncherService {
     try {
       const instance = await this.instances.getById(request.instanceId);
 
-      if (!["vanilla", "fabric", "forge"].includes(instance.loader)) {
+      if (!["vanilla", "fabric", "iris", "iris-sodium", "forge"].includes(instance.loader)) {
         throw new Error(
           `A execucao real de ${instance.loader} ainda precisa de instalador proprio. Vanilla, Fabric e Forge ja estao conectados.`,
         );
@@ -97,7 +97,7 @@ export class LauncherService {
       const versionJson = await this.minecraftVersions.readInstalledVersionJson(
         instance.minecraftVersion,
       );
-      if (instance.loader === "fabric") {
+      if (isFabricBasedLoader(instance.loader)) {
         await this.minecraftVersions.installFabricLoader(instance.minecraftVersion);
       }
       if (instance.loader === "forge") {
@@ -111,7 +111,7 @@ export class LauncherService {
       extractNatives(versionJson.libraries, minecraftRoot, nativesDir);
 
     const fabricProfile =
-      instance.loader === "fabric"
+      isFabricBasedLoader(instance.loader)
         ? await this.minecraftVersions.readInstalledFabricProfile(instance.minecraftVersion)
         : null;
     const forgeProfile =
@@ -529,6 +529,9 @@ const replacePlaceholders = (value: string, replacements: Record<string, string>
 
 const splitMinecraftArguments = (input: string) =>
   input.match(/(?:[^\s"]+|"[^"]*")+/g)?.map((part) => part.replace(/^"|"$/g, "")) ?? [];
+
+const isFabricBasedLoader = (loader: string) =>
+  loader === "fabric" || loader === "iris" || loader === "iris-sodium";
 
 const killProcessTree = (child: ChildProcess) =>
   new Promise<void>((resolve) => {

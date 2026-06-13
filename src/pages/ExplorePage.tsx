@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowLeft, Download, Images, RefreshCw, Search } from "lucide-react";
+import { ArrowLeft, Download, Images, Package, Palette, RefreshCw, Search, Sparkles } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -25,7 +25,7 @@ type ExplorePageProps = {
 
 const providerFilters: ContentProviderFilter[] = ["all", "modrinth", "curseforge"];
 const types: ContentType[] = ["mod", "modpack", "resourcepack", "shader"];
-const loaders: LoaderType[] = ["vanilla", "fabric", "forge", "neoforge", "quilt"];
+const loaders: LoaderType[] = ["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"];
 const detailTabs = ["content", "gallery", "versions", "comments"] as const;
 type DetailTab = (typeof detailTabs)[number];
 
@@ -60,6 +60,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
   const [selectedProject, setSelectedProject] = useState<ContentSearchResult | null>(null);
   const [activeTab, setActiveTab] = useState<DetailTab>("versions");
   const [installTarget, setInstallTarget] = useState<InstallTarget | null>(null);
+  const [loadClicks, setLoadClicks] = useState(0);
 
   const releaseVersions = useMemo(
     () =>
@@ -71,6 +72,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
   const selectedVersion = version;
   const effectiveVersion = selectedVersion;
   const effectiveLoader = loader;
+  const resultLimit = loadClicks < 3 ? 20 + loadClicks * 20 : 60 + (loadClicks - 2) * 40;
 
   const search = useMutation({
     mutationFn: (input: ContentSearchInput) => launcherApi.searchContent(input),
@@ -83,8 +85,6 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
         provider: project.provider,
         type: project.type,
         projectId: project.projectId,
-        minecraftVersion: effectiveVersion || undefined,
-        loader: effectiveLoader || undefined,
       }),
   });
 
@@ -116,6 +116,8 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
       minecraftVersion: effectiveVersion || undefined,
       loader: effectiveLoader || undefined,
       sort: "downloads",
+      limit: resultLimit,
+      offset: 0,
     });
   };
 
@@ -123,7 +125,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
     const timer = window.setTimeout(runSearch, 450);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider, type, query, effectiveVersion, effectiveLoader]);
+  }, [provider, type, query, effectiveVersion, effectiveLoader, resultLimit]);
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -134,6 +136,11 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
     setSelectedProject(project);
     setActiveTab("versions");
     details.mutate(project);
+  };
+
+  const updateSearchShape = (next: () => void) => {
+    setLoadClicks(0);
+    next();
   };
 
   const requestInstall = (project: ContentSearchResult | ContentProjectDetails, selectedContentVersion?: ContentVersion) => {
@@ -187,14 +194,13 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
           <Badge tone="blue">{providerLabels[provider]}</Badge>
         </div>
 
-        <form
-          className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(110px,0.8fr)_minmax(120px,0.9fr)_minmax(160px,1fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_44px_44px]"
-          onSubmit={submit}
-        >
+        <form className="mt-5 flex flex-wrap items-center gap-3" onSubmit={submit}>
           <select
             value={provider}
-            onChange={(event) => setProvider(event.target.value as ContentProviderFilter)}
-            className="h-11 min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            onChange={(event) =>
+              updateSearchShape(() => setProvider(event.target.value as ContentProviderFilter))
+            }
+            className="h-11 min-w-[120px] flex-1 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             {providerFilters.map((item) => (
               <option key={item} value={item}>
@@ -204,8 +210,10 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
           </select>
           <select
             value={type}
-            onChange={(event) => setType(event.target.value as ContentType)}
-            className="h-11 min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            onChange={(event) =>
+              updateSearchShape(() => setType(event.target.value as ContentType))
+            }
+            className="h-11 min-w-[130px] flex-1 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             {types.map((item) => (
               <option key={item} value={item}>
@@ -215,14 +223,14 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
           </select>
           <input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className="h-11 min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            onChange={(event) => updateSearchShape(() => setQuery(event.target.value))}
+            className="h-11 min-w-[180px] flex-[1.6] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
             placeholder="Pesquisar"
           />
           <select
             value={selectedVersion}
-            onChange={(event) => setVersion(event.target.value)}
-            className="h-11 min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            onChange={(event) => updateSearchShape(() => setVersion(event.target.value))}
+            className="h-11 min-w-[140px] flex-1 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             <option value="">Todas versoes</option>
             {releaseVersions.map((item) => (
@@ -233,8 +241,10 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
           </select>
           <select
             value={loader}
-            onChange={(event) => setLoader(event.target.value as LoaderType | "")}
-            className="h-11 min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            onChange={(event) =>
+              updateSearchShape(() => setLoader(event.target.value as LoaderType | ""))
+            }
+            className="h-11 min-w-[140px] flex-1 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             <option value="">Todos loaders</option>
             {loaders.map((item) => (
@@ -243,19 +253,21 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
               </option>
             ))}
           </select>
-          <Button type="submit" size="icon" title="Buscar" disabled={search.isPending}>
-            <Search className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            size="icon"
-            variant="secondary"
-            title="Atualizar lista"
-            onClick={runSearch}
-            disabled={search.isPending}
-          >
-            <RefreshCw className={`h-4 w-4 ${search.isPending ? "animate-spin" : ""}`} />
-          </Button>
+          <div className="flex shrink-0 gap-2">
+            <Button type="submit" size="icon" title="Buscar" disabled={search.isPending}>
+              <Search className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="secondary"
+              title="Atualizar lista"
+              onClick={runSearch}
+              disabled={search.isPending}
+            >
+              <RefreshCw className={`h-4 w-4 ${search.isPending ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
         </form>
 
         <p className="mt-3 text-xs text-[#94A3B8]">
@@ -344,6 +356,20 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
         </Card>
       ) : null}
 
+      {results.length > 0 ? (
+        <div className="flex justify-center pb-2">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setLoadClicks((value) => value + 1)}
+            disabled={search.isPending}
+          >
+            <RefreshCw className={`h-4 w-4 ${search.isPending ? "animate-spin" : ""}`} />
+            Carregar Mais
+          </Button>
+        </div>
+      ) : null}
+
       <InstallInstanceDialog
         target={installTarget}
         instances={instances.data ?? []}
@@ -393,8 +419,29 @@ const ProjectDetails = ({
   onConfirmInstall,
 }: ProjectDetailsProps) => {
   const current = project ?? fallback;
-  const versions = project?.versions ?? [];
+  const versions = useMemo(() => project?.versions ?? [], [project?.versions]);
+  const [versionQuery, setVersionQuery] = useState("");
   const latestVersion = versions.at(0);
+  const filteredVersions = useMemo(() => {
+    const normalized = versionQuery.trim().toLowerCase();
+
+    if (!normalized) {
+      return versions;
+    }
+
+    return versions.filter((version) =>
+      [
+        version.name,
+        version.fileName,
+        version.provider,
+        ...version.gameVersions,
+        ...version.loaders,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalized),
+    );
+  }, [versionQuery, versions]);
   const visibleTabs = useMemo(
     () => detailTabs.filter((tab) => tab !== "content" || current.type === "modpack"),
     [current.type],
@@ -484,15 +531,31 @@ const ProjectDetails = ({
       <Card className="rounded-sm border-white/10 bg-[#1f1f1f] p-5">
         {activeTab === "versions" ? (
           <div className="space-y-2">
-            {versions.map((version) => (
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <div className="relative min-w-[220px] flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
+                <input
+                  value={versionQuery}
+                  onChange={(event) => setVersionQuery(event.target.value)}
+                  className="h-10 w-full rounded-xl border border-white/10 bg-[#0D1117] pl-9 pr-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+                  placeholder="Pesquisar versÃ£o, loader ou arquivo"
+                />
+              </div>
+              <Badge tone="slate">{filteredVersions.length} versÃµes</Badge>
+            </div>
+            {filteredVersions.map((version) => (
               <VersionRow
                 key={`${version.provider}-${version.id}`}
+                type={current.type}
                 version={version}
                 onInstall={() => onInstall(version)}
                 installing={installing}
               />
             ))}
             {versions.length === 0 ? <EmptyDetail text="Carregando versoes..." /> : null}
+            {versions.length > 0 && filteredVersions.length === 0 ? (
+              <EmptyDetail text="Nenhuma versÃ£o encontrada para esta busca." />
+            ) : null}
           </div>
         ) : null}
 
@@ -520,14 +583,29 @@ const ProjectDetails = ({
 
         {activeTab === "content" ? (
           <div className="space-y-2">
-            {versions.slice(0, 30).map((version) => (
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <div className="relative min-w-[220px] flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
+                <input
+                  value={versionQuery}
+                  onChange={(event) => setVersionQuery(event.target.value)}
+                  className="h-10 w-full rounded-xl border border-white/10 bg-[#0D1117] pl-9 pr-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+                  placeholder="Pesquisar conteúdo do projeto"
+                />
+              </div>
+              <Badge tone="slate">{filteredVersions.length} arquivos</Badge>
+            </div>
+            {filteredVersions.slice(0, 60).map((version) => (
               <div
                 key={`content-${version.id}`}
                 className="grid grid-cols-[1fr_120px_120px] gap-3 border-b border-white/8 px-2 py-3 text-sm last:border-b-0"
               >
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-white">{version.fileName}</p>
-                  <p className="mt-1 truncate text-[#94A3B8]">{version.name}</p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <ContentTypeIcon type={current.type} />
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-white">{version.fileName}</p>
+                    <p className="mt-1 truncate text-[#94A3B8]">{version.name}</p>
+                  </div>
                 </div>
                 <span className="text-[#B8C2D0]">{version.gameVersions.at(0) ?? "-"}</span>
                 <span className="text-[#B8C2D0]">{version.provider}</span>
@@ -535,6 +613,9 @@ const ProjectDetails = ({
             ))}
             {versions.length === 0 ? (
               <EmptyDetail text={project?.contentNote ?? "Conteúdo aparece depois de instalar na instância."} />
+            ) : null}
+            {versions.length > 0 && filteredVersions.length === 0 ? (
+              <EmptyDetail text="Nenhum arquivo encontrado para esta busca." />
             ) : null}
           </div>
         ) : null}
@@ -552,18 +633,23 @@ const ProjectDetails = ({
 };
 
 const VersionRow = ({
+  type,
   version,
   onInstall,
   installing,
 }: {
+  type: ContentType;
   version: ContentVersion;
   onInstall: () => void;
   installing: boolean;
 }) => (
   <div className="grid grid-cols-1 items-center gap-3 border-b border-white/8 px-2 py-3 text-sm last:border-b-0 md:grid-cols-[1fr_130px_120px_120px]">
-    <div className="min-w-0">
-      <p className="truncate font-semibold text-white">{version.name}</p>
-      <p className="mt-1 truncate text-[#94A3B8]">{version.fileName}</p>
+    <div className="flex min-w-0 items-center gap-3">
+      <ContentTypeIcon type={type} />
+      <div className="min-w-0">
+        <p className="truncate font-semibold text-white">{version.name}</p>
+        <p className="mt-1 truncate text-[#94A3B8]">{version.fileName}</p>
+      </div>
     </div>
     <span className="text-[#B8C2D0]">{version.gameVersions.at(0) ?? "-"}</span>
     <span className="text-[#B8C2D0]">{version.loaders.join(", ") || version.provider}</span>
@@ -615,7 +701,7 @@ const InstallInstanceDialog = ({
             </p>
             <h2 className="mt-2 truncate text-xl font-semibold text-white">{title}</h2>
             <p className="mt-1 text-sm text-[#94A3B8]">
-              Instâncias vanilla e incompatíveis aparecem bloqueadas para evitar arquivo quebrado.
+              Texturas funcionam em vanilla; mods, shaders e modpacks exigem loader ou motor gráfico compatível.
             </p>
           </div>
           <Button type="button" variant="ghost" onClick={onClose} disabled={installing}>
@@ -655,7 +741,7 @@ const InstallInstanceDialog = ({
 
           {compatibilityRows.length === 0 ? (
             <div className="rounded-xl border border-white/10 bg-[#0D1117] p-6 text-center text-sm text-[#94A3B8]">
-              Crie uma instância Fabric, Forge, NeoForge ou Quilt na Biblioteca antes de instalar conteúdo.
+              Crie uma instância em Meus Modpacks antes de instalar conteúdo.
             </div>
           ) : null}
         </div>
@@ -680,8 +766,28 @@ const getInstallCompatibility = (
   version: ContentVersion | undefined,
   instance: LauncherInstance,
 ) => {
+  if (project.type === "resourcepack") {
+    return { compatible: true, reason: `Textura pronta para instalar em ${instance.name}.` };
+  }
+
+  if (project.type === "shader" && !["iris", "iris-sodium"].includes(instance.loader)) {
+    return {
+      compatible: false,
+      reason:
+        instance.loader === "vanilla"
+          ? "Shaders precisam de Iris, Iris + Sodium ou outro motor gráfico. Vanilla aceita apenas texturas."
+          : `Esta instância usa ${instance.loader}; crie uma instância Iris ou Iris + Sodium para shaders.`,
+    };
+  }
+
   if (instance.loader === "vanilla") {
-    return { compatible: false, reason: "Instância vanilla não aceita instalação automática de mods, shaders ou modpacks." };
+    return {
+      compatible: false,
+      reason:
+        project.type === "modpack"
+          ? "Modpacks precisam de uma instância com loader compatível."
+          : "Mods precisam de Fabric, Forge, NeoForge, Quilt, Iris ou Iris + Sodium. Vanilla aceita apenas texturas.",
+    };
   }
 
   const gameVersions = version?.gameVersions ?? project.compatibleGameVersions ?? [];
@@ -697,10 +803,11 @@ const getInstallCompatibility = (
   }
 
   const contentLoaders = version?.loaders ?? project.compatibleLoaders ?? [];
+  const instanceContentLoader = normalizeContentLoader(instance.loader);
   const loaderCompatible =
-    project.type === "resourcepack" ||
+    project.type === "shader" ||
     contentLoaders.length === 0 ||
-    contentLoaders.includes(instance.loader);
+    contentLoaders.includes(instanceContentLoader);
 
   if (!loaderCompatible) {
     return {
@@ -714,6 +821,9 @@ const getInstallCompatibility = (
     reason: `Pronto para instalar em ${instance.name}.`,
   };
 };
+
+const normalizeContentLoader = (loader: LoaderType): LoaderType =>
+  loader === "iris" || loader === "iris-sodium" ? "fabric" : loader;
 
 const isMinecraftVersionCompatible = (supported: string, instanceVersion: string) => {
   if (supported === instanceVersion) {
@@ -762,3 +872,14 @@ const EmptyDetail = ({ text, icon = false }: { text: string; icon?: boolean }) =
     {text}
   </div>
 );
+
+const ContentTypeIcon = ({ type }: { type: ContentType }) => {
+  const Icon =
+    type === "resourcepack" ? Palette : type === "shader" ? Sparkles : Package;
+
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 text-[#60A5FA]">
+      <Icon className="h-4 w-4" />
+    </span>
+  );
+};
