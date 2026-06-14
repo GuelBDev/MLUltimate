@@ -5,10 +5,12 @@ import type {
   ContentProjectInput,
   ContentSearchInput,
   ContentSearchResult,
+  ContentType,
   CreateInstanceInput,
   DownloadItem,
   InstallContentInput,
   InstalledContent,
+  InstalledContentUpdateInfo,
   ImportInstanceInput,
   InstanceIconSelection,
   LaunchEvent,
@@ -88,6 +90,16 @@ const api = {
       ipcRenderer.invoke("content:install", input) as Promise<InstalledContent[]>,
     listInstalled: (instanceId: string) =>
       ipcRenderer.invoke("content:list-installed", instanceId) as Promise<InstalledContent[]>,
+    checkUpdates: (instanceId: string) =>
+      ipcRenderer.invoke("content:check-updates", instanceId) as Promise<InstalledContentUpdateInfo[]>,
+    updateInstalled: (id: string) =>
+      ipcRenderer.invoke("content:update-installed", id) as Promise<InstalledContent>,
+    updateAllInstalled: (input: { instanceId: string; type?: ContentType }) =>
+      ipcRenderer.invoke("content:update-all-installed", input) as Promise<InstalledContent[]>,
+    toggleInstalled: (input: { id: string; enabled: boolean }) =>
+      ipcRenderer.invoke("content:toggle-installed", input) as Promise<InstalledContent>,
+    removeInstalled: (id: string) =>
+      ipcRenderer.invoke("content:remove-installed", id) as Promise<void>,
   },
   downloads: {
     list: () => ipcRenderer.invoke("downloads:list") as Promise<DownloadItem[]>,

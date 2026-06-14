@@ -1,4 +1,5 @@
-import { ArrowLeft, FolderOpen, Package, Palette, Plus, Play, Power, Search, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, FolderOpen, Package, Palette, Plus, Play, Power, RefreshCw, Search, Sparkles, Trash2, X } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import instanceDefaultImage from "../assets/instance-default.png";
 import { Badge } from "../components/ui/badge";
@@ -26,9 +27,16 @@ const tabs: Array<{ id: ContentType; label: string }> = [
 ];
 
 export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDetailPageProps) => {
+  const queryClient = useQueryClient();
   const dialog = useAppDialog();
   const [activeTab, setActiveTab] = useState<ContentType>("mod");
   const content = useInstalledContent(instance.id);
+  const updates = useQuery({
+    queryKey: ["installed-content-updates", instance.id],
+    queryFn: () => launcherApi.checkInstalledContentUpdates(instance.id),
+    enabled: instance.contentManagementEnabled && (content.data?.length ?? 0) > 0,
+    staleTime: 60_000,
+  });
   const { openFolder } = useInstances();
   const downloads = useDownloads();
   const runningInstances = useRunningInstances();
@@ -63,6 +71,74 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
   const activity = launchEvent ?? activeDownload;
   const activityLabel = launchEvent?.message ?? activeDownload?.label;
   const activityProgress = launchEvent?.progress ?? activeDownload?.progress ?? 0;
+  const updateMap = useMemo(
+    () => new Map((updates.data ?? []).map((item) => [item.id, item])),
+    [updates.data],
+  );
+  const updateCount = items.filter((item) => updateMap.get(item.id)?.updateAvailable).length;
+
+  const refreshContent = () => {
+    void queryClient.invalidateQueries({ queryKey: ["installed-content", instance.id] });
+    void queryClient.invalidateQueries({ queryKey: ["installed-content-updates", instance.id] });
+    void queryClient.invalidateQueries({ queryKey: ["instances"] });
+  };
+
+  const updateOne = useMutation({
+    mutationFn: launcherApi.updateInstalledContent,
+    onSuccess: refreshContent,
+  });
+  const updateAll = useMutation({
+    mutationFn: launcherApi.updateAllInstalledContent,
+    onSuccess: refreshContent,
+  });
+  const toggleContent = useMutation({
+    mutationFn: launcherApi.toggleInstalledContent,
+    onSuccess: refreshContent,
+  });
+  const removeContent = useMutation({
+    mutationFn: launcherApi.removeInstalledContent,
+    onSuccess: refreshContent,
+  });
+
+  const warnBeforeUpdate = async (count: number) =>
+    dialog.confirm({
+      title: count > 1 ? "Atualizar mods" : "Atualizar mod",
+      description:
+        "Atualizar mods pode quebrar o modpack quando dependencias ou compatibilidades mudam. Continue apenas se quiser testar a versao mais recente compativel.",
+      confirmLabel: count > 1 ? `Atualizar ${count}` : "Atualizar",
+      cancelLabel: "Cancelar",
+      tone: "danger",
+    });
+
+  const updateAllVisible = async () => {
+    if (updateCount === 0 || !(await warnBeforeUpdate(updateCount))) {
+      return;
+    }
+
+    updateAll.mutate({ instanceId: instance.id, type: activeTab });
+  };
+
+  const updateSingle = async (id: string) => {
+    if (!(await warnBeforeUpdate(1))) {
+      return;
+    }
+
+    updateOne.mutate(id);
+  };
+
+  const removeSingle = async (id: string, name: string) => {
+    const confirmed = await dialog.confirm({
+      title: "Remover conteudo",
+      description: `Remover ${name} da instancia? O arquivo sera apagado da pasta do perfil.`,
+      confirmLabel: "Remover",
+      cancelLabel: "Cancelar",
+      tone: "danger",
+    });
+
+    if (confirmed) {
+      removeContent.mutate(id);
+    }
+  };
 
   useEffect(
     () =>
@@ -189,13 +265,25 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
         </div>
       </section>
 
+      {!instance.contentManagementEnabled ? (
+        <Card className="border-yellow-300/20 bg-yellow-500/10 p-4">
+          <p className="text-sm font-semibold text-yellow-100">
+            Gerenciamento de conteudo desativado
+          </p>
+          <p className="mt-1 text-sm leading-6 text-yellow-100/75">
+            Ative "Permitir gerenciamento de conteudo neste perfil" nas opcoes da instancia para
+            adicionar, atualizar, remover ou desativar arquivos.
+          </p>
+        </Card>
+      ) : null}
+
       {launchError ? (
         <div className="rounded-sm border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
           {launchError}
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between border-b border-white/10">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10">
         <div className="flex gap-5">
           {tabs.map((tab) => (
             <button
@@ -212,15 +300,43 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
             </button>
           ))}
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          className="mb-3 rounded-sm"
-          onClick={() => onExplore(activeTab, instance.id)}
-        >
-          <Plus className="h-4 w-4" />
-          Add Content
-        </Button>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {instance.contentManagementEnabled ? (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                className="rounded-sm"
+                onClick={() => updates.refetch()}
+                disabled={updates.isFetching}
+                title="Verificar updates"
+              >
+                <RefreshCw className={`h-4 w-4 ${updates.isFetching ? "animate-spin" : ""}`} />
+                Verificar
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="rounded-sm"
+                onClick={updateAllVisible}
+                disabled={updateCount === 0 || updateAll.isPending}
+              >
+                <RefreshCw className={`h-4 w-4 ${updateAll.isPending ? "animate-spin" : ""}`} />
+                Atualizar {tabs.find((tab) => tab.id === activeTab)?.label ?? "conteudo"} ({updateCount})
+              </Button>
+            </>
+          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            className="rounded-sm"
+            onClick={() => onExplore(activeTab, instance.id)}
+            disabled={!instance.contentManagementEnabled}
+          >
+            <Plus className="h-4 w-4" />
+            Add Content
+          </Button>
+        </div>
       </div>
 
       <Card className="overflow-hidden rounded-sm border-white/10 bg-[#1f1f1f]">
@@ -235,15 +351,18 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
             />
           </div>
         </div>
-        <div className="hidden grid-cols-[1fr_180px_120px] border-b border-white/10 bg-white/7 px-4 py-3 text-sm font-semibold text-white sm:grid">
+        <div className="hidden grid-cols-[1fr_150px_140px_120px] border-b border-white/10 bg-white/7 px-4 py-3 text-sm font-semibold text-white md:grid">
           <span>Name</span>
           <span>Provider</span>
+          <span>Active</span>
           <span>Action</span>
         </div>
         {items.map((item) => (
           <div
             key={item.id}
-            className="grid grid-cols-1 items-center gap-3 border-b border-white/6 px-4 py-4 text-sm last:border-b-0 sm:grid-cols-[1fr_180px_120px]"
+            className={`grid grid-cols-1 items-center gap-3 border-b border-white/6 px-4 py-4 text-sm last:border-b-0 md:grid-cols-[1fr_150px_140px_120px] ${
+              item.enabled ? "" : "opacity-55"
+            }`}
           >
             <div className="flex min-w-0 items-center gap-3">
               <ContentIcon type={item.type} />
@@ -253,13 +372,53 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
               </div>
             </div>
             <span className="text-[#B8C2D0]">{item.provider}</span>
-            <button
-              type="button"
-              className="flex h-9 w-9 items-center justify-center rounded-sm text-[#94A3B8] hover:bg-red-500/15 hover:text-red-200"
-              title="Remover arquivo manualmente pela pasta da instância"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <div>
+              {instance.contentManagementEnabled ? (
+                <button
+                  type="button"
+                  className={`flex h-8 w-14 items-center rounded-full border p-1 transition ${
+                    item.enabled
+                      ? "border-orange-400/40 bg-[#f05a28]"
+                      : "border-white/10 bg-white/10"
+                  }`}
+                  onClick={() => toggleContent.mutate({ id: item.id, enabled: !item.enabled })}
+                  disabled={toggleContent.isPending}
+                  title={item.enabled ? "Desativar" : "Ativar"}
+                >
+                  <span
+                    className={`h-5 w-5 rounded-full bg-white shadow transition ${
+                      item.enabled ? "translate-x-6" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              ) : (
+                <span className="text-xs text-[#94A3B8]">{item.enabled ? "Ativo" : "Desativado"}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {instance.contentManagementEnabled && updateMap.get(item.id)?.updateAvailable ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="rounded-sm"
+                  onClick={() => updateSingle(item.id)}
+                  disabled={updateOne.isPending}
+                  title={updateMap.get(item.id)?.latestFileName ?? "Update disponivel"}
+                >
+                  Update
+                </Button>
+              ) : null}
+              <button
+                type="button"
+                className="flex h-9 w-9 items-center justify-center rounded-sm text-[#94A3B8] hover:bg-red-500/15 hover:text-red-200"
+                title="Remover arquivo da instancia"
+                disabled={!instance.contentManagementEnabled || removeContent.isPending}
+                onClick={() => removeSingle(item.id, item.name)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         ))}
         {items.length === 0 ? (

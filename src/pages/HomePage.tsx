@@ -37,10 +37,10 @@ const carouselSlides = [
     badge: "Destaque",
   },
   {
-    eyebrow: "Explorar",
+    eyebrow: "Biblioteca",
     title: "Mods, shaders e texturas em um so lugar",
     description:
-      "A aba Explorar concentra Modrinth e CurseForge para baixar conteudo compativel com seus perfis.",
+      "A Biblioteca concentra Modrinth e CurseForge para baixar conteudo compativel com seus perfis.",
     image: heroImage,
     badge: "Conteudo",
   },
@@ -83,7 +83,7 @@ const appAnnouncements = [
   },
   {
     title: "Perfis com conteudo",
-    description: "Continue criando modpacks e instalando mods pela aba Meus Modpacks.",
+    description: "Continue criando instâncias e instalando mods pela aba Minhas Instâncias.",
     icon: PackageOpen,
   },
   {
@@ -109,7 +109,7 @@ const changelog = [
     tag: "alpha 3",
     date: "Anterior",
     changes: [
-      "Aba Explorar com instalacao por instancia compativel.",
+      "Biblioteca com instalacao por instancia compativel.",
       "Iris e Iris + Sodium adicionados aos perfis.",
       "Melhorias em shaders, resource packs e verificacao de compatibilidade.",
     ],
@@ -185,11 +185,11 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
               <div className="mt-6 flex flex-wrap gap-3">
                 <Button type="button" onClick={() => onNavigate?.("explore")}>
                   <Sparkles className="h-4 w-4" />
-                  Explorar conteudo
+                  Biblioteca
                 </Button>
                 <Button type="button" variant="secondary" onClick={() => onNavigate?.("library")}>
                   <PackageOpen className="h-4 w-4" />
-                  Meus Modpacks
+                  Minhas Instancias
                 </Button>
               </div>
             </div>
@@ -230,7 +230,7 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
               <div>
                 <p className="text-sm font-semibold text-white">Conteudo separado do launcher</p>
                 <p className="mt-1 text-xs leading-5 text-[#94A3B8]">
-                  Os anuncios ficam na Home; jogos e perfis continuam em Meus Modpacks.
+                  Os anuncios ficam na Home; jogos e perfis continuam em Minhas Instancias.
                 </p>
               </div>
             </div>

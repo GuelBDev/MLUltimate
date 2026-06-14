@@ -36,6 +36,7 @@ const createInstanceSchema = z.object({
   ramMb: z.number().int().min(1024).max(65536),
   javaPath: z.string().optional(),
   iconPath: z.string().optional(),
+  contentManagementEnabled: z.boolean().optional().default(true),
 });
 
 const updateInstanceSchema = z.object({
@@ -44,6 +45,7 @@ const updateInstanceSchema = z.object({
   ramMb: z.number().int().min(1024).max(65536).optional(),
   javaPath: z.string().optional(),
   iconPath: z.string().optional(),
+  contentManagementEnabled: z.boolean().optional(),
 });
 
 const importInstanceSchema = z.object({
@@ -137,6 +139,7 @@ type InstanceRow = {
   java_path?: string;
   game_dir: string;
   icon_path?: string | null;
+  content_management_enabled?: number;
   created_at: string;
   updated_at: string;
 };
@@ -176,8 +179,8 @@ export class InstanceService {
     this.database.run(
       `
       INSERT INTO instances
-        (id, name, minecraft_version, loader, ram_mb, java_path, game_dir, icon_path, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, name, minecraft_version, loader, ram_mb, java_path, game_dir, icon_path, content_management_enabled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         id,
@@ -188,6 +191,7 @@ export class InstanceService {
         parsed.javaPath ?? null,
         gameDir,
         iconPath,
+        parsed.contentManagementEnabled ? 1 : 0,
         now,
         now,
       ],
@@ -252,7 +256,7 @@ export class InstanceService {
     this.database.run(
       `
       UPDATE instances
-      SET name = ?, ram_mb = ?, java_path = ?, icon_path = ?, updated_at = ?
+      SET name = ?, ram_mb = ?, java_path = ?, icon_path = ?, content_management_enabled = ?, updated_at = ?
       WHERE id = ?
       `,
       [
@@ -260,6 +264,7 @@ export class InstanceService {
         parsed.ramMb ?? current.ramMb,
         parsed.javaPath ?? current.javaPath ?? null,
         iconPath,
+        (parsed.contentManagementEnabled ?? current.contentManagementEnabled) ? 1 : 0,
         new Date().toISOString(),
         parsed.id,
       ],
@@ -423,6 +428,7 @@ export class InstanceService {
           minecraftVersion,
           loader: loaderFromModrinthDependencies(index.dependencies),
           ramMb: 4096,
+          contentManagementEnabled: false,
         });
         const overridesPath = path.join(tempDir, "overrides");
 
@@ -457,6 +463,7 @@ export class InstanceService {
           minecraftVersion: manifest.minecraft.version,
           loader: loaderFromCurseForgeManifest(manifest.minecraft.modLoaders),
           ramMb: 4096,
+          contentManagementEnabled: false,
         });
         const overridesPath = path.join(tempDir, manifest.overrides);
 
@@ -724,6 +731,7 @@ export class InstanceService {
       modsCount,
       resourcepacksCount,
       shaderpacksCount,
+      contentManagementEnabled: row.content_management_enabled !== 0,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

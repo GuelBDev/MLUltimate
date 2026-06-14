@@ -116,6 +116,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   const [loader, setLoader] = useState<LoaderType>("vanilla");
   const [ramMb, setRamMb] = useState(DEFAULT_RAM_MB);
   const [ramMode, setRamMode] = useState<RamMode>("recommended");
+  const [contentManagementEnabled, setContentManagementEnabled] = useState(true);
   const [selectedIconPath, setSelectedIconPath] = useState("");
   const [selectedIconPreview, setSelectedIconPreview] = useState("");
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -158,6 +159,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
     setMinecraftVersion("");
     setLoader("vanilla");
     setRamMode("recommended");
+    setContentManagementEnabled(true);
     setRamMb(clampRamMb(DEFAULT_RAM_MB, maxRamMb));
     setSelectedIconPath("");
     setSelectedIconPreview("");
@@ -170,6 +172,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
     setMinecraftVersion(instance.minecraftVersion);
     setLoader(instance.loader);
     setRamMode(instance.ramMb === DEFAULT_RAM_MB ? "recommended" : "custom");
+    setContentManagementEnabled(instance.contentManagementEnabled);
     setRamMb(clampRamMb(instance.ramMb, maxRamMb));
     setSelectedIconPath("");
     setSelectedIconPreview(instance.iconDataUrl ?? "");
@@ -197,6 +200,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
           name,
           ramMb: normalizedRamMb,
           iconPath: selectedIconPath || undefined,
+          contentManagementEnabled,
         },
         {
           onSuccess: () => {
@@ -216,6 +220,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
         loader,
         ramMb: normalizedRamMb,
         iconPath: selectedIconPath || undefined,
+        contentManagementEnabled,
       },
       {
         onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["instances"] }),
@@ -492,6 +497,22 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-[#0D1117]/70 p-4">
+                  <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                    <p className="text-sm font-semibold text-white">Gerenciamento de conteudo</p>
+                    <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm text-[#D8DEE9]">
+                      <input
+                        type="checkbox"
+                        checked={contentManagementEnabled}
+                        onChange={(event) => setContentManagementEnabled(event.target.checked)}
+                        className="h-5 w-5 accent-[#3B82F6]"
+                      />
+                      Permitir gerenciamento de conteudo neste perfil
+                    </label>
+                    <p className="mt-2 text-xs leading-5 text-[#94A3B8]">
+                      Quando desligado, o launcher nao altera mods, texturas ou shaders deste perfil.
+                    </p>
+                  </div>
+
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <span className="text-sm font-semibold text-white">Memory Settings</span>

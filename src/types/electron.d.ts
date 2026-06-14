@@ -4,10 +4,12 @@ import type {
   ContentProjectInput,
   ContentSearchInput,
   ContentSearchResult,
+  ContentType,
   CreateInstanceInput,
   DownloadItem,
   InstallContentInput,
   InstalledContent,
+  InstalledContentUpdateInfo,
   ImportInstanceInput,
   InstanceIconSelection,
   LaunchEvent,
@@ -60,6 +62,14 @@ declare global {
         getProject: (input: ContentProjectInput) => Promise<ContentProjectDetails>;
         install: (input: InstallContentInput) => Promise<InstalledContent[]>;
         listInstalled: (instanceId: string) => Promise<InstalledContent[]>;
+        checkUpdates: (instanceId: string) => Promise<InstalledContentUpdateInfo[]>;
+        updateInstalled: (id: string) => Promise<InstalledContent>;
+        updateAllInstalled: (input: {
+          instanceId: string;
+          type?: ContentType;
+        }) => Promise<InstalledContent[]>;
+        toggleInstalled: (input: { id: string; enabled: boolean }) => Promise<InstalledContent>;
+        removeInstalled: (id: string) => Promise<void>;
       };
       downloads: {
         list: () => Promise<DownloadItem[]>;

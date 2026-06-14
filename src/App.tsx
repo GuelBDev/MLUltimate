@@ -71,8 +71,8 @@ const useHudScaleControls = () => {
 const pageTitles: Record<PageId, string> = {
   home: "Home",
   avatar: "Avatar",
-  library: "Meus Modpacks",
-  explore: "Explorar",
+  library: "Minhas Instâncias",
+  explore: "Biblioteca",
   downloads: "Downloads",
   settings: "Configurações",
 };

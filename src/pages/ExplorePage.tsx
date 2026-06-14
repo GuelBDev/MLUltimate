@@ -186,7 +186,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
       <Card className="p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-white">Explorar conteúdo</h2>
+            <h2 className="text-lg font-semibold text-white">Biblioteca de conteúdo</h2>
             <p className="mt-1 text-sm text-[#94A3B8]">
               Pesquise livremente e escolha a instância compatível na hora de instalar.
             </p>
@@ -741,7 +741,7 @@ const InstallInstanceDialog = ({
 
           {compatibilityRows.length === 0 ? (
             <div className="rounded-xl border border-white/10 bg-[#0D1117] p-6 text-center text-sm text-[#94A3B8]">
-              Crie uma instância em Meus Modpacks antes de instalar conteúdo.
+              Crie uma instância em Minhas Instâncias antes de instalar conteúdo.
             </div>
           ) : null}
         </div>
@@ -766,6 +766,14 @@ const getInstallCompatibility = (
   version: ContentVersion | undefined,
   instance: LauncherInstance,
 ) => {
+  if (!instance.contentManagementEnabled) {
+    return {
+      compatible: false,
+      reason:
+        "Gerenciamento de conteudo desativado neste perfil. Ative nas opcoes da instancia para instalar arquivos.",
+    };
+  }
+
   if (project.type === "resourcepack") {
     return { compatible: true, reason: `Textura pronta para instalar em ${instance.name}.` };
   }

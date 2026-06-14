@@ -1,8 +1,8 @@
 import {
+  Blocks,
   Compass,
   Download,
   Home,
-  PackageOpen,
   UserRound,
   Settings,
 } from "lucide-react";
@@ -26,8 +26,8 @@ type NavItem = {
 const navItems: NavItem[] = [
   { id: "home", label: "Home", icon: Home },
   { id: "avatar", label: "Avatar", icon: UserRound },
-  { id: "library", label: "Meus Modpacks", icon: PackageOpen },
-  { id: "explore", label: "Explorar", icon: Compass },
+  { id: "library", label: "Minhas Instâncias", icon: Blocks },
+  { id: "explore", label: "Biblioteca", icon: Compass },
   { id: "downloads", label: "Downloads", icon: Download },
   { id: "settings", label: "Configurações", icon: Settings },
 ];

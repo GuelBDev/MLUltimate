@@ -1,5 +1,7 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { rename, rm } from "node:fs/promises";
 import { net } from "electron";
 import { z } from "zod";
 import { LauncherDatabase } from "../database/sqliteDatabase";
@@ -185,7 +187,17 @@ type InstalledContentRow = {
   name: string;
   file_name: string;
   file_path: string;
+  enabled?: number;
   installed_at: string;
+};
+
+type InstallableFile = {
+  provider: "modrinth" | "curseforge";
+  versionId: string;
+  name: string;
+  fileName: string;
+  url: string;
+  sha1?: string;
 };
 
 export class ContentService {
@@ -241,6 +253,226 @@ export class ContentService {
         [instanceId],
       )
       .map(rowToInstalledContent);
+  }
+
+  async checkInstalledUpdates(instanceId: string) {
+    const instance = await this.instances.getById(instanceId);
+    const rows = this.database.all<InstalledContentRow>(
+      "SELECT * FROM installed_content WHERE instance_id = ? ORDER BY installed_at DESC",
+      [instanceId],
+    );
+
+    return Promise.all(
+      rows.map(async (row) => {
+        const latest = await this.findLatestCompatibleFile(row, instance).catch(() => null);
+
+        return {
+          id: row.id,
+          updateAvailable: Boolean(latest && latest.versionId !== row.version_id),
+          latestVersionId: latest?.versionId,
+          latestVersionName: latest?.name,
+          latestFileName: latest?.fileName,
+        };
+      }),
+    );
+  }
+
+  async updateInstalledContent(id: string) {
+    const row = this.getInstalledContentRow(id);
+    const instance = await this.instances.getById(row.instance_id);
+    assertContentManagementEnabled(instance.contentManagementEnabled);
+
+    const latest = await this.findLatestCompatibleFile(row, instance);
+
+    if (!latest) {
+      throw new Error("Nenhum update compativel foi encontrado para esta instancia.");
+    }
+
+    if (latest.versionId === row.version_id) {
+      return rowToInstalledContent(row);
+    }
+
+    const enabled = row.enabled !== 0;
+    const activeDestination = path.join(
+      instance.gameDir,
+      folderForType(row.type),
+      sanitizeFileName(latest.fileName),
+    );
+    const destination = enabled ? activeDestination : `${activeDestination}.disabled`;
+
+    await this.downloads.download({
+      label: `Update ${latest.name}`,
+      url: latest.url,
+      destination,
+      sha1: latest.sha1,
+    });
+
+    if (existsSync(row.file_path) && path.resolve(row.file_path) !== path.resolve(destination)) {
+      await rm(row.file_path, { force: true });
+    }
+
+    const now = new Date().toISOString();
+    this.database.run(
+      `
+      UPDATE installed_content
+      SET version_id = ?, name = ?, file_name = ?, file_path = ?, enabled = ?, installed_at = ?
+      WHERE id = ?
+      `,
+      [
+        latest.versionId,
+        latest.name,
+        sanitizeFileName(latest.fileName),
+        destination,
+        enabled ? 1 : 0,
+        now,
+        row.id,
+      ],
+    );
+
+    return rowToInstalledContent(this.getInstalledContentRow(row.id));
+  }
+
+  async updateAllInstalledContent(input: { instanceId: string; type?: ContentType }) {
+    const instance = await this.instances.getById(input.instanceId);
+    assertContentManagementEnabled(instance.contentManagementEnabled);
+
+    const rows = this.database.all<InstalledContentRow>(
+      input.type
+        ? "SELECT * FROM installed_content WHERE instance_id = ? AND type = ? ORDER BY installed_at DESC"
+        : "SELECT * FROM installed_content WHERE instance_id = ? ORDER BY installed_at DESC",
+      input.type ? [input.instanceId, input.type] : [input.instanceId],
+    );
+    const updated: InstalledContent[] = [];
+
+    for (const row of rows) {
+      const latest = await this.findLatestCompatibleFile(row, instance).catch(() => null);
+
+      if (!latest || latest.versionId === row.version_id) {
+        continue;
+      }
+
+      updated.push(await this.updateInstalledContent(row.id));
+    }
+
+    return updated;
+  }
+
+  async toggleInstalledContent(input: { id: string; enabled: boolean }) {
+    const row = this.getInstalledContentRow(input.id);
+    const instance = await this.instances.getById(row.instance_id);
+    assertContentManagementEnabled(instance.contentManagementEnabled);
+
+    const currentEnabled = row.enabled !== 0;
+
+    if (currentEnabled === input.enabled) {
+      return rowToInstalledContent(row);
+    }
+
+    const currentPath = row.file_path;
+    const targetPath = input.enabled
+      ? currentPath.replace(/\.disabled$/i, "")
+      : `${currentPath}.disabled`;
+
+    if (existsSync(currentPath) && path.resolve(currentPath) !== path.resolve(targetPath)) {
+      await rename(currentPath, targetPath);
+    }
+
+    this.database.run(
+      "UPDATE installed_content SET file_path = ?, enabled = ? WHERE id = ?",
+      [targetPath, input.enabled ? 1 : 0, row.id],
+    );
+
+    return rowToInstalledContent(this.getInstalledContentRow(row.id));
+  }
+
+  async removeInstalledContent(id: string) {
+    const row = this.getInstalledContentRow(id);
+    const instance = await this.instances.getById(row.instance_id);
+    assertContentManagementEnabled(instance.contentManagementEnabled);
+
+    await rm(row.file_path, { force: true });
+    this.database.run("DELETE FROM installed_content WHERE id = ?", [row.id]);
+  }
+
+  private getInstalledContentRow(id: string) {
+    const row = this.database.get<InstalledContentRow>(
+      "SELECT * FROM installed_content WHERE id = ?",
+      [id],
+    );
+
+    if (!row) {
+      throw new Error("Conteudo instalado nao encontrado.");
+    }
+
+    return row;
+  }
+
+  private async findLatestCompatibleFile(
+    row: InstalledContentRow,
+    instance: Awaited<ReturnType<InstanceService["getById"]>>,
+  ): Promise<InstallableFile | null> {
+    const loader = normalizeContentLoader(instance.loader) ?? instance.loader;
+
+    if (!canInstallContentInLoader(row.type, instance.loader)) {
+      return null;
+    }
+
+    if (row.provider === "modrinth") {
+      let versions = await this.getModrinthVersions(
+        row.project_id,
+        row.type,
+        instance.minecraftVersion,
+        loader,
+      );
+
+      if (versions.length === 0) {
+        versions = await this.getAllModrinthVersions(row.project_id);
+      }
+
+      const version = versions.find((candidate) =>
+        isModrinthVersionCompatible(candidate, row.type, instance.minecraftVersion, loader),
+      );
+      const file = version?.files.find((candidate) => candidate.primary) ?? version?.files.at(0);
+
+      if (!version || !file) {
+        return null;
+      }
+
+      return {
+        provider: "modrinth",
+        versionId: version.id,
+        name: version.name,
+        fileName: file.filename,
+        url: file.url,
+        sha1: file.hashes.sha1,
+      };
+    }
+
+    let files = await this.getCurseForgeFiles(row.project_id, instance.minecraftVersion, loader);
+
+    if (files.length === 0) {
+      files = await this.getCurseForgeFiles(row.project_id, instance.minecraftVersion);
+    }
+
+    if (files.length === 0) {
+      files = await this.getCurseForgeFiles(row.project_id);
+    }
+
+    const file = files.find((candidate) =>
+      isCurseForgeFileCompatible(candidate, row.type, instance.minecraftVersion, loader),
+    );
+
+    if (!file) {
+      return null;
+    }
+
+    return {
+      provider: "curseforge",
+      versionId: String(file.id),
+      name: file.displayName ?? file.fileName,
+      fileName: file.fileName,
+      url: file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(row.project_id, file.id)),
+    };
   }
 
   private async searchModrinth(
@@ -381,6 +613,7 @@ export class ContentService {
     installedProjectIds = new Set<string>(),
   ): Promise<InstalledContent[]> {
     const instance = await this.instances.getById(input.instanceId);
+    assertContentManagementEnabled(instance.contentManagementEnabled);
 
     if (!canInstallContentInLoader(input.type, instance.loader)) {
       throw new Error(contentInstallBlockReason(input.type, instance.loader));
@@ -409,12 +642,16 @@ export class ContentService {
     const compatibleVersions = versions.filter((candidate) =>
       isModrinthVersionCompatible(candidate, input.type, instance.minecraftVersion, loader),
     );
-    const version =
-      compatibleVersions.find((candidate) => candidate.id === input.versionId) ??
-      compatibleVersions.at(0);
+    const version = input.versionId
+      ? compatibleVersions.find((candidate) => candidate.id === input.versionId)
+      : compatibleVersions.at(0);
 
     if (!version) {
-      throw new Error("Nenhum arquivo Modrinth compatível foi encontrado para esta instância.");
+      throw new Error(
+        input.versionId
+          ? "A versao Modrinth escolhida nao e compativel com esta instancia."
+          : "Nenhum arquivo Modrinth compativel foi encontrado para esta instancia.",
+      );
     }
 
     const file = version.files.find((candidate) => candidate.primary) ?? version.files.at(0);
@@ -663,6 +900,8 @@ export class ContentService {
     input: z.infer<typeof installInputSchema>,
   ): Promise<InstalledContent> {
     const instance = await this.instances.getById(input.instanceId);
+    assertContentManagementEnabled(instance.contentManagementEnabled);
+
     if (!canInstallContentInLoader(input.type, instance.loader)) {
       throw new Error(contentInstallBlockReason(input.type, instance.loader));
     }
@@ -689,17 +928,20 @@ export class ContentService {
     const compatibleFiles = files.filter((candidate) =>
       isCurseForgeFileCompatible(candidate, input.type, instance.minecraftVersion, loader),
     );
-    const file =
-      compatibleFiles.find((candidate) => String(candidate.id) === input.versionId) ??
-      compatibleFiles.find((candidate) =>
+    const file = input.versionId
+      ? compatibleFiles.find((candidate) => String(candidate.id) === input.versionId)
+      : compatibleFiles.find((candidate) =>
         candidate.gameVersions.some((version) =>
           isMinecraftVersionCompatible(version, instance.minecraftVersion),
         ),
-      ) ??
-      compatibleFiles.at(0);
+      ) ?? compatibleFiles.at(0);
 
     if (!file) {
-      throw new Error("Nenhum arquivo CurseForge compatível foi encontrado.");
+      throw new Error(
+        input.versionId
+          ? "A versao CurseForge escolhida nao e compativel com esta instancia."
+          : "Nenhum arquivo CurseForge compativel foi encontrado.",
+      );
     }
 
     const downloadUrl =
@@ -760,8 +1002,8 @@ export class ContentService {
     this.database.run(
       `
       INSERT OR IGNORE INTO installed_content
-        (id, instance_id, provider, type, project_id, version_id, name, file_name, file_path, installed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, instance_id, provider, type, project_id, version_id, name, file_name, file_path, enabled, installed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         id,
@@ -773,6 +1015,7 @@ export class ContentService {
         input.name,
         fileName,
         destination,
+        1,
         installedAt,
       ],
     );
@@ -787,6 +1030,7 @@ export class ContentService {
       name: input.name,
       fileName,
       filePath: destination,
+      enabled: true,
       installedAt,
     };
   }
@@ -1154,8 +1398,17 @@ const rowToInstalledContent = (row: InstalledContentRow): InstalledContent => ({
   name: row.name,
   fileName: row.file_name,
   filePath: row.file_path,
+  enabled: row.enabled !== 0,
   installedAt: row.installed_at,
 });
+
+const assertContentManagementEnabled = (enabled: boolean) => {
+  if (!enabled) {
+    throw new Error(
+      "Gerenciamento de conteudo desativado para este perfil. Ative nas opcoes da instancia antes de alterar mods, texturas ou shaders.",
+    );
+  }
+};
 
 const fetchWithElectronNet = async (
   url: string,

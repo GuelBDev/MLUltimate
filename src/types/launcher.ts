@@ -87,6 +87,7 @@ export type CreateInstanceInput = {
   ramMb: number;
   javaPath?: string;
   iconPath?: string;
+  contentManagementEnabled?: boolean;
 };
 
 export type UpdateInstanceInput = {
@@ -95,6 +96,7 @@ export type UpdateInstanceInput = {
   ramMb?: number;
   javaPath?: string;
   iconPath?: string;
+  contentManagementEnabled?: boolean;
 };
 
 export type LauncherInstance = {
@@ -110,6 +112,7 @@ export type LauncherInstance = {
   modsCount: number;
   resourcepacksCount: number;
   shaderpacksCount: number;
+  contentManagementEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -289,5 +292,14 @@ export type InstalledContent = {
   name: string;
   fileName: string;
   filePath: string;
+  enabled: boolean;
   installedAt: string;
+};
+
+export type InstalledContentUpdateInfo = {
+  id: string;
+  updateAvailable: boolean;
+  latestVersionId?: string;
+  latestVersionName?: string;
+  latestFileName?: string;
 };

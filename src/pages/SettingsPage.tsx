@@ -308,7 +308,7 @@ export const SettingsPage = () => {
         <h2 className="text-lg font-semibold text-white">Dados locais</h2>
         <p className="mt-2 text-sm leading-6 text-[#94A3B8]">
           Instâncias, versões baixadas e conteúdo instalado ficam na pasta de dados do launcher.
-          Abra a pasta de uma instância por Meus Modpacks para gerenciar mods, resourcepacks e
+          Abra a pasta de uma instância por Minhas Instâncias para gerenciar mods, resourcepacks e
           shaderpacks manualmente quando quiser.
         </p>
       </Card>

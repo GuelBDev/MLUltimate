@@ -2,8 +2,10 @@ import type {
   AuthSession,
   ContentProjectInput,
   ContentSearchInput,
+  ContentType,
   CreateInstanceInput,
   InstallContentInput,
+  InstalledContentUpdateInfo,
   ImportInstanceInput,
   LaunchEvent,
   LaunchCancelRequest,
@@ -163,6 +165,31 @@ export const launcherApi = {
   listInstalledContent: async (instanceId: string) => {
     if (!hasBridge()) return [];
     return window.mlultimate.content.listInstalled(instanceId);
+  },
+
+  checkInstalledContentUpdates: async (instanceId: string): Promise<InstalledContentUpdateInfo[]> => {
+    if (!hasBridge()) return [];
+    return window.mlultimate.content.checkUpdates(instanceId);
+  },
+
+  updateInstalledContent: async (id: string) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.content.updateInstalled(id);
+  },
+
+  updateAllInstalledContent: async (input: { instanceId: string; type?: ContentType }) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.content.updateAllInstalled(input);
+  },
+
+  toggleInstalledContent: async (input: { id: string; enabled: boolean }) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.content.toggleInstalled(input);
+  },
+
+  removeInstalledContent: async (id: string) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.content.removeInstalled(id);
   },
 
   listDownloads: async () => {

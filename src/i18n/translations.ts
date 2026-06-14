@@ -6,7 +6,10 @@ const ptBR: TranslationMap = {
   "Home": "Home",
   "Avatar": "Avatar",
   "Biblioteca": "Biblioteca",
+  "Biblioteca de conteúdo": "Biblioteca de conteúdo",
   "Meus Modpacks": "Meus Modpacks",
+  "Minhas Instâncias": "Minhas Instâncias",
+  "Minhas Instancias": "Minhas Instâncias",
   "Explorar": "Explorar",
   "Downloads": "Downloads",
   "Configuracoes": "Configurações",
@@ -120,6 +123,12 @@ const ptBR: TranslationMap = {
   "perfis": "perfis",
   "Mods, resource packs e shaders entram pelo detalhe do perfil":
     "Mods, resource packs e shaders entram pelo detalhe do perfil",
+  "Gerenciamento de conteudo": "Gerenciamento de conteúdo",
+  "Permitir gerenciamento de conteudo neste perfil":
+    "Permitir gerenciamento de conteúdo neste perfil",
+  "Quando desligado, o launcher nao altera mods, texturas ou shaders deste perfil.":
+    "Quando desligado, o launcher não altera mods, texturas ou shaders deste perfil.",
+  "Gerenciamento de conteudo desativado": "Gerenciamento de conteúdo desativado",
   "Nenhum download na fila": "Nenhum download na fila",
   "Baixe uma versao do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.":
     "Baixe uma versão do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.",
@@ -188,7 +197,10 @@ const ptPt: TranslationMap = {
   "Home": "Início",
   "Avatar": "Avatar",
   "Biblioteca": "Biblioteca",
+  "Biblioteca de conteúdo": "Biblioteca de conteúdo",
   "Meus Modpacks": "Os meus modpacks",
+  "Minhas Instâncias": "As minhas instâncias",
+  "Minhas Instancias": "As minhas instâncias",
   "Explorar": "Explorar",
   "Downloads": "Transferências",
   "Configuracoes": "Definições",
@@ -301,6 +313,12 @@ const ptPt: TranslationMap = {
   "perfis": "perfis",
   "Mods, resource packs e shaders entram pelo detalhe do perfil":
     "Mods, resource packs e shaders são adicionados pelo detalhe do perfil",
+  "Gerenciamento de conteudo": "Gestão de conteúdo",
+  "Permitir gerenciamento de conteudo neste perfil":
+    "Permitir gestão de conteúdo neste perfil",
+  "Quando desligado, o launcher nao altera mods, texturas ou shaders deste perfil.":
+    "Quando desligado, o launcher não altera mods, texturas ou shaders deste perfil.",
+  "Gerenciamento de conteudo desativado": "Gestão de conteúdo desativada",
   "Nenhum download na fila": "Nenhuma transferência na fila",
   "Baixe uma versao do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.":
     "Transfira uma versão do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.",
@@ -348,7 +366,10 @@ const en: TranslationMap = {
   "Home": "Home",
   "Avatar": "Avatar",
   "Biblioteca": "Library",
+  "Biblioteca de conteúdo": "Content library",
   "Meus Modpacks": "My Modpacks",
+  "Minhas Instâncias": "My Instances",
+  "Minhas Instancias": "My Instances",
   "Explorar": "Explore",
   "Downloads": "Downloads",
   "Configuracoes": "Settings",
@@ -461,6 +482,12 @@ const en: TranslationMap = {
   "perfis": "profiles",
   "Mods, resource packs e shaders entram pelo detalhe do perfil":
     "Mods, resource packs, and shaders are added from the profile detail.",
+  "Gerenciamento de conteudo": "Content management",
+  "Permitir gerenciamento de conteudo neste perfil":
+    "Allow content management for this profile",
+  "Quando desligado, o launcher nao altera mods, texturas ou shaders deste perfil.":
+    "When disabled, the launcher will not change mods, textures, or shaders in this profile.",
+  "Gerenciamento de conteudo desativado": "Content management disabled",
   "Nenhum download na fila": "No downloads queued",
   "Baixe uma versao do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.":
     "Download a Minecraft version, mod, texture, or shader to follow progress here.",
@@ -529,7 +556,10 @@ const fr: TranslationMap = {
   "Home": "Accueil",
   "Avatar": "Avatar",
   "Biblioteca": "Bibliothèque",
+  "Biblioteca de conteúdo": "Bibliothèque de contenu",
   "Meus Modpacks": "Mes modpacks",
+  "Minhas Instâncias": "Mes instances",
+  "Minhas Instancias": "Mes instances",
   "Explorar": "Explorer",
   "Downloads": "Téléchargements",
   "Configuracoes": "Paramètres",
@@ -643,6 +673,12 @@ const fr: TranslationMap = {
   "perfis": "profils",
   "Mods, resource packs e shaders entram pelo detalhe do perfil":
     "Les mods, packs de ressources et shaders s'ajoutent depuis le détail du profil.",
+  "Gerenciamento de conteudo": "Gestion du contenu",
+  "Permitir gerenciamento de conteudo neste perfil":
+    "Autoriser la gestion du contenu pour ce profil",
+  "Quando desligado, o launcher nao altera mods, texturas ou shaders deste perfil.":
+    "Quand cette option est désactivée, le lanceur ne modifie pas les mods, textures ou shaders de ce profil.",
+  "Gerenciamento de conteudo desativado": "Gestion du contenu désactivée",
   "Nenhum download na fila": "Aucun téléchargement en file",
   "Baixe uma versao do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.":
     "Téléchargez une version de Minecraft, un mod, une texture ou un shader pour suivre la progression ici.",

@@ -157,6 +157,22 @@ export class LauncherDatabase {
     if (!instanceColumns.includes("icon_path")) {
       database.run("ALTER TABLE instances ADD COLUMN icon_path TEXT");
     }
+
+    if (!instanceColumns.includes("content_management_enabled")) {
+      database.run(
+        "ALTER TABLE instances ADD COLUMN content_management_enabled INTEGER NOT NULL DEFAULT 1",
+      );
+    }
+
+    const installedContentColumns = this.all<{ name: string }>(
+      "PRAGMA table_info(installed_content)",
+    ).map((column) => column.name);
+
+    if (!installedContentColumns.includes("enabled")) {
+      database.run(
+        "ALTER TABLE installed_content ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",
+      );
+    }
   }
 
   private save() {

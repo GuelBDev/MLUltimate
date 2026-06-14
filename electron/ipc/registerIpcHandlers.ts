@@ -41,6 +41,7 @@ const createInstanceSchema = z.object({
   ramMb: z.number(),
   javaPath: z.string().optional(),
   iconPath: z.string().optional(),
+  contentManagementEnabled: z.boolean().optional(),
 });
 
 const updateInstanceSchema = z.object({
@@ -49,6 +50,7 @@ const updateInstanceSchema = z.object({
   ramMb: z.number().optional(),
   javaPath: z.string().optional(),
   iconPath: z.string().optional(),
+  contentManagementEnabled: z.boolean().optional(),
 });
 
 const searchContentSchema = z.object({
@@ -68,6 +70,18 @@ const installContentSchema = z.object({
   projectId: z.string(),
   instanceId: z.string(),
   versionId: z.string().optional(),
+});
+
+const installedContentIdSchema = z.string().min(1);
+
+const updateAllInstalledContentSchema = z.object({
+  instanceId: z.string().min(1),
+  type: z.enum(["mod", "modpack", "shader", "resourcepack"]).optional(),
+});
+
+const toggleInstalledContentSchema = z.object({
+  id: z.string().min(1),
+  enabled: z.boolean(),
 });
 
 const contentProjectSchema = z.object({
@@ -179,6 +193,21 @@ export const registerIpcHandlers = ({
   );
   ipcMain.handle("content:list-installed", async (_, instanceId: unknown) =>
     content.listInstalled(z.string().min(1).parse(instanceId)),
+  );
+  ipcMain.handle("content:check-updates", async (_, instanceId: unknown) =>
+    content.checkInstalledUpdates(z.string().min(1).parse(instanceId)),
+  );
+  ipcMain.handle("content:update-installed", async (_, id: unknown) =>
+    content.updateInstalledContent(installedContentIdSchema.parse(id)),
+  );
+  ipcMain.handle("content:update-all-installed", async (_, input: unknown) =>
+    content.updateAllInstalledContent(updateAllInstalledContentSchema.parse(input)),
+  );
+  ipcMain.handle("content:toggle-installed", async (_, input: unknown) =>
+    content.toggleInstalledContent(toggleInstalledContentSchema.parse(input)),
+  );
+  ipcMain.handle("content:remove-installed", async (_, id: unknown) =>
+    content.removeInstalledContent(installedContentIdSchema.parse(id)),
   );
   ipcMain.handle("downloads:list", async () => downloads.list());
   ipcMain.handle("downloads:cancel", async (_, downloadId: unknown) =>
