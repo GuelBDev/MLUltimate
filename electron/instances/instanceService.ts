@@ -105,8 +105,10 @@ const curseForgeManifestSchema = z.object({
 const curseForgeFileSchema = z.object({
   data: z.object({
     id: z.number(),
+    displayName: z.string().optional(),
     fileName: z.string(),
     downloadUrl: z.string().nullable().optional(),
+    isAvailable: z.boolean().optional().default(true),
     hashes: z
       .array(
         z.object({
@@ -455,28 +457,49 @@ export class InstanceService {
           ramMb: 4096,
           contentManagementEnabled: false,
         });
-        const overridesPath = path.join(tempDir, "overrides");
 
-        if (existsSync(overridesPath)) {
-          await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
-        }
+        try {
+          const overridesPath = path.join(tempDir, "overrides");
 
-        for (const file of index.files) {
-          const downloadUrl = file.downloads.at(0);
-
-          if (!downloadUrl) {
-            continue;
+          if (existsSync(overridesPath)) {
+            await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
           }
 
-          await this.downloads.download({
-            label: `Import ${path.basename(file.path)}`,
-            url: downloadUrl,
-            destination: path.join(instance.gameDir, file.path),
-            sha1: file.hashes?.sha1,
-          });
-        }
+          for (const file of index.files) {
+            const downloadUrl = file.downloads.at(0);
 
-        return instance;
+            if (!downloadUrl) {
+              continue;
+            }
+
+            await this.downloads.download({
+              label: `Import ${path.basename(file.path)}`,
+              url: downloadUrl,
+              destination: path.join(instance.gameDir, file.path),
+              sha1: file.hashes?.sha1,
+            });
+
+            const importedType = importedContentTypeFromPath(file.path);
+
+            if (importedType) {
+              this.recordImportedContent({
+                instanceId: instance.id,
+                provider: "modrinth",
+                type: importedType,
+                projectId: file.hashes?.sha1 ?? file.path,
+                versionId: file.hashes?.sha1 ?? file.path,
+                name: path.basename(file.path),
+                fileName: path.basename(file.path),
+                filePath: path.join(instance.gameDir, file.path),
+              });
+            }
+          }
+
+          return instance;
+        } catch (error) {
+          await this.remove(instance.id).catch(() => undefined);
+          throw error;
+        }
       }
 
       if (existsSync(curseForgeManifestPath)) {
@@ -491,15 +514,21 @@ export class InstanceService {
           ramMb: 4096,
           contentManagementEnabled: false,
         });
-        const overridesPath = path.join(tempDir, manifest.overrides);
 
-        if (existsSync(overridesPath)) {
-          await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
+        try {
+          const overridesPath = path.join(tempDir, manifest.overrides);
+
+          if (existsSync(overridesPath)) {
+            await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
+          }
+
+          await this.downloadCurseForgeManifestFiles(manifest, instance);
+
+          return instance;
+        } catch (error) {
+          await this.remove(instance.id).catch(() => undefined);
+          throw error;
         }
-
-        await this.downloadCurseForgeManifestFiles(manifest, instance.gameDir);
-
-        return instance;
       }
 
       throw new Error(
@@ -635,7 +664,7 @@ export class InstanceService {
 
   private async downloadCurseForgeManifestFiles(
     manifest: z.infer<typeof curseForgeManifestSchema>,
-    gameDir: string,
+    instance: LauncherInstance,
   ) {
     if (manifest.files.length === 0) {
       return;
@@ -643,7 +672,7 @@ export class InstanceService {
 
     const taskId = this.downloads.createTask(
       `Modpack ${manifest.name}`,
-      path.join(gameDir, "mods"),
+      path.join(instance.gameDir, "mods"),
       "curseforge://manifest",
     );
     let completed = 0;
@@ -654,15 +683,28 @@ export class InstanceService {
         const file = await this.getCurseForgeFile(fileRef.projectID, fileRef.fileID);
         const downloadUrl =
           file.downloadUrl ??
-          (await this.getCurseForgeDownloadUrl(fileRef.projectID, fileRef.fileID));
+          (await this.getCurseForgeDownloadUrl(fileRef.projectID, fileRef.fileID).catch(() =>
+            curseForgeCdnDownloadUrl(file),
+          ));
+        const destination = path.join(instance.gameDir, "mods", sanitizeFileName(file.fileName));
 
         this.downloads.throwIfCancelled(taskId);
         await this.downloads.download({
           label: `CurseForge ${file.fileName}`,
           url: downloadUrl,
-          destination: path.join(gameDir, "mods", sanitizeFileName(file.fileName)),
+          destination,
           sha1: curseForgeSha1(file),
           visible: false,
+        });
+        this.recordImportedContent({
+          instanceId: instance.id,
+          provider: "curseforge",
+          type: "mod",
+          projectId: String(fileRef.projectID),
+          versionId: String(fileRef.fileID),
+          name: file.displayName ?? file.fileName,
+          fileName: file.fileName,
+          filePath: destination,
         });
 
         completed += 1;
@@ -691,6 +733,38 @@ export class InstanceService {
     }
 
     return curseForgeFileSchema.parse(await response.json()).data;
+  }
+
+  private recordImportedContent(input: {
+    instanceId: string;
+    provider: "curseforge" | "modrinth";
+    type: "mod" | "resourcepack" | "shader";
+    projectId: string;
+    versionId: string;
+    name: string;
+    fileName: string;
+    filePath: string;
+  }) {
+    this.database.run(
+      `
+      INSERT OR IGNORE INTO installed_content
+        (id, instance_id, provider, type, project_id, version_id, name, file_name, file_path, enabled, installed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        randomUUID(),
+        input.instanceId,
+        input.provider,
+        input.type,
+        input.projectId,
+        input.versionId,
+        input.name,
+        sanitizeFileName(input.fileName),
+        input.filePath,
+        1,
+        new Date().toISOString(),
+      ],
+    );
   }
 
   private async getCurseForgeDownloadUrl(projectId: number, fileId: number) {
@@ -917,6 +991,35 @@ const runPool = async <T>(
 
 const curseForgeSha1 = (file: z.infer<typeof curseForgeFileSchema>["data"]) =>
   file.hashes.find((hash) => hash.algo === 1)?.value;
+
+const curseForgeCdnDownloadUrl = (file: z.infer<typeof curseForgeFileSchema>["data"]) => {
+  if (!file.isAvailable) {
+    throw new Error(`Arquivo CurseForge indisponivel: ${file.fileName}.`);
+  }
+
+  const folder = Math.floor(file.id / 1000);
+  const fileSlot = String(file.id % 1000).padStart(3, "0");
+
+  return `https://edge.forgecdn.net/files/${folder}/${fileSlot}/${encodeURIComponent(file.fileName)}`;
+};
+
+const importedContentTypeFromPath = (filePath: string) => {
+  const normalized = filePath.replaceAll("\\", "/").toLowerCase();
+
+  if (normalized.startsWith("mods/") && normalized.endsWith(".jar")) {
+    return "mod";
+  }
+
+  if (normalized.startsWith("resourcepacks/") && normalized.endsWith(".zip")) {
+    return "resourcepack";
+  }
+
+  if (normalized.startsWith("shaderpacks/") && normalized.endsWith(".zip")) {
+    return "shader";
+  }
+
+  return null;
+};
 
 const loaderFromModrinthDependencies = (dependencies: Record<string, string>): LoaderType => {
   if (dependencies.forge) return "forge";

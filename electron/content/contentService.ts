@@ -183,6 +183,7 @@ const curseForgeFilesSchema = z.object({
       fileName: z.string(),
       downloadUrl: z.string().nullable().optional(),
       gameVersions: z.array(z.string()).default([]),
+      isAvailable: z.boolean().optional().default(true),
       isServerPack: z.boolean().optional().default(false),
       dependencies: z
         .array(
@@ -565,7 +566,9 @@ export class ContentService {
       versionId: String(file.id),
       name: file.displayName ?? file.fileName,
       fileName: file.fileName,
-      url: file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(row.project_id, file.id)),
+      url: file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(row.project_id, file.id).catch(() =>
+        curseForgeCdnDownloadUrl(file),
+      )),
       gameVersions: file.gameVersions.filter(isMinecraftVersion),
       loaders: file.gameVersions.map((version) => version.toLowerCase()).filter(isLoaderType),
     };
@@ -621,7 +624,9 @@ export class ContentService {
       versionId: String(file.id),
       name: file.displayName ?? file.fileName,
       fileName: file.fileName,
-      url: file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(input.projectId, file.id)),
+      url: file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(input.projectId, file.id).catch(() =>
+        curseForgeCdnDownloadUrl(file),
+      )),
       gameVersions: file.gameVersions.filter(isMinecraftVersion),
       loaders: file.gameVersions.map((version) => version.toLowerCase()).filter(isLoaderType),
     };
@@ -1138,7 +1143,9 @@ export class ContentService {
     }
 
     const downloadUrl =
-      file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(input.projectId, file.id));
+      file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(input.projectId, file.id).catch(() =>
+        curseForgeCdnDownloadUrl(file),
+      ));
 
     const installed = await this.installFile({
       instanceId: instance.id,
@@ -1454,6 +1461,17 @@ const chooseLoaderForNewModInstance = (loaders: LoaderType[]): LoaderType => {
 
 const curseForgeSha1 = (file: z.infer<typeof curseForgeFilesSchema>["data"][number]) =>
   file.hashes.find((hash) => hash.algo === 1)?.value;
+
+const curseForgeCdnDownloadUrl = (file: z.infer<typeof curseForgeFilesSchema>["data"][number]) => {
+  if (!file.isAvailable) {
+    throw new Error(`Arquivo CurseForge indisponivel: ${file.fileName}.`);
+  }
+
+  const folder = Math.floor(file.id / 1000);
+  const fileSlot = String(file.id % 1000).padStart(3, "0");
+
+  return `https://edge.forgecdn.net/files/${folder}/${fileSlot}/${encodeURIComponent(file.fileName)}`;
+};
 
 const mergeProviderResults = (results: ContentSearchResult[]) => {
   const grouped = new Map<string, ContentSearchResult>();
