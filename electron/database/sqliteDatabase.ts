@@ -109,6 +109,7 @@ export class LauncherDatabase {
         name TEXT NOT NULL,
         minecraft_version TEXT NOT NULL,
         loader TEXT NOT NULL,
+        loader_version TEXT,
         ram_mb INTEGER NOT NULL,
         java_path TEXT,
         game_dir TEXT NOT NULL,
@@ -156,6 +157,10 @@ export class LauncherDatabase {
 
     if (!instanceColumns.includes("icon_path")) {
       database.run("ALTER TABLE instances ADD COLUMN icon_path TEXT");
+    }
+
+    if (!instanceColumns.includes("loader_version")) {
+      database.run("ALTER TABLE instances ADD COLUMN loader_version TEXT");
     }
 
     if (!instanceColumns.includes("content_management_enabled")) {

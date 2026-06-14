@@ -15,6 +15,8 @@ const VERSION_MANIFEST_URL =
 const FABRIC_META_URL = "https://meta.fabricmc.net/v2";
 const FORGE_MAVEN = "https://maven.minecraftforge.net";
 const FORGE_METADATA_URL = `${FORGE_MAVEN}/net/minecraftforge/forge/maven-metadata.xml`;
+const NEOFORGE_MAVEN = "https://maven.neoforged.net/releases";
+const NEOFORGE_METADATA_URL = `${NEOFORGE_MAVEN}/net/neoforged/neoforge/maven-metadata.xml`;
 
 const versionManifestSchema = z.object({
   latest: z.object({
@@ -405,14 +407,14 @@ export class MinecraftVersionService {
     return path.join(this.rootDir, "loaders", "fabric", minecraftVersion, "profile.json");
   }
 
-  async installForgeLoader(minecraftVersion: string) {
+  async installForgeLoader(minecraftVersion: string, requestedForgeVersion?: string) {
     await this.installVersion(minecraftVersion);
 
-    const forgeVersion = await this.resolveLatestForgeVersion(minecraftVersion);
+    const forgeVersion = await this.resolveForgeVersion(minecraftVersion, requestedForgeVersion);
     const profileId = forgeProfileId(minecraftVersion, forgeVersion);
     const profilePath = this.getForgeProfilePathById(profileId);
 
-    if (await this.isForgeProfileComplete(profilePath)) {
+    if (await this.isLoaderProfileComplete(profilePath)) {
       return;
     }
 
@@ -451,10 +453,10 @@ export class MinecraftVersionService {
         label: `Forge ${minecraftVersion} - instalando loader`,
         progress: 25,
       });
-      await runJavaInstaller(javaBin, installerPath, this.rootDir);
+      await runJavaInstaller(javaBin, installerPath, this.rootDir, "Forge");
       this.downloads.throwIfCancelled(taskId);
 
-      if (!(await this.isForgeProfileComplete(profilePath))) {
+      if (!(await this.isLoaderProfileComplete(profilePath))) {
         throw new Error("Forge terminou, mas o profile instalado esta incompleto.");
       }
 
@@ -465,20 +467,103 @@ export class MinecraftVersionService {
     }
   }
 
-  async readInstalledForgeProfile(minecraftVersion: string) {
-    const forgeVersion = await this.resolveLatestForgeVersion(minecraftVersion);
+  async readInstalledForgeProfile(minecraftVersion: string, requestedForgeVersion?: string) {
+    const forgeVersion = await this.resolveForgeVersion(minecraftVersion, requestedForgeVersion);
     const profilePath = this.getForgeProfilePathById(
       forgeProfileId(minecraftVersion, forgeVersion),
     );
 
-    if (!(await this.isForgeProfileComplete(profilePath))) {
+    if (!(await this.isLoaderProfileComplete(profilePath))) {
       throw new Error(`Forge não está instalado para Minecraft ${minecraftVersion}.`);
     }
 
     return loaderProfileSchema.parse(JSON.parse(await readFile(profilePath, "utf8")));
   }
 
-  private async resolveLatestForgeVersion(minecraftVersion: string) {
+  async installNeoForgeLoader(minecraftVersion: string, requestedNeoForgeVersion?: string) {
+    await this.installVersion(minecraftVersion);
+
+    const neoForgeVersion = await this.resolveNeoForgeVersion(
+      minecraftVersion,
+      requestedNeoForgeVersion,
+    );
+    const profileId = neoForgeProfileId(neoForgeVersion);
+    const profilePath = this.getNeoForgeProfilePathById(profileId);
+
+    if (await this.isLoaderProfileComplete(profilePath)) {
+      return;
+    }
+
+    const installerDir = path.join(this.rootDir, "loaders", "neoforge", minecraftVersion);
+    const installerPath = path.join(installerDir, `neoforge-${neoForgeVersion}-installer.jar`);
+    const installerUrl = `${NEOFORGE_MAVEN}/net/neoforged/neoforge/${neoForgeVersion}/neoforge-${neoForgeVersion}-installer.jar`;
+    const taskId = this.downloads.createTask(
+      `NeoForge ${minecraftVersion}`,
+      installerDir,
+      installerUrl,
+    );
+
+    try {
+      await mkdir(installerDir, { recursive: true });
+      await this.ensureLauncherProfiles();
+      this.downloads.throwIfCancelled(taskId);
+      this.downloads.updateTask(taskId, {
+        label: `NeoForge ${minecraftVersion} - installer`,
+        progress: 5,
+      });
+      await this.downloads.download({
+        label: `NeoForge ${neoForgeVersion} installer`,
+        url: installerUrl,
+        destination: installerPath,
+        visible: false,
+      });
+      this.downloads.throwIfCancelled(taskId);
+
+      const versionJson = await this.readInstalledVersionJson(minecraftVersion);
+      const javaBin = await this.javaRuntimes.resolveJava({
+        component: versionJson.javaVersion?.component,
+        majorVersion: versionJson.javaVersion?.majorVersion,
+      });
+
+      this.downloads.updateTask(taskId, {
+        label: `NeoForge ${minecraftVersion} - instalando loader`,
+        progress: 25,
+      });
+      await runJavaInstaller(javaBin, installerPath, this.rootDir, "NeoForge");
+      this.downloads.throwIfCancelled(taskId);
+
+      if (!(await this.isLoaderProfileComplete(profilePath))) {
+        throw new Error("NeoForge terminou, mas o profile instalado esta incompleto.");
+      }
+
+      this.downloads.completeTask(taskId);
+    } catch (error) {
+      this.downloads.failTask(taskId, error);
+      throw error;
+    }
+  }
+
+  async readInstalledNeoForgeProfile(minecraftVersion: string, requestedNeoForgeVersion?: string) {
+    const neoForgeVersion = await this.resolveNeoForgeVersion(
+      minecraftVersion,
+      requestedNeoForgeVersion,
+    );
+    const profilePath = this.getNeoForgeProfilePathById(neoForgeProfileId(neoForgeVersion));
+
+    if (!(await this.isLoaderProfileComplete(profilePath))) {
+      throw new Error(`NeoForge nÃ£o estÃ¡ instalado para Minecraft ${minecraftVersion}.`);
+    }
+
+    return loaderProfileSchema.parse(JSON.parse(await readFile(profilePath, "utf8")));
+  }
+
+  private async resolveForgeVersion(minecraftVersion: string, requestedForgeVersion?: string) {
+    const requested = normalizeForgeVersion(minecraftVersion, requestedForgeVersion);
+
+    if (requested) {
+      return requested;
+    }
+
     const response = await fetchWithElectronNet(
       FORGE_METADATA_URL,
       "Buscar versoes do Forge",
@@ -503,7 +588,46 @@ export class MinecraftVersionService {
     return latest;
   }
 
+  private async resolveNeoForgeVersion(
+    minecraftVersion: string,
+    requestedNeoForgeVersion?: string,
+  ) {
+    const requested = normalizeNeoForgeVersion(requestedNeoForgeVersion);
+
+    if (requested) {
+      return requested;
+    }
+
+    const response = await fetchWithElectronNet(
+      NEOFORGE_METADATA_URL,
+      "Buscar versoes do NeoForge",
+    );
+
+    if (!response.ok) {
+      throw new Error(`NeoForge Maven retornou erro ${response.status}.`);
+    }
+
+    const metadata = await response.text();
+    const prefix = neoForgePrefixForMinecraft(minecraftVersion);
+    const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const versions = [...metadata.matchAll(new RegExp(`<version>(${escaped}[^<]+)</version>`, "g"))]
+      .map((match) => match[1])
+      .filter((version): version is string => Boolean(version));
+
+    const latest = versions.at(-1);
+
+    if (!latest) {
+      throw new Error(`Nenhuma build NeoForge encontrada para Minecraft ${minecraftVersion}.`);
+    }
+
+    return latest;
+  }
+
   private getForgeProfilePathById(profileId: string) {
+    return path.join(this.rootDir, "versions", profileId, `${profileId}.json`);
+  }
+
+  private getNeoForgeProfilePathById(profileId: string) {
     return path.join(this.rootDir, "versions", profileId, `${profileId}.json`);
   }
 
@@ -522,7 +646,7 @@ export class MinecraftVersionService {
     );
   }
 
-  private async isForgeProfileComplete(profilePath: string) {
+  private async isLoaderProfileComplete(profilePath: string) {
     if (!existsSync(profilePath)) {
       return false;
     }
@@ -716,7 +840,56 @@ const mavenPath = (coordinate: string) => {
 const forgeProfileId = (minecraftVersion: string, forgeVersion: string) =>
   `${minecraftVersion}-forge-${forgeVersion.replace(`${minecraftVersion}-`, "")}`;
 
-const runJavaInstaller = async (javaBin: string, installerPath: string, minecraftRoot: string) =>
+const neoForgeProfileId = (neoForgeVersion: string) => `neoforge-${neoForgeVersion}`;
+
+const normalizeForgeVersion = (minecraftVersion: string, version?: string) => {
+  const trimmed = version?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const withoutPrefix = trimmed.toLowerCase().startsWith("forge-")
+    ? trimmed.slice("forge-".length)
+    : trimmed;
+
+  return withoutPrefix.includes("-")
+    ? withoutPrefix
+    : `${minecraftVersion}-${withoutPrefix}`;
+};
+
+const normalizeNeoForgeVersion = (version?: string) => {
+  const trimmed = version?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return trimmed.toLowerCase().startsWith("neoforge-")
+    ? trimmed.slice("neoforge-".length)
+    : trimmed;
+};
+
+const neoForgePrefixForMinecraft = (minecraftVersion: string) => {
+  const parts = minecraftVersion.split(".");
+
+  if (parts.length >= 3 && parts[0] === "1") {
+    return `${parts[1]}.${parts[2]}.`;
+  }
+
+  if (parts.length >= 2) {
+    return `${parts[0]}.${parts[1]}.`;
+  }
+
+  return `${minecraftVersion}.`;
+};
+
+const runJavaInstaller = async (
+  javaBin: string,
+  installerPath: string,
+  minecraftRoot: string,
+  loaderName: string,
+) =>
   new Promise<void>((resolve, reject) => {
     const child = spawn(javaBin, ["-jar", installerPath, "--installClient", minecraftRoot], {
       cwd: minecraftRoot,
@@ -748,7 +921,7 @@ const runJavaInstaller = async (javaBin: string, installerPath: string, minecraf
 
       reject(
         new Error(
-          `Instalador Forge fechou com erro ${code ?? "desconhecido"}.\n${output
+          `Instalador ${loaderName} fechou com erro ${code ?? "desconhecido"}.\n${output
             .slice(-12)
             .join("\n")
             .slice(-2200)}`,

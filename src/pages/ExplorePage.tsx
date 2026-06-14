@@ -163,6 +163,14 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   };
 
   const requestInstall = (project: ContentSearchResult | ContentProjectDetails, selectedContentVersion?: ContentVersion) => {
+    if (project.type === "modpack") {
+      installAsInstance.mutate({
+        project,
+        versionId: selectedContentVersion?.id,
+      });
+      return;
+    }
+
     if (initialInstanceId) {
       install.mutate({
         project,
@@ -172,7 +180,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
       return;
     }
 
-    if (project.type === "mod" || project.type === "modpack") {
+    if (project.type === "mod") {
       installAsInstance.mutate({
         project,
         versionId: selectedContentVersion?.id,

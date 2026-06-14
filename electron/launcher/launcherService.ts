@@ -54,9 +54,9 @@ export class LauncherService {
     try {
       const instance = await this.instances.getById(request.instanceId);
 
-      if (!["vanilla", "fabric", "iris", "iris-sodium", "forge"].includes(instance.loader)) {
+      if (!["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge"].includes(instance.loader)) {
         throw new Error(
-          `A execucao real de ${instance.loader} ainda precisa de instalador proprio. Vanilla, Fabric e Forge ja estao conectados.`,
+          `A execucao real de ${instance.loader} ainda precisa de instalador proprio. Vanilla, Fabric, Forge e NeoForge ja estao conectados.`,
         );
       }
 
@@ -101,7 +101,16 @@ export class LauncherService {
         await this.minecraftVersions.installFabricLoader(instance.minecraftVersion);
       }
       if (instance.loader === "forge") {
-        await this.minecraftVersions.installForgeLoader(instance.minecraftVersion);
+        await this.minecraftVersions.installForgeLoader(
+          instance.minecraftVersion,
+          instance.loaderVersion,
+        );
+      }
+      if (instance.loader === "neoforge") {
+        await this.minecraftVersions.installNeoForgeLoader(
+          instance.minecraftVersion,
+          instance.loaderVersion,
+        );
       }
       this.assertLaunchNotCancelled(request.instanceId, launchState);
       const minecraftRoot = this.minecraftVersions.getMinecraftRoot();
@@ -116,7 +125,17 @@ export class LauncherService {
         : null;
     const forgeProfile =
       instance.loader === "forge"
-        ? await this.minecraftVersions.readInstalledForgeProfile(instance.minecraftVersion)
+        ? await this.minecraftVersions.readInstalledForgeProfile(
+            instance.minecraftVersion,
+            instance.loaderVersion,
+          )
+        : null;
+    const neoForgeProfile =
+      instance.loader === "neoforge"
+        ? await this.minecraftVersions.readInstalledNeoForgeProfile(
+            instance.minecraftVersion,
+            instance.loaderVersion,
+          )
         : null;
     const vanillaLibraries = versionJson.libraries
         .filter((library) => rulesAllow(library.rules))
@@ -129,8 +148,9 @@ export class LauncherService {
           .map((library) => path.join(minecraftRoot, "libraries", mavenPath(library.name)))
           .filter((libraryPath) => existsSync(libraryPath))
       : [];
-    const forgeLibraries = forgeProfile
-      ? forgeProfile.libraries
+    const loaderProfile = forgeProfile ?? neoForgeProfile;
+    const loaderLibraries = loaderProfile
+      ? loaderProfile.libraries
           .filter((library) => rulesAllow(library.rules))
           .map((library) => library.downloads?.artifact?.path)
           .filter((libraryPath): libraryPath is string => Boolean(libraryPath))
@@ -140,7 +160,7 @@ export class LauncherService {
     const classpath = [
       ...vanillaLibraries,
       ...fabricLibraries,
-      ...forgeLibraries,
+      ...loaderLibraries,
       installedAfterDownload.jar_path,
     ].join(path.delimiter);
 
@@ -170,13 +190,13 @@ export class LauncherService {
     const fabricJvmArgs = fabricProfile?.arguments?.jvm
       ? resolveArguments(fabricProfile.arguments.jvm, replacements)
       : [];
-    const forgeJvmArgs = forgeProfile?.arguments?.jvm
-      ? resolveArguments(forgeProfile.arguments.jvm, replacements)
+    const loaderProfileJvmArgs = loaderProfile?.arguments?.jvm
+      ? resolveArguments(loaderProfile.arguments.jvm, replacements)
       : [];
     const loaderJvmArgs = stripMemoryJvmArgs([
       ...vanillaJvmArgs,
       ...fabricJvmArgs,
-      ...forgeJvmArgs,
+      ...loaderProfileJvmArgs,
     ]);
     const jvmArgs = [...buildMemoryJvmArgs(instance.ramMb), ...loaderJvmArgs];
     const vanillaGameArgs = versionJson.arguments?.game
@@ -187,10 +207,10 @@ export class LauncherService {
     const fabricGameArgs = fabricProfile?.arguments?.game
       ? resolveArguments(fabricProfile.arguments.game, replacements)
       : [];
-    const forgeGameArgs = forgeProfile?.arguments?.game
-      ? resolveArguments(forgeProfile.arguments.game, replacements)
+    const loaderProfileGameArgs = loaderProfile?.arguments?.game
+      ? resolveArguments(loaderProfile.arguments.game, replacements)
       : [];
-    const gameArgs = [...vanillaGameArgs, ...fabricGameArgs, ...forgeGameArgs];
+    const gameArgs = [...vanillaGameArgs, ...fabricGameArgs, ...loaderProfileGameArgs];
     this.emit({
       id: request.instanceId,
       type: "step",
@@ -204,7 +224,7 @@ export class LauncherService {
       component: versionJson.javaVersion?.component,
       majorVersion: versionJson.javaVersion?.majorVersion,
     });
-    const mainClass = forgeProfile?.mainClass ?? fabricProfile?.mainClass ?? versionJson.mainClass;
+    const mainClass = loaderProfile?.mainClass ?? fabricProfile?.mainClass ?? versionJson.mainClass;
 
     this.emit({
       id: request.instanceId,

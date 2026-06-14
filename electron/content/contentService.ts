@@ -107,6 +107,7 @@ const modrinthProjectSchema = z.object({
 
 const modrinthVersionSchema = z.object({
   id: z.string(),
+  project_id: z.string().optional(),
   name: z.string(),
   version_number: z.string().optional(),
   date_published: z.string().optional(),
@@ -128,6 +129,7 @@ const modrinthVersionSchema = z.object({
     .array(
       z.object({
         project_id: z.string().nullable().optional(),
+        version_id: z.string().nullable().optional(),
         dependency_type: z.string(),
       }),
     )
@@ -181,6 +183,25 @@ const curseForgeFilesSchema = z.object({
       fileName: z.string(),
       downloadUrl: z.string().nullable().optional(),
       gameVersions: z.array(z.string()).default([]),
+      isServerPack: z.boolean().optional().default(false),
+      dependencies: z
+        .array(
+          z.object({
+            modId: z.number(),
+            relationType: z.number(),
+          }),
+        )
+        .optional()
+        .default([]),
+      hashes: z
+        .array(
+          z.object({
+            algo: z.number(),
+            value: z.string(),
+          }),
+        )
+        .optional()
+        .default([]),
       fileDate: z.string().optional(),
       downloadCount: z.number().optional(),
     }),
@@ -586,7 +607,9 @@ export class ContentService {
           const loaders = candidate.gameVersions
             .map((version) => version.toLowerCase())
             .filter(isLoaderType);
-          return input.type === "modpack" || loaders.length > 0;
+          return input.type === "modpack"
+            ? !candidate.isServerPack && candidate.fileName.toLowerCase().endsWith(".zip")
+            : loaders.length > 0;
         }) ?? files.at(0);
 
     if (!file) {
@@ -805,7 +828,20 @@ export class ContentService {
     const dependencies: InstalledContent[] = [];
 
     for (const dependency of version.dependencies) {
-      if (dependency.dependency_type !== "required" || !dependency.project_id) {
+      if (dependency.dependency_type !== "required") {
+        continue;
+      }
+
+      let dependencyProjectId = dependency.project_id ?? undefined;
+      let dependencyVersionId = dependency.version_id ?? undefined;
+
+      if (!dependencyProjectId && dependencyVersionId) {
+        const dependencyVersion = await this.getModrinthVersionById(dependencyVersionId);
+        dependencyProjectId = dependencyVersion.project_id;
+        dependencyVersionId = dependencyVersion.id;
+      }
+
+      if (!dependencyProjectId) {
         continue;
       }
 
@@ -813,9 +849,10 @@ export class ContentService {
         ...(await this.installModrinth(
           {
             provider: "modrinth",
-            type: input.type,
-            projectId: dependency.project_id,
+            type: "mod",
+            projectId: dependencyProjectId,
             instanceId: input.instanceId,
+            versionId: dependencyVersionId,
           },
           installedProjectIds,
         )),
@@ -863,6 +900,19 @@ export class ContentService {
     }
 
     return z.array(modrinthVersionSchema).parse(await response.json());
+  }
+
+  private async getModrinthVersionById(versionId: string) {
+    const response = await fetchWithElectronNet(
+      `${MODRINTH_API}/version/${versionId}`,
+      "Buscar versao no Modrinth",
+    );
+
+    if (!response.ok) {
+      throw new Error(`Modrinth retornou erro ${response.status} ao buscar versao.`);
+    }
+
+    return modrinthVersionSchema.parse(await response.json());
   }
 
   private async getModrinthProject(
@@ -1027,6 +1077,7 @@ export class ContentService {
 
   private async installCurseForge(
     input: z.infer<typeof installInputSchema>,
+    installedProjectIds = new Set<string>(),
   ): Promise<InstalledContent> {
     const instance = await this.instances.getById(input.instanceId);
     assertContentManagementEnabled(instance.contentManagementEnabled);
@@ -1034,6 +1085,19 @@ export class ContentService {
     if (!canInstallContentInLoader(input.type, instance.loader)) {
       throw new Error(contentInstallBlockReason(input.type, instance.loader));
     }
+
+    if (installedProjectIds.has(input.projectId)) {
+      const existing = this.database.get<InstalledContentRow>(
+        "SELECT * FROM installed_content WHERE instance_id = ? AND provider = ? AND project_id = ? ORDER BY installed_at DESC LIMIT 1",
+        [input.instanceId, "curseforge", input.projectId],
+      );
+
+      if (existing) {
+        return rowToInstalledContent(existing);
+      }
+    }
+
+    installedProjectIds.add(input.projectId);
     const loader = normalizeContentLoader(instance.loader) ?? instance.loader;
     let files = await this.getCurseForgeFiles(
       input.projectId,
@@ -1076,7 +1140,7 @@ export class ContentService {
     const downloadUrl =
       file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(input.projectId, file.id));
 
-    return this.installFile({
+    const installed = await this.installFile({
       instanceId: instance.id,
       provider: "curseforge",
       type: input.type,
@@ -1085,8 +1149,31 @@ export class ContentService {
       name: file.displayName ?? file.fileName,
       fileName: file.fileName,
       url: downloadUrl,
+      sha1: curseForgeSha1(file),
       gameDir: instance.gameDir,
     });
+
+    if (input.type !== "mod") {
+      return installed;
+    }
+
+    for (const dependency of file.dependencies) {
+      if (dependency.relationType !== 3) {
+        continue;
+      }
+
+      await this.installCurseForge(
+        {
+          provider: "curseforge",
+          type: "mod",
+          projectId: String(dependency.modId),
+          instanceId: input.instanceId,
+        },
+        installedProjectIds,
+      );
+    }
+
+    return installed;
   }
 
   private async getCurseForgeDownloadUrl(projectId: string, fileId: number) {
@@ -1364,6 +1451,9 @@ const chooseLoaderForNewModInstance = (loaders: LoaderType[]): LoaderType => {
 
   return loader;
 };
+
+const curseForgeSha1 = (file: z.infer<typeof curseForgeFilesSchema>["data"][number]) =>
+  file.hashes.find((hash) => hash.algo === 1)?.value;
 
 const mergeProviderResults = (results: ContentSearchResult[]) => {
   const grouped = new Map<string, ContentSearchResult>();

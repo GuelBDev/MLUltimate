@@ -33,6 +33,7 @@ const createInstanceSchema = z.object({
   name: z.string().trim().min(2).max(64),
   minecraftVersion: z.string().trim().min(1),
   loader: z.enum(["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"]),
+  loaderVersion: z.string().trim().min(1).optional(),
   ramMb: z.number().int().min(1024).max(65536),
   javaPath: z.string().optional(),
   iconPath: z.string().optional(),
@@ -45,6 +46,7 @@ const updateInstanceSchema = z.object({
   ramMb: z.number().int().min(1024).max(65536).optional(),
   javaPath: z.string().optional(),
   iconPath: z.string().optional(),
+  loaderVersion: z.string().trim().min(1).optional(),
   contentManagementEnabled: z.boolean().optional(),
 });
 
@@ -57,6 +59,7 @@ const mlultimateManifestSchema = z.object({
   name: z.string().min(2),
   minecraftVersion: z.string().min(1),
   loader: z.enum(["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"]).default("vanilla"),
+  loaderVersion: z.string().optional(),
   ramMb: z.number().int().min(1024).max(65536).default(4096),
 });
 
@@ -104,6 +107,15 @@ const curseForgeFileSchema = z.object({
     id: z.number(),
     fileName: z.string(),
     downloadUrl: z.string().nullable().optional(),
+    hashes: z
+      .array(
+        z.object({
+          algo: z.number(),
+          value: z.string(),
+        }),
+      )
+      .optional()
+      .default([]),
   }),
 });
 
@@ -135,6 +147,7 @@ type InstanceRow = {
   name: string;
   minecraft_version: string;
   loader: LoaderType;
+  loader_version?: string | null;
   ram_mb: number;
   java_path?: string;
   game_dir: string;
@@ -179,14 +192,15 @@ export class InstanceService {
     this.database.run(
       `
       INSERT INTO instances
-        (id, name, minecraft_version, loader, ram_mb, java_path, game_dir, icon_path, content_management_enabled, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, name, minecraft_version, loader, loader_version, ram_mb, java_path, game_dir, icon_path, content_management_enabled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         id,
         parsed.name,
         parsed.minecraftVersion,
         parsed.loader,
+        normalizeLoaderVersion(parsed.loader, parsed.loaderVersion) ?? null,
         parsed.ramMb,
         parsed.javaPath ?? null,
         gameDir,
@@ -256,7 +270,7 @@ export class InstanceService {
     this.database.run(
       `
       UPDATE instances
-      SET name = ?, ram_mb = ?, java_path = ?, icon_path = ?, content_management_enabled = ?, updated_at = ?
+      SET name = ?, ram_mb = ?, java_path = ?, icon_path = ?, loader_version = ?, content_management_enabled = ?, updated_at = ?
       WHERE id = ?
       `,
       [
@@ -264,6 +278,7 @@ export class InstanceService {
         parsed.ramMb ?? current.ramMb,
         parsed.javaPath ?? current.javaPath ?? null,
         iconPath,
+        normalizeLoaderVersion(current.loader, parsed.loaderVersion ?? current.loaderVersion) ?? null,
         (parsed.contentManagementEnabled ?? current.contentManagementEnabled) ? 1 : 0,
         new Date().toISOString(),
         parsed.id,
@@ -326,7 +341,12 @@ export class InstanceService {
     }
 
     if (parsed.loader === "forge") {
-      await this.minecraftVersions.installForgeLoader(parsed.minecraftVersion);
+      await this.minecraftVersions.installForgeLoader(parsed.minecraftVersion, parsed.loaderVersion);
+      return;
+    }
+
+    if (parsed.loader === "neoforge") {
+      await this.minecraftVersions.installNeoForgeLoader(parsed.minecraftVersion, parsed.loaderVersion);
       return;
     }
 
@@ -431,6 +451,7 @@ export class InstanceService {
           name: index.name,
           minecraftVersion,
           loader: loaderFromModrinthDependencies(index.dependencies),
+          loaderVersion: loaderVersionFromModrinthDependencies(index.dependencies),
           ramMb: 4096,
           contentManagementEnabled: false,
         });
@@ -466,6 +487,7 @@ export class InstanceService {
           name: manifest.name,
           minecraftVersion: manifest.minecraft.version,
           loader: loaderFromCurseForgeManifest(manifest.minecraft.modLoaders),
+          loaderVersion: loaderVersionFromCurseForgeManifest(manifest.minecraft.modLoaders),
           ramMb: 4096,
           contentManagementEnabled: false,
         });
@@ -619,17 +641,42 @@ export class InstanceService {
       return;
     }
 
-    for (const fileRef of manifest.files) {
-      const file = await this.getCurseForgeFile(fileRef.projectID, fileRef.fileID);
-      const downloadUrl =
-        file.downloadUrl ??
-        (await this.getCurseForgeDownloadUrl(fileRef.projectID, fileRef.fileID));
+    const taskId = this.downloads.createTask(
+      `Modpack ${manifest.name}`,
+      path.join(gameDir, "mods"),
+      "curseforge://manifest",
+    );
+    let completed = 0;
 
-      await this.downloads.download({
-        label: `CurseForge ${file.fileName}`,
-        url: downloadUrl,
-        destination: path.join(gameDir, "mods", sanitizeFileName(file.fileName)),
+    try {
+      await runPool(manifest.files, 8, async (fileRef) => {
+        this.downloads.throwIfCancelled(taskId);
+        const file = await this.getCurseForgeFile(fileRef.projectID, fileRef.fileID);
+        const downloadUrl =
+          file.downloadUrl ??
+          (await this.getCurseForgeDownloadUrl(fileRef.projectID, fileRef.fileID));
+
+        this.downloads.throwIfCancelled(taskId);
+        await this.downloads.download({
+          label: `CurseForge ${file.fileName}`,
+          url: downloadUrl,
+          destination: path.join(gameDir, "mods", sanitizeFileName(file.fileName)),
+          sha1: curseForgeSha1(file),
+          visible: false,
+        });
+
+        completed += 1;
+        this.downloads.throwIfCancelled(taskId);
+        this.downloads.updateTask(taskId, {
+          label: `Modpack ${manifest.name} - mods ${completed}/${manifest.files.length}`,
+          progress: Math.round((completed / manifest.files.length) * 100),
+        });
       });
+
+      this.downloads.completeTask(taskId);
+    } catch (error) {
+      this.downloads.failTask(taskId, error);
+      throw error;
     }
   }
 
@@ -727,6 +774,7 @@ export class InstanceService {
       name: row.name,
       minecraftVersion: row.minecraft_version,
       loader: row.loader,
+      loaderVersion: row.loader_version ?? undefined,
       ramMb: Number(row.ram_mb),
       javaPath: row.java_path,
       gameDir: row.game_dir,
@@ -848,6 +896,28 @@ const copyArchiveContents = async (
   }
 };
 
+const runPool = async <T>(
+  items: T[],
+  concurrency: number,
+  task: (item: T) => Promise<void>,
+) => {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const item = queue.shift();
+
+      if (item) {
+        await task(item);
+      }
+    }
+  });
+
+  await Promise.all(workers);
+};
+
+const curseForgeSha1 = (file: z.infer<typeof curseForgeFileSchema>["data"]) =>
+  file.hashes.find((hash) => hash.algo === 1)?.value;
+
 const loaderFromModrinthDependencies = (dependencies: Record<string, string>): LoaderType => {
   if (dependencies.forge) return "forge";
   if (dependencies["fabric-loader"]) return "fabric";
@@ -855,6 +925,12 @@ const loaderFromModrinthDependencies = (dependencies: Record<string, string>): L
   if (dependencies.neoforge) return "neoforge";
   return "vanilla";
 };
+
+const loaderVersionFromModrinthDependencies = (dependencies: Record<string, string>) =>
+  dependencies.forge ??
+  dependencies.neoforge ??
+  dependencies["fabric-loader"] ??
+  dependencies.quilt;
 
 const loaderFromCurseForgeManifest = (
   modLoaders: Array<{ id: string; primary?: boolean }>,
@@ -867,6 +943,36 @@ const loaderFromCurseForgeManifest = (
   if (id.startsWith("quilt")) return "quilt";
   if (id.startsWith("neoforge")) return "neoforge";
   return "vanilla";
+};
+
+const loaderVersionFromCurseForgeManifest = (
+  modLoaders: Array<{ id: string; primary?: boolean }>,
+) => {
+  const loader = modLoaders.find((item) => item.primary) ?? modLoaders.at(0);
+
+  return normalizeLoaderVersion(loaderFromCurseForgeManifest(modLoaders), loader?.id);
+};
+
+const normalizeLoaderVersion = (loader: LoaderType, version?: string) => {
+  const trimmed = version?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (loader === "forge" && trimmed.toLowerCase().startsWith("forge-")) {
+    return trimmed.slice("forge-".length);
+  }
+
+  if (loader === "neoforge" && trimmed.toLowerCase().startsWith("neoforge-")) {
+    return trimmed.slice("neoforge-".length);
+  }
+
+  if (loader === "fabric" && trimmed.toLowerCase().startsWith("fabric-")) {
+    return trimmed.slice("fabric-".length);
+  }
+
+  return trimmed;
 };
 
 const isFabricBasedLoader = (loader: LoaderType) =>

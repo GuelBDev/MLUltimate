@@ -84,6 +84,7 @@ export type CreateInstanceInput = {
   name: string;
   minecraftVersion: string;
   loader: LoaderType;
+  loaderVersion?: string;
   ramMb: number;
   javaPath?: string;
   iconPath?: string;
@@ -96,6 +97,7 @@ export type UpdateInstanceInput = {
   ramMb?: number;
   javaPath?: string;
   iconPath?: string;
+  loaderVersion?: string;
   contentManagementEnabled?: boolean;
 };
 
@@ -104,6 +106,7 @@ export type LauncherInstance = {
   name: string;
   minecraftVersion: string;
   loader: LoaderType;
+  loaderVersion?: string;
   ramMb: number;
   javaPath?: string;
   gameDir: string;
