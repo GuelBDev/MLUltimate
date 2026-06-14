@@ -21,6 +21,7 @@ import type {
   LauncherSkin,
   SaveNicknameSkinInput,
   SkinSearchResult,
+  SystemMemoryInfo,
   UpdaterState,
   UpdateLauncherSettingsInput,
   UpdateInstanceInput,
@@ -133,6 +134,10 @@ const api = {
       ipcRenderer.invoke("avatar:equip-skin", skinId) as Promise<LauncherSkin>,
     removeSkin: (skinId: string) =>
       ipcRenderer.invoke("avatar:remove-skin", skinId) as Promise<void>,
+  },
+  system: {
+    getMemory: () =>
+      ipcRenderer.invoke("system:get-memory") as Promise<SystemMemoryInfo>,
   },
   window: {
     minimize: () => ipcRenderer.invoke("window:minimize") as Promise<void>,

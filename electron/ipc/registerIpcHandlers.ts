@@ -1,3 +1,4 @@
+import { totalmem } from "node:os";
 import { BrowserWindow, ipcMain } from "electron";
 import { z } from "zod";
 import { MicrosoftAuthService } from "../auth/microsoftAuthService";
@@ -213,6 +214,9 @@ export const registerIpcHandlers = ({
   ipcMain.handle("avatar:remove-skin", async (_, skinId: unknown) =>
     avatar.remove(z.string().min(1).parse(skinId)),
   );
+  ipcMain.handle("system:get-memory", async () => ({
+    totalMb: Math.max(1024, Math.floor(totalmem() / 1024 / 1024)),
+  }));
   ipcMain.handle("window:minimize", (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize();
   });

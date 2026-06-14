@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ImagePlus, Plus, Upload, X } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import instanceDefaultImage from "../assets/instance-default.png";
 import { InstanceTile } from "../components/library/InstanceTile";
 import { Badge } from "../components/ui/badge";
@@ -68,18 +68,24 @@ const mapDownloadsToInstances = (
 const normalizePath = (value: string) => value.replaceAll("\\", "/").toLowerCase();
 const DEFAULT_RAM_MB = 4096;
 const MIN_RAM_MB = 1024;
-const MAX_RAM_MB = 65536;
+const FALLBACK_MAX_RAM_MB = 16384;
 const RAM_STEP_MB = 512;
+type RamMode = "recommended" | "custom";
 
-const clampRamMb = (value: number) => {
+const clampMaxRamMb = (value: number) => Math.max(MIN_RAM_MB, Math.floor(value));
+
+const clampRamMb = (value: number, maxRamMb = FALLBACK_MAX_RAM_MB) => {
   const safeValue = Number.isFinite(value) ? value : DEFAULT_RAM_MB;
   const steppedValue = Math.round(safeValue / RAM_STEP_MB) * RAM_STEP_MB;
 
-  return Math.min(MAX_RAM_MB, Math.max(MIN_RAM_MB, steppedValue));
+  return Math.min(maxRamMb, Math.max(MIN_RAM_MB, steppedValue));
 };
 
 const formatRam = (ramMb: number) =>
   ramMb % 1024 === 0 ? `${ramMb / 1024} GB` : `${(ramMb / 1024).toFixed(1)} GB`;
+
+const getCustomDefaultRam = (maxRamMb: number) =>
+  Math.min(maxRamMb, Math.max(MIN_RAM_MB, 8192));
 
 export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   const queryClient = useQueryClient();
@@ -95,6 +101,11 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   } = useInstances();
   const downloads = useDownloads();
   const runningInstances = useRunningInstances();
+  const systemMemory = useQuery({
+    queryKey: ["system-memory"],
+    queryFn: launcherApi.getSystemMemory,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importCode, setImportCode] = useState("");
@@ -104,6 +115,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   const [minecraftVersion, setMinecraftVersion] = useState("");
   const [loader, setLoader] = useState<LoaderType>("vanilla");
   const [ramMb, setRamMb] = useState(DEFAULT_RAM_MB);
+  const [ramMode, setRamMode] = useState<RamMode>("recommended");
   const [selectedIconPath, setSelectedIconPath] = useState("");
   const [selectedIconPreview, setSelectedIconPreview] = useState("");
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -122,8 +134,13 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
     () => mapDownloadsToInstances(downloads.data ?? [], visibleInstances),
     [downloads.data, visibleInstances],
   );
-  const customRam = ramMb !== DEFAULT_RAM_MB;
-  const updateRamMb = (value: number) => setRamMb(clampRamMb(value));
+  const maxRamMb = useMemo(
+    () => clampMaxRamMb(systemMemory.data?.totalMb ?? FALLBACK_MAX_RAM_MB),
+    [systemMemory.data?.totalMb],
+  );
+  const customRam = ramMode === "custom";
+  const updateRamMb = (value: number) => setRamMb(clampRamMb(value, maxRamMb));
+  const normalizedRamMb = clampRamMb(ramMb, maxRamMb);
   const error =
     createInstance.error instanceof Error
       ? createInstance.error.message
@@ -140,7 +157,8 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
     setName("");
     setMinecraftVersion("");
     setLoader("vanilla");
-    setRamMb(DEFAULT_RAM_MB);
+    setRamMode("recommended");
+    setRamMb(clampRamMb(DEFAULT_RAM_MB, maxRamMb));
     setSelectedIconPath("");
     setSelectedIconPreview("");
     setModalOpen(true);
@@ -151,7 +169,8 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
     setName(instance.name);
     setMinecraftVersion(instance.minecraftVersion);
     setLoader(instance.loader);
-    setRamMb(clampRamMb(instance.ramMb));
+    setRamMode(instance.ramMb === DEFAULT_RAM_MB ? "recommended" : "custom");
+    setRamMb(clampRamMb(instance.ramMb, maxRamMb));
     setSelectedIconPath("");
     setSelectedIconPreview(instance.iconDataUrl ?? "");
     setModalOpen(true);
@@ -176,7 +195,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
         {
           id: editing.id,
           name,
-          ramMb,
+          ramMb: normalizedRamMb,
           iconPath: selectedIconPath || undefined,
         },
         {
@@ -195,7 +214,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
         name,
         minecraftVersion: selectedVersion,
         loader,
-        ramMb,
+        ramMb: normalizedRamMb,
         iconPath: selectedIconPath || undefined,
       },
       {
@@ -364,12 +383,12 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
       ) : null}
 
       {modalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/75 p-3 backdrop-blur-sm sm:p-4">
           <form
             onSubmit={submit}
-            className="w-full max-w-3xl overflow-hidden rounded-2xl border border-white/12 bg-[#161B22] shadow-2xl shadow-black/50"
+            className="flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/12 bg-[#161B22] shadow-2xl shadow-black/50"
           >
-            <div className="relative border-b border-white/10 bg-[#0D1117] p-6">
+            <div className="relative shrink-0 border-b border-white/10 bg-[#0D1117] p-5 sm:p-6">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.22),transparent_38%)]" />
               <div className="relative flex items-start justify-between gap-4">
                 <div>
@@ -393,8 +412,9 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
               </div>
             </div>
 
-            <div className="grid gap-6 p-6 md:grid-cols-[150px_1fr]">
-              <div className="space-y-3">
+            <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+              <aside className="shrink-0 border-b border-white/10 p-4 sm:p-6 md:w-[178px] md:border-b-0 md:border-r">
+                <div className="space-y-3 md:sticky md:top-0">
                 <div
                   className="h-36 w-36 rounded-2xl border border-white/10 bg-cover bg-center shadow-xl shadow-black/30"
                   style={{ backgroundImage: `url(${selectedIconPreview || instanceDefaultImage})` }}
@@ -408,8 +428,10 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                   <ImagePlus className="h-4 w-4" />
                   Imagem
                 </Button>
-              </div>
-              <div className="space-y-5">
+                </div>
+              </aside>
+              <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+                <div className="space-y-5">
                 <label className="block">
                   <span className="text-sm font-semibold text-white">Modpack Name</span>
                   <input
@@ -478,7 +500,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                       </p>
                     </div>
                     <span className="rounded-full border border-[#60A5FA]/30 bg-[#3B82F6]/15 px-3 py-1 text-xs font-semibold text-[#BFDBFE]">
-                      {ramMb} MB
+                      {normalizedRamMb} MB
                     </span>
                   </div>
 
@@ -488,7 +510,10 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                         type="radio"
                         name="ram-mode"
                         checked={!customRam}
-                        onChange={() => setRamMb(DEFAULT_RAM_MB)}
+                        onChange={() => {
+                          setRamMode("recommended");
+                          updateRamMb(DEFAULT_RAM_MB);
+                        }}
                         className="h-4 w-4 accent-[#f05a28]"
                       />
                       <span className="text-sm font-semibold text-white">
@@ -501,7 +526,10 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                         type="radio"
                         name="ram-mode"
                         checked={customRam}
-                        onChange={() => setRamMb(ramMb === DEFAULT_RAM_MB ? 8192 : ramMb)}
+                        onChange={() => {
+                          setRamMode("custom");
+                          updateRamMb(normalizedRamMb === DEFAULT_RAM_MB ? getCustomDefaultRam(maxRamMb) : normalizedRamMb);
+                        }}
                         className="h-4 w-4 accent-[#f05a28]"
                       />
                       <span className="text-sm font-semibold text-white">
@@ -514,42 +542,46 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                     <input
                       type="range"
                       min={MIN_RAM_MB}
-                      max={MAX_RAM_MB}
+                      max={maxRamMb}
                       step={RAM_STEP_MB}
-                      value={ramMb}
+                      value={normalizedRamMb}
                       disabled={!customRam}
                       onChange={(event) => updateRamMb(Number(event.target.value))}
                       className="h-2 w-full cursor-pointer accent-[#f05a28] disabled:cursor-not-allowed"
                     />
                     <div className="flex items-center justify-between text-[11px] text-[#94A3B8]">
                       <span>{formatRam(MIN_RAM_MB)}</span>
-                      <span>{formatRam(MAX_RAM_MB)}</span>
+                      <span>{formatRam(maxRamMb)} max</span>
                     </div>
                     <div className="flex items-center gap-3">
                       <input
-                        value={ramMb}
+                        value={normalizedRamMb}
                         onChange={(event) => updateRamMb(Number(event.target.value))}
                         disabled={!customRam}
                         type="number"
                         min={MIN_RAM_MB}
-                        max={MAX_RAM_MB}
+                        max={maxRamMb}
                         step={RAM_STEP_MB}
                         className="h-11 w-36 rounded-xl border border-white/10 bg-[#161B22] px-3 text-sm font-semibold text-white outline-none focus:border-[#60A5FA]/70 disabled:cursor-not-allowed"
                       />
-                      <span className="text-sm text-[#94A3B8]">{formatRam(ramMb)}</span>
+                      <span className="text-sm text-[#94A3B8]">{formatRam(normalizedRamMb)}</span>
                     </div>
+                    <p className="text-xs leading-5 text-[#94A3B8]">
+                      Limite detectado do PC: {formatRam(maxRamMb)} de RAM.
+                    </p>
                   </div>
+                </div>
+
+                  {error ? (
+                    <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                      {error}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
 
-            {error ? (
-              <div className="mt-5 rounded-sm border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-                {error}
-              </div>
-            ) : null}
-
-            <div className="flex justify-end gap-3 border-t border-white/10 px-6 py-5">
+            <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 px-5 py-4 sm:px-6 sm:py-5">
               <Button type="button" variant="secondary" className="rounded-xl" onClick={() => setModalOpen(false)}>
                 Cancel
               </Button>

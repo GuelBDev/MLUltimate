@@ -14,6 +14,7 @@ import type {
   UpdaterState,
   UpdateLauncherSettingsInput,
   UpdateInstanceInput,
+  SystemMemoryInfo,
 } from "../types/launcher";
 
 const desktopOnly = () =>
@@ -36,6 +37,10 @@ const defaultSettings: LauncherSettings = {
 const defaultUpdaterState: UpdaterState = {
   status: "idle",
   currentVersion: "dev",
+};
+
+const defaultSystemMemory: SystemMemoryInfo = {
+  totalMb: 16384,
 };
 
 export const launcherApi = {
@@ -240,5 +245,10 @@ export const launcherApi = {
   removeSkin: async (skinId: string) => {
     if (!hasBridge()) throw desktopOnly();
     return window.mlultimate.avatar.removeSkin(skinId);
+  },
+
+  getSystemMemory: async () => {
+    if (!hasBridge()) return defaultSystemMemory;
+    return window.mlultimate.system.getMemory();
   },
 };

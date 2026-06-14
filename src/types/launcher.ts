@@ -251,6 +251,10 @@ export type LauncherSettings = {
   minecraftOpenAction: MinecraftOpenAction;
 };
 
+export type SystemMemoryInfo = {
+  totalMb: number;
+};
+
 export type UpdateLauncherSettingsInput = {
   language?: AppLanguage;
   languageSelected?: boolean;

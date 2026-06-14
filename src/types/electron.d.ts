@@ -20,6 +20,7 @@ import type {
   LauncherSkin,
   SaveNicknameSkinInput,
   SkinSearchResult,
+  SystemMemoryInfo,
   UpdaterState,
   UpdateLauncherSettingsInput,
   UpdateInstanceInput,
@@ -82,6 +83,9 @@ declare global {
         listSkins: () => Promise<LauncherSkin[]>;
         equipSkin: (skinId: string) => Promise<LauncherSkin>;
         removeSkin: (skinId: string) => Promise<void>;
+      };
+      system: {
+        getMemory: () => Promise<SystemMemoryInfo>;
       };
       window: {
         minimize: () => Promise<void>;
