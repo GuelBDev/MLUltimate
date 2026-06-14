@@ -43,6 +43,11 @@ const defaultSystemMemory: SystemMemoryInfo = {
   totalMb: 16384,
 };
 
+const applyCssHudScale = (scale: number) => {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty("--app-hud-scale", String(scale));
+};
+
 export const launcherApi = {
   getSession: async () => {
     if (hasBridge()) {
@@ -250,5 +255,28 @@ export const launcherApi = {
   getSystemMemory: async () => {
     if (!hasBridge()) return defaultSystemMemory;
     return window.mlultimate.system.getMemory();
+  },
+
+  setHudScale: async (scale: number) => {
+    if (!hasBridge()) {
+      applyCssHudScale(scale);
+      return scale;
+    }
+
+    return window.mlultimate.window.setHudScale(scale);
+  },
+
+  toggleFullScreen: async () => {
+    if (!hasBridge()) {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        return true;
+      }
+
+      await document.exitFullscreen();
+      return false;
+    }
+
+    return window.mlultimate.window.toggleFullScreen();
   },
 };

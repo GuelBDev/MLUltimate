@@ -90,6 +90,8 @@ declare global {
       window: {
         minimize: () => Promise<void>;
         toggleMaximize: () => Promise<boolean>;
+        toggleFullScreen: () => Promise<boolean>;
+        setHudScale: (scale: number) => Promise<number>;
         close: () => Promise<void>;
       };
     };

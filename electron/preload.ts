@@ -143,6 +143,10 @@ const api = {
     minimize: () => ipcRenderer.invoke("window:minimize") as Promise<void>,
     toggleMaximize: () =>
       ipcRenderer.invoke("window:toggle-maximize") as Promise<boolean>,
+    toggleFullScreen: () =>
+      ipcRenderer.invoke("window:toggle-full-screen") as Promise<boolean>,
+    setHudScale: (scale: number) =>
+      ipcRenderer.invoke("window:set-hud-scale", scale) as Promise<number>,
     close: () => ipcRenderer.invoke("window:close") as Promise<void>,
   },
 };

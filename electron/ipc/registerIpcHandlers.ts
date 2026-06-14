@@ -32,6 +32,7 @@ const killInstanceSchema = z.object({
 });
 
 const downloadIdSchema = z.string().min(1);
+const hudScaleSchema = z.number().min(0.75).max(1.35);
 
 const createInstanceSchema = z.object({
   name: z.string(),
@@ -234,6 +235,24 @@ export const registerIpcHandlers = ({
 
     window.maximize();
     return true;
+  });
+  ipcMain.handle("window:toggle-full-screen", (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+
+    if (!window) {
+      return false;
+    }
+
+    window.setFullScreen(!window.isFullScreen());
+    return window.isFullScreen();
+  });
+  ipcMain.handle("window:set-hud-scale", (event, input: unknown) => {
+    const scale = hudScaleSchema.parse(input);
+    const window = BrowserWindow.fromWebContents(event.sender);
+
+    window?.webContents.setZoomFactor(scale);
+
+    return scale;
   });
   ipcMain.handle("window:close", (event) => {
     BrowserWindow.fromWebContents(event.sender)?.close();

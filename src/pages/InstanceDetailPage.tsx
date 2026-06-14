@@ -235,7 +235,7 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
             />
           </div>
         </div>
-        <div className="grid grid-cols-[1fr_180px_120px] border-b border-white/10 bg-white/7 px-4 py-3 text-sm font-semibold text-white">
+        <div className="hidden grid-cols-[1fr_180px_120px] border-b border-white/10 bg-white/7 px-4 py-3 text-sm font-semibold text-white sm:grid">
           <span>Name</span>
           <span>Provider</span>
           <span>Action</span>
@@ -243,7 +243,7 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
         {items.map((item) => (
           <div
             key={item.id}
-            className="grid grid-cols-[1fr_180px_120px] items-center border-b border-white/6 px-4 py-4 text-sm last:border-b-0"
+            className="grid grid-cols-1 items-center gap-3 border-b border-white/6 px-4 py-4 text-sm last:border-b-0 sm:grid-cols-[1fr_180px_120px]"
           >
             <div className="flex min-w-0 items-center gap-3">
               <ContentIcon type={item.type} />

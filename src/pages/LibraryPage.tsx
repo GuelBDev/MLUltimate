@@ -594,10 +594,10 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
       ) : null}
 
       {importOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <form
             onSubmit={importByCode}
-            className="w-[520px] border border-white/15 bg-[#1f1f1f] p-7 shadow-2xl shadow-black/50"
+            className="w-full max-w-[520px] border border-white/15 bg-[#1f1f1f] p-5 shadow-2xl shadow-black/50 sm:p-7"
           >
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-white">Import Profile</h2>

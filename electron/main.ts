@@ -31,8 +31,8 @@ const createWindow = async () => {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 960,
-    minWidth: 1180,
-    minHeight: 760,
+    minWidth: 360,
+    minHeight: 520,
     backgroundColor: "#00000000",
     transparent: true,
     title: "MLUltimate Launcher",
@@ -47,6 +47,13 @@ const createWindow = async () => {
       sandbox: false,
       webSecurity: true,
     },
+  });
+
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.type === "keyDown" && input.key === "F11") {
+      event.preventDefault();
+      mainWindow?.setFullScreen(!mainWindow.isFullScreen());
+    }
   });
 
   mainWindow.once("ready-to-show", () => {

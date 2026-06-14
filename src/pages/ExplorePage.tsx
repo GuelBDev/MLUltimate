@@ -200,7 +200,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
             onChange={(event) =>
               updateSearchShape(() => setProvider(event.target.value as ContentProviderFilter))
             }
-            className="h-11 min-w-[120px] flex-1 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            className="h-11 min-w-0 flex-1 basis-[120px] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             {providerFilters.map((item) => (
               <option key={item} value={item}>
@@ -213,7 +213,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
             onChange={(event) =>
               updateSearchShape(() => setType(event.target.value as ContentType))
             }
-            className="h-11 min-w-[130px] flex-1 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            className="h-11 min-w-0 flex-1 basis-[130px] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             {types.map((item) => (
               <option key={item} value={item}>
@@ -224,13 +224,13 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
           <input
             value={query}
             onChange={(event) => updateSearchShape(() => setQuery(event.target.value))}
-            className="h-11 min-w-[180px] flex-[1.6] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            className="h-11 min-w-0 flex-[1.6] basis-[180px] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
             placeholder="Pesquisar"
           />
           <select
             value={selectedVersion}
             onChange={(event) => updateSearchShape(() => setVersion(event.target.value))}
-            className="h-11 min-w-[140px] flex-1 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            className="h-11 min-w-0 flex-1 basis-[140px] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             <option value="">Todas versoes</option>
             {releaseVersions.map((item) => (
@@ -244,7 +244,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
             onChange={(event) =>
               updateSearchShape(() => setLoader(event.target.value as LoaderType | ""))
             }
-            className="h-11 min-w-[140px] flex-1 rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            className="h-11 min-w-0 flex-1 basis-[140px] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             <option value="">Todos loaders</option>
             {loaders.map((item) => (
@@ -532,7 +532,7 @@ const ProjectDetails = ({
         {activeTab === "versions" ? (
           <div className="space-y-2">
             <div className="mb-4 flex flex-wrap items-center gap-3">
-              <div className="relative min-w-[220px] flex-1">
+              <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
                 <input
                   value={versionQuery}
@@ -560,7 +560,7 @@ const ProjectDetails = ({
         ) : null}
 
         {activeTab === "gallery" ? (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {(project?.gallery ?? []).map((image) => (
               <figure key={image.url} className="overflow-hidden rounded-sm bg-black/20">
                 <img src={image.url} alt="" className="h-52 w-full object-cover" />
@@ -584,7 +584,7 @@ const ProjectDetails = ({
         {activeTab === "content" ? (
           <div className="space-y-2">
             <div className="mb-4 flex flex-wrap items-center gap-3">
-              <div className="relative min-w-[220px] flex-1">
+              <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
                 <input
                   value={versionQuery}
@@ -598,7 +598,7 @@ const ProjectDetails = ({
             {filteredVersions.slice(0, 60).map((version) => (
               <div
                 key={`content-${version.id}`}
-                className="grid grid-cols-[1fr_120px_120px] gap-3 border-b border-white/8 px-2 py-3 text-sm last:border-b-0"
+                className="grid grid-cols-1 gap-3 border-b border-white/8 px-2 py-3 text-sm last:border-b-0 sm:grid-cols-[1fr_120px_120px]"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <ContentTypeIcon type={current.type} />

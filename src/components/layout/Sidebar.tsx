@@ -38,12 +38,12 @@ type SidebarProps = {
 };
 
 export const Sidebar = ({ activePage, onPageChange }: SidebarProps) => (
-  <aside className="flex h-screen flex-col bg-[#0A0E14] px-4 py-5">
-    <div className="mb-7 flex items-center gap-3 px-2">
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-300/20 bg-blue-500/15 shadow-lg shadow-blue-500/10">
+  <aside className="flex h-full min-w-0 flex-col bg-[#0A0E14] px-2 py-4 xl:px-4 xl:py-5">
+    <div className="mb-6 flex items-center justify-center gap-3 px-1 xl:mb-7 xl:justify-start xl:px-2">
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-blue-300/20 bg-blue-500/15 shadow-lg shadow-blue-500/10">
         <img src="icon.png" alt="" className="h-7 w-7 rounded-md object-contain" />
       </div>
-      <div>
+      <div className="hidden min-w-0 xl:block">
         <p className="text-base font-bold text-white">MLUltimate</p>
         <p className="text-xs text-[#94A3B8]">Launcher</p>
       </div>
@@ -59,8 +59,10 @@ export const Sidebar = ({ activePage, onPageChange }: SidebarProps) => (
             key={item.id}
             type="button"
             onClick={() => onPageChange(item.id)}
+            title={item.label}
+            aria-label={item.label}
             className={cn(
-              "group flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium text-[#94A3B8] transition duration-200",
+              "group flex h-11 min-w-0 items-center justify-center gap-3 rounded-xl px-3 text-sm font-medium text-[#94A3B8] transition duration-200 xl:justify-start",
               "hover:bg-white/7 hover:text-white",
               active &&
                 "bg-[#3B82F6]/15 text-white shadow-lg shadow-blue-500/10 ring-1 ring-blue-300/15",
@@ -72,7 +74,7 @@ export const Sidebar = ({ activePage, onPageChange }: SidebarProps) => (
                 active && "text-[#60A5FA]",
               )}
             />
-            {item.label}
+            <span className="hidden truncate xl:inline">{item.label}</span>
           </button>
         );
       })}
