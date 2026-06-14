@@ -1,7 +1,8 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { rename, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import { net } from "electron";
 import { z } from "zod";
 import { LauncherDatabase } from "../database/sqliteDatabase";
@@ -14,8 +15,10 @@ import type {
   ContentSearchResult,
   ContentVersion,
   ContentType,
+  InstallContentAsInstanceInput,
   InstallContentInput,
   InstalledContent,
+  LauncherInstance,
   LoaderType,
 } from "../../src/types/launcher";
 
@@ -43,6 +46,13 @@ const installInputSchema = z.object({
   type: z.enum(["mod", "modpack", "shader", "resourcepack"]),
   projectId: z.string().min(1),
   instanceId: z.string().min(1),
+  versionId: z.string().optional(),
+});
+
+const installAsInstanceInputSchema = z.object({
+  provider: z.enum(["modrinth", "curseforge"]),
+  type: z.enum(["mod", "modpack"]),
+  projectId: z.string().min(1),
   versionId: z.string().optional(),
 });
 
@@ -198,6 +208,8 @@ type InstallableFile = {
   fileName: string;
   url: string;
   sha1?: string;
+  gameVersions: string[];
+  loaders: LoaderType[];
 };
 
 export class ContentService {
@@ -234,6 +246,65 @@ export class ContentService {
     }
 
     return [await this.installCurseForge(parsed)];
+  }
+
+  async installAsInstance(input: InstallContentAsInstanceInput): Promise<LauncherInstance> {
+    const parsed = installAsInstanceInputSchema.parse(input);
+    const project = await this.getProject({
+      provider: parsed.provider,
+      type: parsed.type,
+      projectId: parsed.projectId,
+    });
+    const iconPath = project.iconUrl
+      ? await downloadImageToTemp(project.iconUrl, parsed.projectId).catch(() => undefined)
+      : undefined;
+    const selected = await this.findInstallableFileForNewInstance(parsed);
+
+    if (parsed.type === "modpack") {
+      const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-modpack-"));
+      const archivePath = path.join(tempDir, sanitizeFileName(selected.fileName));
+
+      try {
+        await this.downloads.download({
+          label: `Modpack ${project.title}`,
+          url: selected.url,
+          destination: archivePath,
+          sha1: selected.sha1,
+        });
+
+        const instance = await this.instances.importArchiveFile(archivePath);
+        return this.instances.update({
+          id: instance.id,
+          name: project.title,
+          iconPath,
+          contentManagementEnabled: false,
+        });
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    }
+
+    const minecraftVersion = chooseMinecraftVersion(selected.gameVersions);
+    const loader = chooseLoaderForNewModInstance(selected.loaders);
+
+    const instance = await this.instances.create({
+      name: project.title,
+      minecraftVersion,
+      loader,
+      ramMb: 4096,
+      iconPath,
+      contentManagementEnabled: true,
+    });
+
+    await this.install({
+      provider: parsed.provider,
+      type: "mod",
+      projectId: parsed.projectId,
+      instanceId: instance.id,
+      versionId: selected.versionId,
+    });
+
+    return this.instances.getById(instance.id);
   }
 
   async getProject(input: ContentProjectInput): Promise<ContentProjectDetails> {
@@ -445,6 +516,8 @@ export class ContentService {
         fileName: file.filename,
         url: file.url,
         sha1: file.hashes.sha1,
+        gameVersions: version.game_versions,
+        loaders: version.loaders.filter(isLoaderType),
       };
     }
 
@@ -472,6 +545,62 @@ export class ContentService {
       name: file.displayName ?? file.fileName,
       fileName: file.fileName,
       url: file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(row.project_id, file.id)),
+      gameVersions: file.gameVersions.filter(isMinecraftVersion),
+      loaders: file.gameVersions.map((version) => version.toLowerCase()).filter(isLoaderType),
+    };
+  }
+
+  private async findInstallableFileForNewInstance(
+    input: z.infer<typeof installAsInstanceInputSchema>,
+  ): Promise<InstallableFile> {
+    if (input.provider === "modrinth") {
+      const versions = await this.getAllModrinthVersions(input.projectId);
+      const version = input.versionId
+        ? versions.find((candidate) => candidate.id === input.versionId)
+        : versions.find((candidate) => {
+            const loaders = candidate.loaders.filter(isLoaderType);
+            return input.type === "modpack" || loaders.length > 0;
+          }) ?? versions.at(0);
+      const file = version?.files.find((candidate) => candidate.primary) ?? version?.files.at(0);
+
+      if (!version || !file) {
+        throw new Error("Nenhum arquivo Modrinth foi encontrado para criar a instancia.");
+      }
+
+      return {
+        provider: "modrinth",
+        versionId: version.id,
+        name: version.name,
+        fileName: file.filename,
+        url: file.url,
+        sha1: file.hashes.sha1,
+        gameVersions: version.game_versions,
+        loaders: version.loaders.filter(isLoaderType),
+      };
+    }
+
+    const files = await this.getCurseForgeFiles(input.projectId);
+    const file = input.versionId
+      ? files.find((candidate) => String(candidate.id) === input.versionId)
+      : files.find((candidate) => {
+          const loaders = candidate.gameVersions
+            .map((version) => version.toLowerCase())
+            .filter(isLoaderType);
+          return input.type === "modpack" || loaders.length > 0;
+        }) ?? files.at(0);
+
+    if (!file) {
+      throw new Error("Nenhum arquivo CurseForge foi encontrado para criar a instancia.");
+    }
+
+    return {
+      provider: "curseforge",
+      versionId: String(file.id),
+      name: file.displayName ?? file.fileName,
+      fileName: file.fileName,
+      url: file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(input.projectId, file.id)),
+      gameVersions: file.gameVersions.filter(isMinecraftVersion),
+      loaders: file.gameVersions.map((version) => version.toLowerCase()).filter(isLoaderType),
     };
   }
 
@@ -1185,6 +1314,56 @@ const sanitizeFileName = (fileName: string) =>
       character.charCodeAt(0) < 32 || '<>:"/\\|?*'.includes(character) ? "_" : character,
     )
     .join("");
+
+const downloadImageToTemp = async (url: string, projectId: string) => {
+  const response = await fetchWithElectronNet(url, "Baixar icone do projeto");
+
+  if (!response.ok) {
+    throw new Error(`Nao foi possivel baixar o icone do projeto (${response.status}).`);
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  const extension = imageExtensionFromUrl(url, contentType);
+  const directory = path.join(os.tmpdir(), "mlultimate-content-icons");
+  const filePath = path.join(directory, `${sanitizeFileName(projectId)}-${randomUUID()}${extension}`);
+
+  await mkdir(directory, { recursive: true });
+  await writeFile(filePath, Buffer.from(await response.arrayBuffer()));
+
+  return filePath;
+};
+
+const imageExtensionFromUrl = (url: string, contentType: string) => {
+  const extension = path.extname(new URL(url).pathname).toLowerCase();
+
+  if ([".png", ".jpg", ".jpeg", ".webp"].includes(extension)) {
+    return extension;
+  }
+
+  if (contentType.includes("webp")) return ".webp";
+  if (contentType.includes("jpeg") || contentType.includes("jpg")) return ".jpg";
+  return ".png";
+};
+
+const chooseMinecraftVersion = (versions: string[]) => {
+  const version = latestGameVersion(versions) ?? versions.find(isMinecraftVersion);
+
+  if (!version) {
+    throw new Error("O arquivo nao informa uma versao valida do Minecraft.");
+  }
+
+  return version;
+};
+
+const chooseLoaderForNewModInstance = (loaders: LoaderType[]): LoaderType => {
+  const loader = loaders.find((candidate) => candidate !== "vanilla");
+
+  if (!loader) {
+    throw new Error("O mod nao informa loader compativel para criar uma instancia nova.");
+  }
+
+  return loader;
+};
 
 const mergeProviderResults = (results: ContentSearchResult[]) => {
   const grouped = new Map<string, ContentSearchResult>();

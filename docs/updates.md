@@ -15,7 +15,7 @@ https://github.com/GuelBDev/MLUltimate
 3. Crie uma tag:
 
 ```powershell
-git tag v2.0.1-alpha.7
+git tag v2.0.1-alpha.8
 git push origin main --tags
 ```
 

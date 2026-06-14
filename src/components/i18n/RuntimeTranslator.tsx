@@ -54,7 +54,14 @@ const translateTextNodes = (root: HTMLElement, language: AppLanguage) => {
       continue;
     }
 
-    const original = textOriginals.get(node) ?? trimmed;
+    const storedOriginal = textOriginals.get(node);
+    const storedTranslation = storedOriginal
+      ? getTranslatedText(dictionary, storedOriginal)
+      : null;
+    const original =
+      storedOriginal && (trimmed === storedOriginal || trimmed === storedTranslation)
+        ? storedOriginal
+        : trimmed;
     textOriginals.set(node, original);
 
     const translated = getTranslatedText(dictionary, original);
@@ -89,12 +96,21 @@ const translateAttributes = (root: HTMLElement, language: AppLanguage) => {
 const getOriginalAttribute = (element: HTMLElement, attribute: TranslatedAttribute) => {
   const originalAttribute = `data-i18n-original-${attribute}`;
   const stored = element.getAttribute(originalAttribute);
+  const current = element.getAttribute(attribute) ?? "";
 
   if (stored) {
+    const dictionary = translations[document.documentElement.lang as AppLanguage] ?? translations["pt-BR"];
+    const storedTranslation = getTranslatedText(dictionary, stored);
+
+    if (current !== stored && current !== storedTranslation) {
+      element.setAttribute(originalAttribute, current);
+      return current;
+    }
+
     return stored;
   }
 
-  const original = element.getAttribute(attribute) ?? "";
+  const original = current;
   element.setAttribute(originalAttribute, original);
   return original;
 };

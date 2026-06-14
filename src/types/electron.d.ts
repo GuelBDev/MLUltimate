@@ -7,6 +7,7 @@ import type {
   ContentType,
   CreateInstanceInput,
   DownloadItem,
+  InstallContentAsInstanceInput,
   InstallContentInput,
   InstalledContent,
   InstalledContentUpdateInfo,
@@ -61,6 +62,7 @@ declare global {
         search: (input: ContentSearchInput) => Promise<ContentSearchResult[]>;
         getProject: (input: ContentProjectInput) => Promise<ContentProjectDetails>;
         install: (input: InstallContentInput) => Promise<InstalledContent[]>;
+        installAsInstance: (input: InstallContentAsInstanceInput) => Promise<LauncherInstance>;
         listInstalled: (instanceId: string) => Promise<InstalledContent[]>;
         checkUpdates: (instanceId: string) => Promise<InstalledContentUpdateInfo[]>;
         updateInstalled: (id: string) => Promise<InstalledContent>;

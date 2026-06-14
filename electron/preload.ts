@@ -9,6 +9,7 @@ import type {
   CreateInstanceInput,
   DownloadItem,
   InstallContentInput,
+  InstallContentAsInstanceInput,
   InstalledContent,
   InstalledContentUpdateInfo,
   ImportInstanceInput,
@@ -88,6 +89,8 @@ const api = {
       ipcRenderer.invoke("content:get-project", input) as Promise<ContentProjectDetails>,
     install: (input: InstallContentInput) =>
       ipcRenderer.invoke("content:install", input) as Promise<InstalledContent[]>,
+    installAsInstance: (input: InstallContentAsInstanceInput) =>
+      ipcRenderer.invoke("content:install-as-instance", input) as Promise<LauncherInstance>,
     listInstalled: (instanceId: string) =>
       ipcRenderer.invoke("content:list-installed", instanceId) as Promise<InstalledContent[]>,
     checkUpdates: (instanceId: string) =>

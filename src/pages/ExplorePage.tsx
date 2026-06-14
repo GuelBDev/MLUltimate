@@ -47,7 +47,7 @@ const providerLabels: Record<ContentProviderFilter, string> = {
   curseforge: "CurseForge",
 };
 
-export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
+export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExplorePageProps) => {
   const queryClient = useQueryClient();
   const { instances } = useInstances();
   const { versions } = useMinecraftVersions();
@@ -108,6 +108,25 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
     },
   });
 
+  const installAsInstance = useMutation({
+    mutationFn: (input: {
+      project: ContentSearchResult | ContentProjectDetails;
+      versionId?: string;
+    }) =>
+      launcherApi.installContentAsInstance({
+        provider: input.project.provider,
+        type: input.project.type as "mod" | "modpack",
+        projectId: input.project.projectId,
+        versionId: input.versionId,
+      }),
+    onSuccess: () => {
+      setInstallTarget(null);
+      void queryClient.invalidateQueries({ queryKey: ["instances"] });
+      void queryClient.invalidateQueries({ queryKey: ["downloads"] });
+      void queryClient.invalidateQueries({ queryKey: ["minecraft", "versions"] });
+    },
+  });
+
   const runSearch = () => {
     search.mutate({
       provider,
@@ -144,6 +163,23 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
   };
 
   const requestInstall = (project: ContentSearchResult | ContentProjectDetails, selectedContentVersion?: ContentVersion) => {
+    if (initialInstanceId) {
+      install.mutate({
+        project,
+        instanceId: initialInstanceId,
+        versionId: selectedContentVersion?.id,
+      });
+      return;
+    }
+
+    if (project.type === "mod" || project.type === "modpack") {
+      installAsInstance.mutate({
+        project,
+        versionId: selectedContentVersion?.id,
+      });
+      return;
+    }
+
     setInstallTarget({ project, version: selectedContentVersion });
   };
 
@@ -154,6 +190,8 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
         ? details.error.message
         : install.error instanceof Error
           ? install.error.message
+          : installAsInstance.error instanceof Error
+            ? installAsInstance.error.message
           : null;
 
   if (selectedProject) {
@@ -165,7 +203,7 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
         onTabChange={setActiveTab}
         onBack={() => setSelectedProject(null)}
         onInstall={(version) => requestInstall(details.data ?? selectedProject, version)}
-        installing={install.isPending}
+        installing={install.isPending || installAsInstance.isPending}
         error={error}
         instances={instances.data ?? []}
         installTarget={installTarget}
@@ -324,15 +362,15 @@ export const ExplorePage = ({ initialType = "mod" }: ExplorePageProps) => {
               <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
                 <Button
                   type="button"
-                  disabled={install.isPending}
-                  title="Escolher instância"
+                  disabled={install.isPending || installAsInstance.isPending}
+                  title={project.type === "mod" || project.type === "modpack" ? "Criar instância" : "Escolher instância"}
                   onClick={(event) => {
                     event.stopPropagation();
                     requestInstall(project);
                   }}
                 >
                   <Download className="h-4 w-4" />
-                  Instalar
+                  {project.type === "mod" || project.type === "modpack" ? "Criar instância" : "Instalar"}
                 </Button>
                 <div className="flex gap-1">
                   {(project.providers ?? [project.provider]).map((item) => (

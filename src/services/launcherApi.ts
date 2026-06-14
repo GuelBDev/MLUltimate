@@ -5,6 +5,7 @@ import type {
   ContentType,
   CreateInstanceInput,
   InstallContentInput,
+  InstallContentAsInstanceInput,
   InstalledContentUpdateInfo,
   ImportInstanceInput,
   LaunchEvent,
@@ -160,6 +161,11 @@ export const launcherApi = {
   installContent: async (input: InstallContentInput) => {
     if (!hasBridge()) throw desktopOnly();
     return window.mlultimate.content.install(input);
+  },
+
+  installContentAsInstance: async (input: InstallContentAsInstanceInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.content.installAsInstance(input);
   },
 
   listInstalledContent: async (instanceId: string) => {

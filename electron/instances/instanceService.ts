@@ -390,6 +390,10 @@ export class InstanceService {
     return this.importArchive(result.filePaths[0]);
   }
 
+  async importArchiveFile(archivePath: string): Promise<LauncherInstance> {
+    return this.importArchive(archivePath);
+  }
+
   private async importArchive(archivePath: string) {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-import-"));
 

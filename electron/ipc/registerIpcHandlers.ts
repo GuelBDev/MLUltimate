@@ -72,6 +72,13 @@ const installContentSchema = z.object({
   versionId: z.string().optional(),
 });
 
+const installContentAsInstanceSchema = z.object({
+  provider: z.enum(["modrinth", "curseforge"]),
+  type: z.enum(["mod", "modpack"]),
+  projectId: z.string(),
+  versionId: z.string().optional(),
+});
+
 const installedContentIdSchema = z.string().min(1);
 
 const updateAllInstalledContentSchema = z.object({
@@ -190,6 +197,9 @@ export const registerIpcHandlers = ({
   );
   ipcMain.handle("content:install", async (_, input: unknown) =>
     content.install(installContentSchema.parse(input)),
+  );
+  ipcMain.handle("content:install-as-instance", async (_, input: unknown) =>
+    content.installAsInstance(installContentAsInstanceSchema.parse(input)),
   );
   ipcMain.handle("content:list-installed", async (_, instanceId: unknown) =>
     content.listInstalled(z.string().min(1).parse(instanceId)),

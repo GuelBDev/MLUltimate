@@ -198,6 +198,13 @@ export type InstallContentInput = {
   versionId?: string;
 };
 
+export type InstallContentAsInstanceInput = {
+  provider: ContentProvider;
+  type: "mod" | "modpack";
+  projectId: string;
+  versionId?: string;
+};
+
 export type ContentProjectInput = {
   provider: ContentProvider;
   type: ContentType;
