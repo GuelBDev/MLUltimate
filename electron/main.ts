@@ -22,6 +22,36 @@ app.setName(launcherAppName);
 app.setPath("userData", getLauncherDataPath());
 Menu.setApplicationMenu(null);
 
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
+
+const showMainWindow = () => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  if (!mainWindow.isVisible()) {
+    mainWindow.show();
+  }
+
+  if (!mainWindow.isMaximized() && !mainWindow.isFullScreen()) {
+    mainWindow.maximize();
+  }
+
+  mainWindow.focus();
+};
+
+app.on("second-instance", () => {
+  showMainWindow();
+});
+
 const createWindow = async () => {
   const preload = path.join(__dirname, "preload.cjs");
   const iconPath = process.env.VITE_DEV_SERVER_URL
@@ -56,10 +86,9 @@ const createWindow = async () => {
     }
   });
 
-  mainWindow.once("ready-to-show", () => {
-    mainWindow?.maximize();
-    mainWindow?.show();
-  });
+  mainWindow.once("ready-to-show", showMainWindow);
+  const windowShowFallback = setTimeout(showMainWindow, 3500);
+  mainWindow.once("show", () => clearTimeout(windowShowFallback));
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://") || url.startsWith("http://")) {
@@ -142,19 +171,24 @@ const bootstrap = async () => {
   await createWindow();
 };
 
-app.whenReady().then(bootstrap).catch((error: unknown) => {
-  console.error("Failed to start MLUltimate Launcher", error);
-  app.quit();
-});
-
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
+if (gotSingleInstanceLock) {
+  app.whenReady().then(bootstrap).catch((error: unknown) => {
+    console.error("Failed to start MLUltimate Launcher", error);
     app.quit();
-  }
-});
+  });
 
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    void createWindow();
-  }
-});
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
+      app.quit();
+    }
+  });
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      void createWindow();
+      return;
+    }
+
+    showMainWindow();
+  });
+}
