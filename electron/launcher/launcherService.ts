@@ -164,9 +164,12 @@ export class LauncherService {
       installedAfterDownload.jar_path,
     ].join(path.delimiter);
 
+    const selectedVersionName =
+      loaderProfile?.id ?? fabricProfile?.id ?? versionJson.id ?? instance.minecraftVersion;
+    const libraryDirectory = path.join(minecraftRoot, "libraries");
     const replacements = {
       auth_player_name: session.name,
-      version_name: instance.minecraftVersion,
+      version_name: selectedVersionName,
       game_directory: instance.gameDir,
       assets_root: path.join(minecraftRoot, "assets"),
       assets_index_name:
@@ -179,6 +182,8 @@ export class LauncherService {
       user_properties: "{}",
       version_type: versionJson.type,
       natives_directory: nativesDir,
+      library_directory: libraryDirectory,
+      classpath_separator: path.delimiter,
       launcher_name: "MLUltimateLauncher",
       launcher_version: app.getVersion(),
       classpath,
