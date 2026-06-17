@@ -543,14 +543,14 @@ export class ContentService {
       };
     }
 
-    let files = await this.getCurseForgeFiles(row.project_id, instance.minecraftVersion, loader);
+    let files = await this.getCurseForgeFiles(row.project_id, instance.minecraftVersion, loader, row.type);
 
     if (files.length === 0) {
-      files = await this.getCurseForgeFiles(row.project_id, instance.minecraftVersion);
+      files = await this.getCurseForgeFiles(row.project_id, instance.minecraftVersion, undefined, row.type);
     }
 
     if (files.length === 0) {
-      files = await this.getCurseForgeFiles(row.project_id);
+      files = await this.getCurseForgeFiles(row.project_id, undefined, undefined, row.type);
     }
 
     const file = files.find((candidate) =>
@@ -603,7 +603,7 @@ export class ContentService {
       };
     }
 
-    const files = await this.getCurseForgeFiles(input.projectId);
+    const files = await this.getCurseForgeFiles(input.projectId, undefined, undefined, input.type);
     const file = input.versionId
       ? files.find((candidate) => String(candidate.id) === input.versionId)
       : files.find((candidate) => {
@@ -996,6 +996,7 @@ export class ContentService {
         input.projectId,
         input.minecraftVersion,
         normalizeContentLoader(input.loader),
+        input.type,
       ),
     ]);
 
@@ -1039,6 +1040,7 @@ export class ContentService {
     projectId: string,
     minecraftVersion?: string,
     loader?: LoaderType,
+    type?: ContentType,
   ) {
     const files: z.infer<typeof curseForgeFilesSchema>["data"] = [];
     const pageSize = 50;
@@ -1054,7 +1056,8 @@ export class ContentService {
         params.set("gameVersion", minecraftVersion);
       }
 
-      const modLoaderType = mapCurseForgeModLoader(loader);
+      const shouldFilterByLoader = !type || type === "mod" || type === "modpack";
+      const modLoaderType = shouldFilterByLoader ? mapCurseForgeModLoader(loader) : null;
 
       if (modLoaderType) {
         params.set("modLoaderType", String(modLoaderType));
@@ -1108,19 +1111,20 @@ export class ContentService {
       input.projectId,
       instance.minecraftVersion,
       loader,
+      input.type,
     );
     const selectedFileMissing =
       input.versionId && !files.some((candidate) => String(candidate.id) === input.versionId);
 
     if (files.length === 0 || selectedFileMissing) {
-      files = await this.getCurseForgeFiles(input.projectId, instance.minecraftVersion);
+      files = await this.getCurseForgeFiles(input.projectId, instance.minecraftVersion, undefined, input.type);
     }
 
     if (
       files.length === 0 ||
       (input.versionId && !files.some((candidate) => String(candidate.id) === input.versionId))
     ) {
-      files = await this.getCurseForgeFiles(input.projectId);
+      files = await this.getCurseForgeFiles(input.projectId, undefined, undefined, input.type);
     }
 
     const compatibleFiles = files.filter((candidate) =>

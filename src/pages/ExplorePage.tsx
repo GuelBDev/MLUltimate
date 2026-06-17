@@ -180,14 +180,6 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
       return;
     }
 
-    if (project.type === "mod") {
-      installAsInstance.mutate({
-        project,
-        versionId: selectedContentVersion?.id,
-      });
-      return;
-    }
-
     setInstallTarget({ project, version: selectedContentVersion });
   };
 
@@ -371,14 +363,14 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
                 <Button
                   type="button"
                   disabled={install.isPending || installAsInstance.isPending}
-                  title={project.type === "mod" || project.type === "modpack" ? "Criar instância" : "Escolher instância"}
+                  title={project.type === "modpack" ? "Criar instancia" : "Escolher instancia"}
                   onClick={(event) => {
                     event.stopPropagation();
                     requestInstall(project);
                   }}
                 >
                   <Download className="h-4 w-4" />
-                  {project.type === "mod" || project.type === "modpack" ? "Criar instância" : "Instalar"}
+                  {project.type === "modpack" ? "Criar instancia" : "Instalar"}
                 </Button>
                 <div className="flex gap-1">
                   {(project.providers ?? [project.provider]).map((item) => (
@@ -820,6 +812,18 @@ const getInstallCompatibility = (
     };
   }
 
+  const gameVersions = version?.gameVersions ?? project.compatibleGameVersions ?? [];
+  const versionCompatible =
+    gameVersions.length === 0 ||
+    gameVersions.some((gameVersion) => isMinecraftVersionCompatible(gameVersion, instance.minecraftVersion));
+
+  if (!versionCompatible) {
+    return {
+      compatible: false,
+      reason: `Incompativel com Minecraft ${instance.minecraftVersion}.`,
+    };
+  }
+
   if (project.type === "resourcepack") {
     return { compatible: true, reason: `Textura pronta para instalar em ${instance.name}.` };
   }
@@ -829,8 +833,8 @@ const getInstallCompatibility = (
       compatible: false,
       reason:
         instance.loader === "vanilla"
-          ? "Shaders precisam de Iris, Iris + Sodium ou outro motor gráfico. Vanilla aceita apenas texturas."
-          : `Esta instância usa ${instance.loader}; crie uma instância Iris ou Iris + Sodium para shaders.`,
+          ? "Shaders precisam de Iris, Iris + Sodium ou outro motor grafico. Vanilla aceita apenas texturas."
+          : `Esta instancia usa ${instance.loader}; crie uma instancia Iris ou Iris + Sodium para shaders.`,
     };
   }
 
@@ -839,20 +843,8 @@ const getInstallCompatibility = (
       compatible: false,
       reason:
         project.type === "modpack"
-          ? "Modpacks precisam de uma instância com loader compatível."
+          ? "Modpacks precisam de uma instancia com loader compativel."
           : "Mods precisam de Fabric, Forge, NeoForge, Quilt, Iris ou Iris + Sodium. Vanilla aceita apenas texturas.",
-    };
-  }
-
-  const gameVersions = version?.gameVersions ?? project.compatibleGameVersions ?? [];
-  const versionCompatible =
-    gameVersions.length === 0 ||
-    gameVersions.some((gameVersion) => isMinecraftVersionCompatible(gameVersion, instance.minecraftVersion));
-
-  if (!versionCompatible) {
-    return {
-      compatible: false,
-      reason: `Incompatível com Minecraft ${instance.minecraftVersion}.`,
     };
   }
 
