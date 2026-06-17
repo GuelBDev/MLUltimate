@@ -373,7 +373,7 @@ export class ContentService {
   async updateInstalledContent(id: string) {
     const row = this.getInstalledContentRow(id);
     const instance = await this.instances.getById(row.instance_id);
-    assertContentManagementEnabled(instance.contentManagementEnabled);
+    assertContentManagementEnabled(instance.contentManagementEnabled, row.type);
 
     const latest = await this.findLatestCompatibleFile(row, instance);
 
@@ -427,7 +427,7 @@ export class ContentService {
 
   async updateAllInstalledContent(input: { instanceId: string; type?: ContentType }) {
     const instance = await this.instances.getById(input.instanceId);
-    assertContentManagementEnabled(instance.contentManagementEnabled);
+    assertContentManagementEnabled(instance.contentManagementEnabled, input.type);
 
     const rows = this.database.all<InstalledContentRow>(
       input.type
@@ -453,7 +453,7 @@ export class ContentService {
   async toggleInstalledContent(input: { id: string; enabled: boolean }) {
     const row = this.getInstalledContentRow(input.id);
     const instance = await this.instances.getById(row.instance_id);
-    assertContentManagementEnabled(instance.contentManagementEnabled);
+    assertContentManagementEnabled(instance.contentManagementEnabled, row.type);
 
     const currentEnabled = row.enabled !== 0;
 
@@ -481,7 +481,7 @@ export class ContentService {
   async removeInstalledContent(id: string) {
     const row = this.getInstalledContentRow(id);
     const instance = await this.instances.getById(row.instance_id);
-    assertContentManagementEnabled(instance.contentManagementEnabled);
+    assertContentManagementEnabled(instance.contentManagementEnabled, row.type);
 
     await rm(row.file_path, { force: true });
     this.database.run("DELETE FROM installed_content WHERE id = ?", [row.id]);
@@ -770,7 +770,7 @@ export class ContentService {
     installedProjectIds = new Set<string>(),
   ): Promise<InstalledContent[]> {
     const instance = await this.instances.getById(input.instanceId);
-    assertContentManagementEnabled(instance.contentManagementEnabled);
+    assertContentManagementEnabled(instance.contentManagementEnabled, input.type);
 
     if (!canInstallContentInLoader(input.type, instance.loader)) {
       throw new Error(contentInstallBlockReason(input.type, instance.loader));
@@ -1088,7 +1088,7 @@ export class ContentService {
     installedProjectIds = new Set<string>(),
   ): Promise<InstalledContent> {
     const instance = await this.instances.getById(input.instanceId);
-    assertContentManagementEnabled(instance.contentManagementEnabled);
+    assertContentManagementEnabled(instance.contentManagementEnabled, input.type);
 
     if (!canInstallContentInLoader(input.type, instance.loader)) {
       throw new Error(contentInstallBlockReason(input.type, instance.loader));
@@ -1693,8 +1693,8 @@ const rowToInstalledContent = (row: InstalledContentRow): InstalledContent => ({
   installedAt: row.installed_at,
 });
 
-const assertContentManagementEnabled = (enabled: boolean) => {
-  if (!enabled) {
+const assertContentManagementEnabled = (enabled: boolean, type?: ContentType) => {
+  if (!enabled && type !== "resourcepack") {
     throw new Error(
       "Gerenciamento de conteudo desativado para este perfil. Ative nas opcoes da instancia antes de alterar mods, texturas ou shaders.",
     );

@@ -804,14 +804,6 @@ const getInstallCompatibility = (
   version: ContentVersion | undefined,
   instance: LauncherInstance,
 ) => {
-  if (!instance.contentManagementEnabled) {
-    return {
-      compatible: false,
-      reason:
-        "Gerenciamento de conteudo desativado neste perfil. Ative nas opcoes da instancia para instalar arquivos.",
-    };
-  }
-
   const gameVersions = version?.gameVersions ?? project.compatibleGameVersions ?? [];
   const versionCompatible =
     gameVersions.length === 0 ||
@@ -826,6 +818,14 @@ const getInstallCompatibility = (
 
   if (project.type === "resourcepack") {
     return { compatible: true, reason: `Textura pronta para instalar em ${instance.name}.` };
+  }
+
+  if (!instance.contentManagementEnabled) {
+    return {
+      compatible: false,
+      reason:
+        "Gerenciamento de conteudo desativado neste perfil. Ative nas opcoes da instancia para instalar arquivos.",
+    };
   }
 
   if (project.type === "shader" && !["iris", "iris-sodium"].includes(instance.loader)) {
