@@ -256,6 +256,14 @@ export function StartupScreen({ onComplete }: StartupScreenProps) {
           </div>
         </div>
 
+        <div className="mt-5 w-full rounded-xl border border-[#F59E0B]/25 bg-[#F59E0B]/10 px-4 py-3 text-left shadow-lg shadow-black/10">
+          <p className="text-sm font-semibold text-[#FDE68A]">Versao alpha em desenvolvimento</p>
+          <p className="mt-1 text-xs leading-5 text-[#FCD34D]/85">
+            O MLUltimate esta sendo desenvolvido por apenas uma pessoa. Espere bugs,
+            falhas e comportamentos que ainda podem quebrar partes do app.
+          </p>
+        </div>
+
         <div className="mt-7 flex w-full flex-col gap-2 text-left">
           {steps.map((step) => (
             <motion.div

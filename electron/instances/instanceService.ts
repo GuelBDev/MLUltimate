@@ -465,35 +465,7 @@ export class InstanceService {
             await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
           }
 
-          for (const file of index.files) {
-            const downloadUrl = file.downloads.at(0);
-
-            if (!downloadUrl) {
-              continue;
-            }
-
-            await this.downloads.download({
-              label: `Import ${path.basename(file.path)}`,
-              url: downloadUrl,
-              destination: path.join(instance.gameDir, file.path),
-              sha1: file.hashes?.sha1,
-            });
-
-            const importedType = importedContentTypeFromPath(file.path);
-
-            if (importedType) {
-              this.recordImportedContent({
-                instanceId: instance.id,
-                provider: "modrinth",
-                type: importedType,
-                projectId: file.hashes?.sha1 ?? file.path,
-                versionId: file.hashes?.sha1 ?? file.path,
-                name: path.basename(file.path),
-                fileName: path.basename(file.path),
-                filePath: path.join(instance.gameDir, file.path),
-              });
-            }
-          }
+          await this.downloadModrinthManifestFiles(index, instance);
 
           return instance;
         } catch (error) {
@@ -712,6 +684,72 @@ export class InstanceService {
         this.downloads.updateTask(taskId, {
           label: `Modpack ${manifest.name} - mods ${completed}/${manifest.files.length}`,
           progress: Math.round((completed / manifest.files.length) * 100),
+        });
+      });
+
+      this.downloads.completeTask(taskId);
+    } catch (error) {
+      this.downloads.failTask(taskId, error);
+      throw error;
+    }
+  }
+
+  private async downloadModrinthManifestFiles(
+    index: z.infer<typeof modrinthIndexSchema>,
+    instance: LauncherInstance,
+  ) {
+    const files = index.files.filter((file) => file.downloads.at(0));
+
+    if (files.length === 0) {
+      return;
+    }
+
+    const taskId = this.downloads.createTask(
+      `Modpack ${index.name}`,
+      instance.gameDir,
+      "modrinth://manifest",
+    );
+    let completed = 0;
+
+    try {
+      await runPool(files, 8, async (file) => {
+        this.downloads.throwIfCancelled(taskId);
+        const downloadUrl = file.downloads.at(0);
+
+        if (!downloadUrl) {
+          return;
+        }
+
+        const destination = path.join(instance.gameDir, file.path);
+
+        await this.downloads.download({
+          label: `Modrinth ${path.basename(file.path)}`,
+          url: downloadUrl,
+          destination,
+          sha1: file.hashes?.sha1,
+          visible: false,
+        });
+
+        const importedType = importedContentTypeFromPath(file.path);
+
+        if (importedType) {
+          this.recordImportedContent({
+            instanceId: instance.id,
+            provider: "modrinth",
+            type: importedType,
+            projectId: file.hashes?.sha1 ?? file.path,
+            versionId: file.hashes?.sha1 ?? file.path,
+            name: path.basename(file.path),
+            fileName: path.basename(file.path),
+            filePath: destination,
+          });
+        }
+
+        completed += 1;
+        this.downloads.throwIfCancelled(taskId);
+        this.downloads.updateTask(taskId, {
+          label: `Modpack ${index.name} - arquivos ${completed}/${files.length}`,
+          progress: Math.round((completed / files.length) * 100),
         });
       });
 

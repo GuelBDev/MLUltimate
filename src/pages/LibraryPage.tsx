@@ -26,7 +26,6 @@ const loaderOptions: Array<{
 }> = [
   { id: "vanilla", title: "Vanilla", description: "Minecraft limpo, ideal para texturas." },
   { id: "fabric", title: "Fabric", description: "Leve, moderno e bom para mods." },
-  { id: "iris", title: "Iris", description: "Fabric com suporte a shaders." },
   { id: "iris-sodium", title: "Iris + Sodium", description: "Shaders com otimização de FPS." },
   { id: "forge", title: "Forge", description: "Compatível com mods clássicos." },
   { id: "neoforge", title: "NeoForge", description: "Ecossistema Forge moderno." },

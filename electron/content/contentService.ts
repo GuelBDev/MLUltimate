@@ -292,6 +292,7 @@ export class ContentService {
           url: selected.url,
           destination: archivePath,
           sha1: selected.sha1,
+          visible: false,
         });
 
         const instance = await this.instances.importArchiveFile(archivePath);

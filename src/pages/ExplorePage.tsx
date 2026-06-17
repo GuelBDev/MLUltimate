@@ -804,6 +804,29 @@ const getInstallCompatibility = (
   version: ContentVersion | undefined,
   instance: LauncherInstance,
 ) => {
+  if (project.type === "resourcepack") {
+    const selectedVersionTargets = version?.gameVersions ?? [];
+    const selectedVersionCompatible =
+      selectedVersionTargets.length === 0 ||
+      selectedVersionTargets.some((gameVersion) =>
+        isMinecraftVersionCompatible(gameVersion, instance.minecraftVersion),
+      );
+
+    if (!selectedVersionCompatible) {
+      return {
+        compatible: false,
+        reason: `Esta textura nao e compativel com Minecraft ${instance.minecraftVersion}.`,
+      };
+    }
+
+    return {
+      compatible: true,
+      reason: version
+        ? `Textura pronta para instalar em ${instance.name}.`
+        : `O launcher vai buscar uma textura compativel com Minecraft ${instance.minecraftVersion}.`,
+    };
+  }
+
   const gameVersions = version?.gameVersions ?? project.compatibleGameVersions ?? [];
   const versionCompatible =
     gameVersions.length === 0 ||
@@ -814,10 +837,6 @@ const getInstallCompatibility = (
       compatible: false,
       reason: `Incompativel com Minecraft ${instance.minecraftVersion}.`,
     };
-  }
-
-  if (project.type === "resourcepack") {
-    return { compatible: true, reason: `Textura pronta para instalar em ${instance.name}.` };
   }
 
   if (!instance.contentManagementEnabled) {
