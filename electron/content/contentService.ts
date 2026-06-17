@@ -145,7 +145,7 @@ const curseForgeSearchSchema = z.object({
       summary: z.string().default(""),
       downloadCount: z.number().optional(),
       logo: z.object({ url: z.string().optional() }).nullable().optional(),
-      links: z.object({ websiteUrl: z.string().optional() }).optional(),
+      links: z.object({ websiteUrl: z.string().nullable().optional() }).optional(),
       authors: z.array(z.object({ name: z.string() })).optional(),
       latestFilesIndexes: z
         .array(
@@ -169,7 +169,12 @@ const curseForgeProjectSchema = z.object({
     summary: z.string().default(""),
     downloadCount: z.number().optional(),
     logo: z.object({ url: z.string().optional() }).nullable().optional(),
-    links: z.object({ websiteUrl: z.string().optional(), sourceUrl: z.string().optional() }).optional(),
+    links: z
+      .object({
+        websiteUrl: z.string().nullable().optional(),
+        sourceUrl: z.string().nullable().optional(),
+      })
+      .optional(),
     authors: z.array(z.object({ name: z.string() })).optional(),
     dateModified: z.string().optional(),
   }),
@@ -777,7 +782,7 @@ export class ContentService {
       description: project.summary,
       downloads: project.downloadCount,
       iconUrl: project.logo?.url,
-      projectUrl: project.links?.websiteUrl,
+      projectUrl: project.links?.websiteUrl ?? undefined,
       updatedAt: project.dateModified,
       latestGameVersion: latestGameVersion(
         project.latestFilesIndexes.map((file) => file.gameVersion).filter(isMinecraftVersion),
@@ -1049,8 +1054,8 @@ export class ContentService {
       body: project.summary,
       downloads: project.downloadCount,
       iconUrl: project.logo?.url,
-      projectUrl: project.links?.websiteUrl,
-      sourceUrl: project.links?.sourceUrl,
+      projectUrl: project.links?.websiteUrl ?? undefined,
+      sourceUrl: project.links?.sourceUrl ?? undefined,
       updatedAt: project.dateModified,
       latestGameVersion: latestGameVersion(contentVersions.flatMap((version) => version.gameVersions)),
       compatibleGameVersions: compactGameVersions(
