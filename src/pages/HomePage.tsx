@@ -99,9 +99,9 @@ const changelog = [
     tag: rawAppVersion,
     date: "Atual",
     changes: [
-      "Home transformada em vitrine com carrossel, anuncios e log de atualizacao.",
-      "Instalador online corrigido para baixar sem depender de eventos do WebClient.",
-      "Controle de memoria RAM e instalacao de conteudo ficaram mais robustos.",
+      "Modpacks agora baixam os arquivos exatos declarados pelo manifesto.",
+      "Lista interna do modpack passa a ser restaurada por lockfile local.",
+      "Versoes especificas da CurseForge sao baixadas pelo fileID escolhido.",
     ],
   },
   {

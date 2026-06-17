@@ -175,38 +175,42 @@ const curseForgeProjectSchema = z.object({
   }),
 });
 
+const curseForgeFileDataSchema = z.object({
+  id: z.number(),
+  displayName: z.string().optional(),
+  fileName: z.string(),
+  downloadUrl: z.string().nullable().optional(),
+  gameVersions: z.array(z.string()).default([]),
+  isAvailable: z.boolean().optional().default(true),
+  isServerPack: z.boolean().optional().default(false),
+  dependencies: z
+    .array(
+      z.object({
+        modId: z.number(),
+        relationType: z.number(),
+      }),
+    )
+    .optional()
+    .default([]),
+  hashes: z
+    .array(
+      z.object({
+        algo: z.number(),
+        value: z.string(),
+      }),
+    )
+    .optional()
+    .default([]),
+  fileDate: z.string().optional(),
+  downloadCount: z.number().optional(),
+});
+
 const curseForgeFilesSchema = z.object({
-  data: z.array(
-    z.object({
-      id: z.number(),
-      displayName: z.string().optional(),
-      fileName: z.string(),
-      downloadUrl: z.string().nullable().optional(),
-      gameVersions: z.array(z.string()).default([]),
-      isAvailable: z.boolean().optional().default(true),
-      isServerPack: z.boolean().optional().default(false),
-      dependencies: z
-        .array(
-          z.object({
-            modId: z.number(),
-            relationType: z.number(),
-          }),
-        )
-        .optional()
-        .default([]),
-      hashes: z
-        .array(
-          z.object({
-            algo: z.number(),
-            value: z.string(),
-          }),
-        )
-        .optional()
-        .default([]),
-      fileDate: z.string().optional(),
-      downloadCount: z.number().optional(),
-    }),
-  ),
+  data: z.array(curseForgeFileDataSchema),
+});
+
+const curseForgeFileSchema = z.object({
+  data: curseForgeFileDataSchema,
 });
 
 type InstalledContentRow = {
@@ -340,7 +344,9 @@ export class ContentService {
     return this.getCurseForgeProject(parsed);
   }
 
-  listInstalled(instanceId: string) {
+  async listInstalled(instanceId: string) {
+    await this.instances.restoreLockedContent(instanceId);
+
     return this.database
       .all<InstalledContentRow>(
         "SELECT * FROM installed_content WHERE instance_id = ? ORDER BY installed_at DESC",
@@ -350,6 +356,8 @@ export class ContentService {
   }
 
   async checkInstalledUpdates(instanceId: string) {
+    await this.instances.restoreLockedContent(instanceId);
+
     const instance = await this.instances.getById(instanceId);
     const rows = this.database.all<InstalledContentRow>(
       "SELECT * FROM installed_content WHERE instance_id = ? ORDER BY installed_at DESC",
@@ -601,6 +609,27 @@ export class ContentService {
         sha1: file.hashes.sha1,
         gameVersions: version.game_versions,
         loaders: version.loaders.filter(isLoaderType),
+      };
+    }
+
+    if (input.versionId) {
+      const file = await this.getCurseForgeFile(input.projectId, input.versionId);
+
+      if (input.type === "modpack" && (file.isServerPack || !file.fileName.toLowerCase().endsWith(".zip"))) {
+        throw new Error("A versao CurseForge escolhida nao possui um pacote de modpack instalavel.");
+      }
+
+      return {
+        provider: "curseforge",
+        versionId: String(file.id),
+        name: file.displayName ?? file.fileName,
+        fileName: file.fileName,
+        url: file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(input.projectId, file.id).catch(() =>
+          curseForgeCdnDownloadUrl(file),
+        )),
+        sha1: curseForgeSha1(file),
+        gameVersions: file.gameVersions.filter(isMinecraftVersion),
+        loaders: file.gameVersions.map((version) => version.toLowerCase()).filter(isLoaderType),
       };
     }
 
@@ -1084,6 +1113,19 @@ export class ContentService {
     return files;
   }
 
+  private async getCurseForgeFile(projectId: string, fileId: string | number) {
+    const response = await this.fetchCurseForge(
+      `/mods/${projectId}/files/${fileId}`,
+      "Buscar arquivo exato na CurseForge",
+    );
+
+    if (!response.ok) {
+      throw new Error(`CurseForge retornou erro ${response.status} ao buscar o arquivo exato.`);
+    }
+
+    return curseForgeFileSchema.parse(await response.json()).data;
+  }
+
   private async installCurseForge(
     input: z.infer<typeof installInputSchema>,
     installedProjectIds = new Set<string>(),
@@ -1108,38 +1150,11 @@ export class ContentService {
 
     installedProjectIds.add(input.projectId);
     const loader = normalizeContentLoader(instance.loader) ?? instance.loader;
-    let files = await this.getCurseForgeFiles(
-      input.projectId,
-      instance.minecraftVersion,
-      loader,
-      input.type,
-    );
-    const selectedFileMissing =
-      input.versionId && !files.some((candidate) => String(candidate.id) === input.versionId);
-
-    if (files.length === 0 || selectedFileMissing) {
-      files = await this.getCurseForgeFiles(input.projectId, instance.minecraftVersion, undefined, input.type);
-    }
-
-    if (
-      files.length === 0 ||
-      (input.versionId && !files.some((candidate) => String(candidate.id) === input.versionId))
-    ) {
-      files = await this.getCurseForgeFiles(input.projectId, undefined, undefined, input.type);
-    }
-
-    const compatibleFiles = files.filter((candidate) =>
-      isCurseForgeFileCompatible(candidate, input.type, instance.minecraftVersion, loader),
-    );
     const file = input.versionId
-      ? compatibleFiles.find((candidate) => String(candidate.id) === input.versionId)
-      : compatibleFiles.find((candidate) =>
-        candidate.gameVersions.some((version) =>
-          isMinecraftVersionCompatible(version, instance.minecraftVersion),
-        ),
-      ) ?? compatibleFiles.at(0);
+      ? await this.getCurseForgeFile(input.projectId, input.versionId)
+      : await this.findLatestCurseForgeFileForInstall(input.projectId, input.type, instance.minecraftVersion, loader);
 
-    if (!file) {
+    if (!file || !isCurseForgeFileCompatible(file, input.type, instance.minecraftVersion, loader)) {
       throw new Error(
         input.versionId
           ? "A versao CurseForge escolhida nao e compativel com esta instancia."
@@ -1186,6 +1201,31 @@ export class ContentService {
     }
 
     return installed;
+  }
+
+  private async findLatestCurseForgeFileForInstall(
+    projectId: string,
+    type: ContentType,
+    minecraftVersion: string,
+    loader: LoaderType,
+  ) {
+    let files = await this.getCurseForgeFiles(projectId, minecraftVersion, loader, type);
+
+    if (files.length === 0) {
+      files = await this.getCurseForgeFiles(projectId, minecraftVersion, undefined, type);
+    }
+
+    if (files.length === 0) {
+      files = await this.getCurseForgeFiles(projectId, undefined, undefined, type);
+    }
+
+    const compatibleFiles = files.filter((candidate) =>
+      isCurseForgeFileCompatible(candidate, type, minecraftVersion, loader),
+    );
+
+    return compatibleFiles.find((candidate) =>
+      candidate.gameVersions.some((version) => isMinecraftVersionCompatible(version, minecraftVersion)),
+    ) ?? compatibleFiles.at(0);
   }
 
   private async getCurseForgeDownloadUrl(projectId: string, fileId: number) {

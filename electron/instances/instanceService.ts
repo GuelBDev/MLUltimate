@@ -2,7 +2,7 @@ import AdmZip from "adm-zip";
 import { dialog, net, shell } from "electron";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -28,6 +28,7 @@ const CURSEFORGE_PROXY_URL =
 const MODRINTH_API = "https://api.modrinth.com/v2";
 const IRIS_PROJECT_ID = "YL57xq9U";
 const SODIUM_PROJECT_ID = "AANobbMI";
+const MODPACK_LOCK_FILE = "mlultimate-modpack-lock.json";
 
 const createInstanceSchema = z.object({
   name: z.string().trim().min(2).max(64),
@@ -140,6 +141,24 @@ const modrinthInstallVersionSchema = z.object({
       filename: z.string(),
       primary: z.boolean().optional(),
       hashes: z.object({ sha1: z.string().optional() }).optional(),
+    }),
+  ),
+});
+
+const modpackLockSchema = z.object({
+  schemaVersion: z.literal(1).default(1),
+  provider: z.enum(["curseforge", "modrinth"]),
+  name: z.string(),
+  files: z.array(
+    z.object({
+      provider: z.enum(["curseforge", "modrinth"]),
+      type: z.enum(["mod", "resourcepack", "shader"]),
+      projectId: z.string(),
+      versionId: z.string(),
+      name: z.string(),
+      fileName: z.string(),
+      relativePath: z.string(),
+      required: z.boolean().optional(),
     }),
   ),
 });
@@ -416,6 +435,28 @@ export class InstanceService {
     return this.importArchive(archivePath);
   }
 
+  async restoreLockedContent(instanceId: string) {
+    const instance = await this.getById(instanceId);
+    const lock = await this.readModpackLock(instance.gameDir);
+
+    if (!lock) {
+      return;
+    }
+
+    for (const file of lock.files) {
+      this.recordImportedContent({
+        instanceId,
+        provider: file.provider,
+        type: file.type,
+        projectId: file.projectId,
+        versionId: file.versionId,
+        name: file.name,
+        fileName: file.fileName,
+        filePath: path.join(instance.gameDir, file.relativePath),
+      });
+    }
+  }
+
   private async importArchive(archivePath: string) {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-import-"));
 
@@ -648,6 +689,7 @@ export class InstanceService {
       "curseforge://manifest",
     );
     let completed = 0;
+    const lockedFiles: z.infer<typeof modpackLockSchema>["files"] = [];
 
     try {
       await runPool(manifest.files, 8, async (fileRef) => {
@@ -659,6 +701,7 @@ export class InstanceService {
             curseForgeCdnDownloadUrl(file),
           ));
         const destination = path.join(instance.gameDir, "mods", sanitizeFileName(file.fileName));
+        const relativePath = path.posix.join("mods", sanitizeFileName(file.fileName));
 
         this.downloads.throwIfCancelled(taskId);
         await this.downloads.download({
@@ -678,6 +721,16 @@ export class InstanceService {
           fileName: file.fileName,
           filePath: destination,
         });
+        lockedFiles.push({
+          provider: "curseforge",
+          type: "mod",
+          projectId: String(fileRef.projectID),
+          versionId: String(fileRef.fileID),
+          name: file.displayName ?? file.fileName,
+          fileName: file.fileName,
+          relativePath,
+          required: fileRef.required,
+        });
 
         completed += 1;
         this.downloads.throwIfCancelled(taskId);
@@ -687,6 +740,12 @@ export class InstanceService {
         });
       });
 
+      await this.writeModpackLock(instance.gameDir, {
+        schemaVersion: 1,
+        provider: "curseforge",
+        name: manifest.name,
+        files: lockedFiles,
+      });
       this.downloads.completeTask(taskId);
     } catch (error) {
       this.downloads.failTask(taskId, error);
@@ -710,6 +769,7 @@ export class InstanceService {
       "modrinth://manifest",
     );
     let completed = 0;
+    const lockedFiles: z.infer<typeof modpackLockSchema>["files"] = [];
 
     try {
       await runPool(files, 8, async (file) => {
@@ -721,6 +781,7 @@ export class InstanceService {
         }
 
         const destination = path.join(instance.gameDir, file.path);
+        const importedType = importedContentTypeFromPath(file.path);
 
         await this.downloads.download({
           label: `Modrinth ${path.basename(file.path)}`,
@@ -729,8 +790,6 @@ export class InstanceService {
           sha1: file.hashes?.sha1,
           visible: false,
         });
-
-        const importedType = importedContentTypeFromPath(file.path);
 
         if (importedType) {
           this.recordImportedContent({
@@ -743,6 +802,15 @@ export class InstanceService {
             fileName: path.basename(file.path),
             filePath: destination,
           });
+          lockedFiles.push({
+            provider: "modrinth",
+            type: importedType,
+            projectId: file.hashes?.sha1 ?? file.path,
+            versionId: file.hashes?.sha1 ?? file.path,
+            name: path.basename(file.path),
+            fileName: path.basename(file.path),
+            relativePath: normalizeArchivePath(file.path),
+          });
         }
 
         completed += 1;
@@ -753,6 +821,12 @@ export class InstanceService {
         });
       });
 
+      await this.writeModpackLock(instance.gameDir, {
+        schemaVersion: 1,
+        provider: "modrinth",
+        name: index.name,
+        files: lockedFiles,
+      });
       this.downloads.completeTask(taskId);
     } catch (error) {
       this.downloads.failTask(taskId, error);
@@ -771,6 +845,31 @@ export class InstanceService {
     }
 
     return curseForgeFileSchema.parse(await response.json()).data;
+  }
+
+  private async writeModpackLock(
+    gameDir: string,
+    lock: z.infer<typeof modpackLockSchema>,
+  ) {
+    const lockPath = path.join(gameDir, "modpacks", MODPACK_LOCK_FILE);
+    const normalized = modpackLockSchema.parse(lock);
+
+    await mkdir(path.dirname(lockPath), { recursive: true });
+    await writeFile(lockPath, JSON.stringify(normalized, null, 2), "utf8");
+  }
+
+  private async readModpackLock(gameDir: string) {
+    const lockPath = path.join(gameDir, "modpacks", MODPACK_LOCK_FILE);
+
+    if (!existsSync(lockPath)) {
+      return null;
+    }
+
+    try {
+      return modpackLockSchema.parse(JSON.parse(await readFile(lockPath, "utf8")));
+    } catch {
+      return null;
+    }
   }
 
   private recordImportedContent(input: {
@@ -1007,6 +1106,8 @@ const copyArchiveContents = async (
     });
   }
 };
+
+const normalizeArchivePath = (value: string) => value.replaceAll("\\", "/");
 
 const runPool = async <T>(
   items: T[],
