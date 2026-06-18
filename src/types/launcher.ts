@@ -151,6 +151,15 @@ export type ContentSearchInput = {
 export type ContentSearchResult = {
   provider: ContentProvider;
   providers?: ContentProvider[];
+  providerProjects?: Partial<
+    Record<
+      ContentProvider,
+      {
+        projectId: string;
+        slug?: string;
+      }
+    >
+  >;
   type: ContentType;
   projectId: string;
   slug?: string;
@@ -302,6 +311,7 @@ export type InstalledContent = {
   name: string;
   fileName: string;
   filePath: string;
+  iconUrl?: string;
   enabled: boolean;
   installedAt: string;
 };

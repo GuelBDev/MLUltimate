@@ -105,6 +105,11 @@ const modrinthProjectSchema = z.object({
     .default([]),
 });
 
+const modrinthProjectIconSchema = z.object({
+  id: z.string(),
+  icon_url: z.string().nullable().optional(),
+});
+
 const modrinthVersionSchema = z.object({
   id: z.string(),
   project_id: z.string().optional(),
@@ -228,6 +233,7 @@ type InstalledContentRow = {
   name: string;
   file_name: string;
   file_path: string;
+  icon_url?: string | null;
   enabled?: number;
   installed_at: string;
 };
@@ -244,6 +250,8 @@ type InstallableFile = {
 };
 
 export class ContentService {
+  private readonly projectIconCache = new Map<string, string | null>();
+
   constructor(
     private readonly database: LauncherDatabase,
     private readonly downloads: DownloadManager,
@@ -351,6 +359,13 @@ export class ContentService {
 
   async listInstalled(instanceId: string) {
     await this.instances.restoreLockedContent(instanceId);
+
+    const rows = this.database.all<InstalledContentRow>(
+      "SELECT * FROM installed_content WHERE instance_id = ? ORDER BY installed_at DESC",
+      [instanceId],
+    );
+
+    await this.hydrateContentIcons(rows);
 
     return this.database
       .all<InstalledContentRow>(
@@ -512,6 +527,166 @@ export class ContentService {
     }
 
     return row;
+  }
+
+  private async hydrateContentIcons(rows: InstalledContentRow[]) {
+    const missing = rows.filter((row) => !row.icon_url);
+
+    if (missing.length === 0) {
+      return;
+    }
+
+    const updates = [
+      ...(await this.resolveModrinthContentIcons(
+        missing.filter((row) => row.provider === "modrinth"),
+      )),
+      ...(await this.resolveCurseForgeContentIcons(
+        missing.filter((row) => row.provider === "curseforge"),
+      )),
+    ];
+
+    this.database.runMany(
+      "UPDATE installed_content SET icon_url = ? WHERE id = ?",
+      updates.map((update) => [update.iconUrl, update.id]),
+    );
+  }
+
+  private async resolveModrinthContentIcons(rows: InstalledContentRow[]) {
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const projectIdByRow = new Map<string, string>();
+    const hashRows = rows.filter((row) => isSha1(row.project_id));
+    const directRows = rows.filter((row) => !isSha1(row.project_id));
+
+    for (const row of directRows) {
+      projectIdByRow.set(row.id, row.project_id);
+    }
+
+    for (const group of chunk(hashRows, 100)) {
+      const hashes = group.map((row) => row.project_id);
+      const response = await net.fetch(`${MODRINTH_API}/version_files`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "User-Agent": "MLUltimateLauncher/0.1 (+https://local)",
+        },
+        body: JSON.stringify({ hashes, algorithm: "sha1" }),
+      }).catch(() => null);
+
+      if (!response?.ok) {
+        continue;
+      }
+
+      const versions = z
+        .record(z.string(), modrinthVersionSchema.nullable())
+        .parse(await response.json());
+
+      for (const row of group) {
+        const projectId = versions[row.project_id]?.project_id;
+
+        if (projectId) {
+          projectIdByRow.set(row.id, projectId);
+        }
+      }
+    }
+
+    const projectIds = Array.from(new Set(projectIdByRow.values()));
+    const icons = await this.getModrinthProjectIcons(projectIds);
+
+    return rows.flatMap((row) => {
+      const projectId = projectIdByRow.get(row.id);
+      const iconUrl = projectId ? icons.get(projectId) : undefined;
+      return iconUrl ? [{ id: row.id, iconUrl }] : [];
+    });
+  }
+
+  private async getModrinthProjectIcons(projectIds: string[]) {
+    const icons = new Map<string, string>();
+    const uncached = projectIds.filter((projectId) => {
+      const cached = this.projectIconCache.get(`modrinth:${projectId}`);
+
+      if (cached) {
+        icons.set(projectId, cached);
+      }
+
+      return cached === undefined;
+    });
+
+    for (const group of chunk(uncached, 100)) {
+      const params = new URLSearchParams({ ids: JSON.stringify(group) });
+      const response = await fetchWithElectronNet(
+        `${MODRINTH_API}/projects?${params}`,
+        "Buscar imagens dos projetos no Modrinth",
+      ).catch(() => null);
+
+      if (!response?.ok) {
+        continue;
+      }
+
+      const projects = z.array(modrinthProjectIconSchema).parse(await response.json());
+
+      for (const project of projects) {
+        const iconUrl = project.icon_url ?? null;
+        this.projectIconCache.set(`modrinth:${project.id}`, iconUrl);
+
+        if (iconUrl) {
+          icons.set(project.id, iconUrl);
+        }
+      }
+
+      for (const projectId of group) {
+        if (!projects.some((project) => project.id === projectId)) {
+          this.projectIconCache.set(`modrinth:${projectId}`, null);
+        }
+      }
+    }
+
+    return icons;
+  }
+
+  private async resolveCurseForgeContentIcons(rows: InstalledContentRow[]) {
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const icons = new Map<string, string>();
+    const projectIds = Array.from(new Set(rows.map((row) => row.project_id)));
+    const uncached = projectIds.filter((projectId) => {
+      const cached = this.projectIconCache.get(`curseforge:${projectId}`);
+
+      if (cached) {
+        icons.set(projectId, cached);
+      }
+
+      return cached === undefined;
+    });
+
+    await runPool(uncached, 12, async (projectId) => {
+      const response = await this.fetchCurseForge(
+        `/mods/${projectId}`,
+        "Buscar imagem do projeto na CurseForge",
+      ).catch(() => null);
+
+      if (!response?.ok) {
+        return;
+      }
+
+      const project = curseForgeProjectSchema.parse(await response.json()).data;
+      const iconUrl = project.logo?.url ?? null;
+      this.projectIconCache.set(`curseforge:${projectId}`, iconUrl);
+
+      if (iconUrl) {
+        icons.set(projectId, iconUrl);
+      }
+    });
+
+    return rows.flatMap((row) => {
+      const iconUrl = icons.get(row.project_id);
+      return iconUrl ? [{ id: row.id, iconUrl }] : [];
+    });
   }
 
   private async findLatestCompatibleFile(
@@ -707,6 +882,12 @@ export class ContentService {
     return json.hits.map((hit) => ({
       provider: "modrinth",
       providers: ["modrinth"],
+      providerProjects: {
+        modrinth: {
+          projectId: hit.project_id,
+          slug: hit.slug,
+        },
+      },
       type: input.type,
       projectId: hit.project_id,
       slug: hit.slug,
@@ -774,6 +955,12 @@ export class ContentService {
     return projects.map((project) => ({
       provider: "curseforge",
       providers: ["curseforge"],
+      providerProjects: {
+        curseforge: {
+          projectId: String(project.id),
+          slug: project.slug,
+        },
+      },
       type: input.type,
       projectId: String(project.id),
       slug: project.slug,
@@ -994,6 +1181,12 @@ export class ContentService {
     return {
       provider: "modrinth",
       providers: ["modrinth"],
+      providerProjects: {
+        modrinth: {
+          projectId: project.id,
+          slug: project.slug,
+        },
+      },
       type: input.type,
       projectId: project.id,
       slug: project.slug,
@@ -1045,6 +1238,12 @@ export class ContentService {
     return {
       provider: "curseforge",
       providers: ["curseforge"],
+      providerProjects: {
+        curseforge: {
+          projectId: String(project.id),
+          slug: project.slug,
+        },
+      },
       type: input.type,
       projectId: String(project.id),
       slug: project.slug,
@@ -1534,6 +1733,12 @@ const mergeProviderResults = (results: ContentSearchResult[]) => {
       grouped.set(key, {
         ...result,
         providers: result.providers ?? [result.provider],
+        providerProjects: result.providerProjects ?? {
+          [result.provider]: {
+            projectId: result.projectId,
+            slug: result.slug,
+          },
+        },
       });
       continue;
     }
@@ -1541,6 +1746,20 @@ const mergeProviderResults = (results: ContentSearchResult[]) => {
     existing.providers = Array.from(
       new Set([...(existing.providers ?? [existing.provider]), result.provider]),
     );
+    existing.providerProjects = {
+      ...(existing.providerProjects ?? {
+        [existing.provider]: {
+          projectId: existing.projectId,
+          slug: existing.slug,
+        },
+      }),
+      ...(result.providerProjects ?? {
+        [result.provider]: {
+          projectId: result.projectId,
+          slug: result.slug,
+        },
+      }),
+    };
     existing.downloads = Math.max(existing.downloads ?? 0, result.downloads ?? 0);
     existing.compatibleGameVersions = compactGameVersions([
       ...(existing.compatibleGameVersions ?? []),
@@ -1735,9 +1954,41 @@ const rowToInstalledContent = (row: InstalledContentRow): InstalledContent => ({
   name: row.name,
   fileName: row.file_name,
   filePath: row.file_path,
+  iconUrl: row.icon_url ?? undefined,
   enabled: row.enabled !== 0,
   installedAt: row.installed_at,
 });
+
+const isSha1 = (value: string) => /^[a-f0-9]{40}$/i.test(value);
+
+const chunk = <T>(items: T[], size: number) => {
+  const groups: T[][] = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    groups.push(items.slice(index, index + size));
+  }
+
+  return groups;
+};
+
+const runPool = async <T>(
+  items: T[],
+  concurrency: number,
+  task: (item: T) => Promise<void>,
+) => {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const item = queue.shift();
+
+      if (item !== undefined) {
+        await task(item);
+      }
+    }
+  });
+
+  await Promise.all(workers);
+};
 
 const assertContentManagementEnabled = (enabled: boolean, type?: ContentType) => {
   if (!enabled && type !== "resourcepack") {

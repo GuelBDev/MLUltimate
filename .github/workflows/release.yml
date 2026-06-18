@@ -46,6 +46,8 @@ jobs:
           $ErrorActionPreference = "Stop"
           $tag = "${{ github.ref_name }}"
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $displayVersion = $version -replace "-alpha\.", " alpha "
+          $releaseTitle = "MLUltimate Launcher $displayVersion"
           $requiredAssets = @(
             "release/MLUltimate-Launcher-$version-win-x64.exe",
             "release/MLUltimate-Launcher-$version-win-x64.exe.blockmap",
@@ -66,9 +68,9 @@ jobs:
 
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --repo $env:GITHUB_REPOSITORY --target "${{ github.sha }}" --title "MLUltimate Launcher $tag" --notes "Alpha release." --prerelease
+            gh release create $tag --repo $env:GITHUB_REPOSITORY --target "${{ github.sha }}" --title $releaseTitle --notes "Atualização $displayVersion." --prerelease
           } else {
-            gh release edit $tag --repo $env:GITHUB_REPOSITORY --title "MLUltimate Launcher $tag" --notes "Alpha release." --prerelease
+            gh release edit $tag --repo $env:GITHUB_REPOSITORY --title $releaseTitle --notes "Atualização $displayVersion." --prerelease
           }
 
           Write-Host "Uploading release assets:"

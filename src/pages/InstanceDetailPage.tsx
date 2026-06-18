@@ -365,7 +365,7 @@ export const InstanceDetailPage = ({ instance, onBack, onExplore }: InstanceDeta
             }`}
           >
             <div className="flex min-w-0 items-center gap-3">
-              <ContentIcon type={item.type} />
+              <ContentIcon type={item.type} iconUrl={item.iconUrl} name={item.name} />
               <div className="min-w-0">
                 <p className="truncate font-semibold text-white">{item.name}</p>
                 <p className="mt-1 truncate text-[#94A3B8]">{item.fileName}</p>
@@ -455,12 +455,35 @@ const findInstanceDownload = (downloads: DownloadItem[], instance: LauncherInsta
 
 const normalizePath = (value: string) => value.replaceAll("\\", "/").toLowerCase();
 
-const ContentIcon = ({ type }: { type: ContentType }) => {
+const ContentIcon = ({
+  type,
+  iconUrl,
+  name,
+}: {
+  type: ContentType;
+  iconUrl?: string;
+  name: string;
+}) => {
   const Icon =
     type === "resourcepack" ? Palette : type === "shader" ? Sparkles : Package;
 
+  if (iconUrl) {
+    return (
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-[#0D1117] shadow-sm shadow-black/30">
+        <img
+          src={iconUrl}
+          alt=""
+          title={name}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+        />
+      </span>
+    );
+  }
+
   return (
-    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 text-[#60A5FA]">
+    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 text-[#60A5FA]">
       <Icon className="h-4 w-4" />
     </span>
   );

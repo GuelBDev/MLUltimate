@@ -1,5 +1,7 @@
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ArrowLeft, Download, Images, Package, Palette, RefreshCw, Search, Sparkles } from "lucide-react";
+import { SiCurseforge, SiModrinth } from "react-icons/si";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -9,6 +11,7 @@ import { useMinecraftVersions } from "../hooks/useMinecraftVersions";
 import { launcherApi } from "../services/launcherApi";
 import type {
   ContentProjectDetails,
+  ContentProvider,
   ContentProviderFilter,
   ContentSearchInput,
   ContentSearchResult,
@@ -60,6 +63,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   const [selectedProject, setSelectedProject] = useState<ContentSearchResult | null>(null);
   const [activeTab, setActiveTab] = useState<DetailTab>("versions");
   const [installTarget, setInstallTarget] = useState<InstallTarget | null>(null);
+  const [providerInstallTarget, setProviderInstallTarget] = useState<InstallTarget | null>(null);
   const [loadClicks, setLoadClicks] = useState(0);
 
   const releaseVersions = useMemo(
@@ -103,6 +107,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
       }),
     onSuccess: () => {
       setInstallTarget(null);
+      setProviderInstallTarget(null);
       void queryClient.invalidateQueries({ queryKey: ["instances"] });
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
     },
@@ -121,6 +126,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
       }),
     onSuccess: () => {
       setInstallTarget(null);
+      setProviderInstallTarget(null);
       void queryClient.invalidateQueries({ queryKey: ["instances"] });
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
       void queryClient.invalidateQueries({ queryKey: ["minecraft", "versions"] });
@@ -162,7 +168,11 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
     next();
   };
 
-  const requestInstall = (project: ContentSearchResult | ContentProjectDetails, selectedContentVersion?: ContentVersion) => {
+  const continueInstall = (target: InstallTarget, selectedProvider: ContentProvider) => {
+    const project = selectProviderProject(target.project, selectedProvider);
+    const selectedContentVersion =
+      target.version?.provider === selectedProvider ? target.version : undefined;
+
     if (project.type === "modpack") {
       installAsInstance.mutate({
         project,
@@ -183,6 +193,31 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
     setInstallTarget({ project, version: selectedContentVersion });
   };
 
+  const requestInstall = (
+    project: ContentSearchResult | ContentProjectDetails,
+    selectedContentVersion?: ContentVersion,
+  ) => {
+    const target = { project, version: selectedContentVersion };
+    const availableProviders = getProjectProviders(project);
+
+    if (availableProviders.length > 1) {
+      setProviderInstallTarget(target);
+      return;
+    }
+
+    continueInstall(target, availableProviders[0] ?? project.provider);
+  };
+
+  const chooseProvider = (selectedProvider: ContentProvider) => {
+    if (!providerInstallTarget) {
+      return;
+    }
+
+    const target = providerInstallTarget;
+    setProviderInstallTarget(null);
+    continueInstall(target, selectedProvider);
+  };
+
   const error =
     search.error instanceof Error
       ? search.error.message
@@ -195,27 +230,39 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
           : null;
 
   if (selectedProject) {
+    const installableProject = details.data
+      ? mergeProjectProviderMetadata(details.data, selectedProject)
+      : selectedProject;
+
     return (
-      <ProjectDetails
-        project={details.data}
-        fallback={selectedProject}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        onBack={() => setSelectedProject(null)}
-        onInstall={(version) => requestInstall(details.data ?? selectedProject, version)}
-        installing={install.isPending || installAsInstance.isPending}
-        error={error}
-        instances={instances.data ?? []}
-        installTarget={installTarget}
-        onCloseInstall={() => setInstallTarget(null)}
-        onConfirmInstall={(instanceId) =>
-          install.mutate({
-            project: installTarget?.project ?? details.data ?? selectedProject,
-            instanceId,
-            versionId: installTarget?.version?.id,
-          })
-        }
-      />
+      <>
+        <ProjectDetails
+          project={details.data}
+          fallback={selectedProject}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onBack={() => setSelectedProject(null)}
+          onInstall={(version) => requestInstall(installableProject, version)}
+          installing={install.isPending || installAsInstance.isPending}
+          error={error}
+          instances={instances.data ?? []}
+          installTarget={installTarget}
+          onCloseInstall={() => setInstallTarget(null)}
+          onConfirmInstall={(instanceId) =>
+            install.mutate({
+              project: installTarget?.project ?? details.data ?? selectedProject,
+              instanceId,
+              versionId: installTarget?.version?.id,
+            })
+          }
+        />
+        <ProviderChoiceDialog
+          target={providerInstallTarget}
+          installing={install.isPending || installAsInstance.isPending}
+          onClose={() => setProviderInstallTarget(null)}
+          onSelect={chooseProvider}
+        />
+      </>
     );
   }
 
@@ -423,6 +470,12 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
             : undefined
         }
       />
+      <ProviderChoiceDialog
+        target={providerInstallTarget}
+        installing={install.isPending || installAsInstance.isPending}
+        onClose={() => setProviderInstallTarget(null)}
+        onSelect={chooseProvider}
+      />
     </div>
   );
 };
@@ -456,7 +509,7 @@ const ProjectDetails = ({
   onCloseInstall,
   onConfirmInstall,
 }: ProjectDetailsProps) => {
-  const current = project ?? fallback;
+  const current = project ? mergeProjectProviderMetadata(project, fallback) : fallback;
   const versions = useMemo(() => project?.versions ?? [], [project?.versions]);
   const [versionQuery, setVersionQuery] = useState("");
   const latestVersion = versions.at(0);
@@ -698,6 +751,130 @@ const VersionRow = ({
   </div>
 );
 
+const ProviderChoiceDialog = ({
+  target,
+  installing,
+  onClose,
+  onSelect,
+}: {
+  target: InstallTarget | null;
+  installing: boolean;
+  onClose: () => void;
+  onSelect: (provider: ContentProvider) => void;
+}) => {
+  const availableProviders = target ? getProjectProviders(target.project) : [];
+
+  return (
+    <AnimatePresence>
+      {target && availableProviders.length > 1 ? (
+        <motion.div
+          className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-black/72 px-4 py-8 backdrop-blur-md"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target && !installing) {
+              onClose();
+            }
+          }}
+        >
+          <motion.section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="provider-choice-title"
+            className="w-full max-w-2xl overflow-hidden rounded-2xl border border-white/12 bg-[#161B22]/98 shadow-2xl shadow-black/55"
+            initial={{ opacity: 0, y: 18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.98 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+          >
+            <div className="border-b border-white/10 px-5 py-5 sm:px-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#60A5FA]">
+                Escolher provedor
+              </p>
+              <h2 id="provider-choice-title" className="mt-2 text-xl font-semibold text-white">
+                Escolha a origem do download
+              </h2>
+              <p className="mt-1 truncate text-sm font-medium text-white/85">
+                {target.project.title}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[#94A3B8]">
+                Este conteúdo existe nos dois catálogos. Os arquivos e a composição do pacote podem
+                variar entre os provedores.
+              </p>
+            </div>
+
+            <div className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6">
+              <ProviderChoiceCard
+                provider="modrinth"
+                title="Baixar com Modrinth"
+                description="Usar a versão distribuída pelo catálogo Modrinth."
+                installing={installing}
+                onSelect={onSelect}
+              />
+              <ProviderChoiceCard
+                provider="curseforge"
+                title="Baixar com CurseForge"
+                description="Usar a versão distribuída pelo catálogo CurseForge."
+                installing={installing}
+                onSelect={onSelect}
+              />
+            </div>
+
+            <div className="flex justify-end border-t border-white/10 bg-[#0D1117]/55 px-5 py-4 sm:px-6">
+              <Button type="button" variant="secondary" onClick={onClose} disabled={installing}>
+                Cancelar
+              </Button>
+            </div>
+          </motion.section>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+};
+
+const ProviderChoiceCard = ({
+  provider,
+  title,
+  description,
+  installing,
+  onSelect,
+}: {
+  provider: ContentProvider;
+  title: string;
+  description: string;
+  installing: boolean;
+  onSelect: (provider: ContentProvider) => void;
+}) => {
+  const isModrinth = provider === "modrinth";
+  const Logo = isModrinth ? SiModrinth : SiCurseforge;
+
+  return (
+    <button
+      type="button"
+      disabled={installing}
+      onClick={() => onSelect(provider)}
+      className={`group flex min-h-56 flex-col items-center justify-center rounded-2xl border px-5 py-6 text-center transition duration-200 disabled:cursor-wait disabled:opacity-60 ${
+        isModrinth
+          ? "border-[#1BD96A]/25 bg-[#1BD96A]/[0.06] hover:border-[#1BD96A]/65 hover:bg-[#1BD96A]/10"
+          : "border-[#F16436]/25 bg-[#F16436]/[0.06] hover:border-[#F16436]/65 hover:bg-[#F16436]/10"
+      }`}
+    >
+      <div
+        className={`grid h-20 w-20 place-items-center rounded-2xl border bg-[#0D1117] shadow-xl transition duration-200 group-hover:-translate-y-1 ${
+          isModrinth
+            ? "border-[#1BD96A]/30 text-[#1BD96A] shadow-[#1BD96A]/10"
+            : "border-[#F16436]/30 text-[#F16436] shadow-[#F16436]/10"
+        }`}
+      >
+        <Logo className="h-11 w-11" aria-hidden="true" />
+      </div>
+      <span className="mt-5 text-base font-semibold text-white">{title}</span>
+      <span className="mt-2 text-sm leading-5 text-[#94A3B8]">{description}</span>
+    </button>
+  );
+};
+
 const InstallInstanceDialog = ({
   target,
   instances,
@@ -798,6 +975,60 @@ const InstallInstanceDialog = ({
     </div>
   );
 };
+
+const getProjectProviders = (
+  project: ContentSearchResult | ContentProjectDetails,
+): ContentProvider[] =>
+  Array.from(
+    new Set([
+      ...(project.providers ?? []),
+      ...Object.keys(project.providerProjects ?? {}).filter(
+        (provider): provider is ContentProvider =>
+          provider === "modrinth" || provider === "curseforge",
+      ),
+      project.provider,
+    ]),
+  );
+
+const selectProviderProject = <
+  T extends ContentSearchResult | ContentProjectDetails,
+>(
+  project: T,
+  provider: ContentProvider,
+): T => {
+  const providerProject = project.providerProjects?.[provider];
+
+  if (!providerProject && project.provider !== provider) {
+    throw new Error(`O projeto não possui uma referência válida para ${provider}.`);
+  }
+
+  return {
+    ...project,
+    provider,
+    projectId: providerProject?.projectId ?? project.projectId,
+    slug: providerProject?.slug ?? project.slug,
+  };
+};
+
+const mergeProjectProviderMetadata = <
+  T extends ContentSearchResult | ContentProjectDetails,
+>(
+  project: T,
+  fallback: ContentSearchResult,
+): T => ({
+  ...fallback,
+  ...project,
+  providers: Array.from(
+    new Set([
+      ...getProjectProviders(fallback),
+      ...getProjectProviders(project),
+    ]),
+  ),
+  providerProjects: {
+    ...fallback.providerProjects,
+    ...project.providerProjects,
+  },
+});
 
 const getInstallCompatibility = (
   project: ContentSearchResult | ContentProjectDetails,

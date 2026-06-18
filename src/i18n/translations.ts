@@ -148,6 +148,16 @@ const ptBR: TranslationMap = {
     "A lista atualiza sozinha; use o refresh se quiser forçar uma nova consulta.",
   "Instalar": "Instalar",
   "Baixar": "Baixar",
+  "Escolher provedor": "Escolher provedor",
+  "Escolha a origem do download": "Escolha a origem do download",
+  "Este conteúdo existe nos dois catálogos. Os arquivos e a composição do pacote podem variar entre os provedores.":
+    "Este conteúdo existe nos dois catálogos. Os arquivos e a composição do pacote podem variar entre os provedores.",
+  "Baixar com Modrinth": "Baixar com Modrinth",
+  "Usar a versão distribuída pelo catálogo Modrinth.":
+    "Usar a versão distribuída pelo catálogo Modrinth.",
+  "Baixar com CurseForge": "Baixar com CurseForge",
+  "Usar a versão distribuída pelo catálogo CurseForge.":
+    "Usar a versão distribuída pelo catálogo CurseForge.",
   "Escolher instancia": "Escolher instância",
   "Fechar": "Fechar",
   "Compativel": "Compatível",
@@ -338,6 +348,16 @@ const ptPt: TranslationMap = {
     "A lista atualiza sozinha; use o refresh se quiser forçar uma nova consulta.",
   "Instalar": "Instalar",
   "Baixar": "Transferir",
+  "Escolher provedor": "Escolher fornecedor",
+  "Escolha a origem do download": "Escolha a origem da transferência",
+  "Este conteúdo existe nos dois catálogos. Os arquivos e a composição do pacote podem variar entre os provedores.":
+    "Este conteúdo existe nos dois catálogos. Os ficheiros e a composição do pacote podem variar entre os fornecedores.",
+  "Baixar com Modrinth": "Transferir com o Modrinth",
+  "Usar a versão distribuída pelo catálogo Modrinth.":
+    "Utilizar a versão distribuída pelo catálogo Modrinth.",
+  "Baixar com CurseForge": "Transferir com o CurseForge",
+  "Usar a versão distribuída pelo catálogo CurseForge.":
+    "Utilizar a versão distribuída pelo catálogo CurseForge.",
   "Escolher instancia": "Escolher instância",
   "Fechar": "Fechar",
   "Compativel": "Compatível",
@@ -507,6 +527,16 @@ const en: TranslationMap = {
     "The list refreshes automatically; use refresh if you want to force a new request.",
   "Instalar": "Install",
   "Baixar": "Download",
+  "Escolher provedor": "Choose provider",
+  "Escolha a origem do download": "Choose the download source",
+  "Este conteúdo existe nos dois catálogos. Os arquivos e a composição do pacote podem variar entre os provedores.":
+    "This content is available in both catalogs. Files and pack composition may differ between providers.",
+  "Baixar com Modrinth": "Download with Modrinth",
+  "Usar a versão distribuída pelo catálogo Modrinth.":
+    "Use the version distributed through the Modrinth catalog.",
+  "Baixar com CurseForge": "Download with CurseForge",
+  "Usar a versão distribuída pelo catálogo CurseForge.":
+    "Use the version distributed through the CurseForge catalog.",
   "Escolher instancia": "Choose instance",
   "Fechar": "Close",
   "Compativel": "Compatible",
@@ -698,6 +728,16 @@ const fr: TranslationMap = {
     "La liste se met à jour automatiquement ; utilisez le bouton Actualiser pour forcer une nouvelle requête.",
   "Instalar": "Installer",
   "Baixar": "Télécharger",
+  "Escolher provedor": "Choisir le fournisseur",
+  "Escolha a origem do download": "Choisissez la source du téléchargement",
+  "Este conteúdo existe nos dois catálogos. Os arquivos e a composição do pacote podem variar entre os provedores.":
+    "Ce contenu existe dans les deux catalogues. Les fichiers et la composition du pack peuvent varier selon le fournisseur.",
+  "Baixar com Modrinth": "Télécharger avec Modrinth",
+  "Usar a versão distribuída pelo catálogo Modrinth.":
+    "Utiliser la version distribuée dans le catalogue Modrinth.",
+  "Baixar com CurseForge": "Télécharger avec CurseForge",
+  "Usar a versão distribuída pelo catálogo CurseForge.":
+    "Utiliser la version distribuée dans le catalogue CurseForge.",
   "Escolher instancia": "Choisir une instance",
   "Fechar": "Fermer",
   "Compativel": "Compatible",

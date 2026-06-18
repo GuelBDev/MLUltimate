@@ -30,6 +30,20 @@ export class LauncherDatabase {
     this.save();
   }
 
+  runMany(sql: string, paramsList: SqlValue[][]) {
+    if (paramsList.length === 0) {
+      return;
+    }
+
+    const database = this.requireDatabase();
+
+    for (const params of paramsList) {
+      database.run(sql, params);
+    }
+
+    this.save();
+  }
+
   get<T extends Record<string, unknown>>(sql: string, params: SqlValue[] = []) {
     const database = this.requireDatabase();
     const statement = database.prepare(sql, params);
@@ -177,6 +191,10 @@ export class LauncherDatabase {
       database.run(
         "ALTER TABLE installed_content ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",
       );
+    }
+
+    if (!installedContentColumns.includes("icon_url")) {
+      database.run("ALTER TABLE installed_content ADD COLUMN icon_url TEXT");
     }
   }
 
