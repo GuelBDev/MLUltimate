@@ -1139,13 +1139,12 @@ const getInstallCompatibility = (
     };
   }
 
-  if (project.type === "shader" && !["iris", "iris-sodium"].includes(instance.loader)) {
+  if (project.type === "shader" && !instance.shaderSupport.supported) {
     return {
       compatible: false,
       reason:
-        instance.loader === "vanilla"
-          ? "Shaders precisam de Iris, Iris + Sodium ou outro motor grafico. Vanilla aceita apenas texturas."
-          : `Esta instancia usa ${instance.loader}; crie uma instancia Iris ou Iris + Sodium para shaders.`,
+        `A instancia ${instance.name} nao possui um motor de shader reconhecido. ` +
+        "Instale Iris, Iris + Sodium, OptiFine, Oculus, Angelica ou ShadersMod primeiro.",
     };
   }
 
@@ -1175,7 +1174,10 @@ const getInstallCompatibility = (
 
   return {
     compatible: true,
-    reason: `Pronto para instalar em ${instance.name}.`,
+    reason:
+      project.type === "shader"
+        ? `Pronto para instalar em ${instance.name} usando ${instance.shaderSupport.engines.join(", ")}.`
+        : `Pronto para instalar em ${instance.name}.`,
   };
 };
 

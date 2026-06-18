@@ -137,8 +137,12 @@ const bootstrap = async () => {
   const javaRuntimes = new JavaRuntimeService(downloads);
   const minecraftVersions = new MinecraftVersionService(database, downloads, javaRuntimes);
   const instances = new InstanceService(database, minecraftVersions, downloads);
-  const instanceInspection = new InstanceInspectionService(database, instances);
   const content = new ContentService(database, downloads, instances);
+  const instanceInspection = new InstanceInspectionService(
+    database,
+    instances,
+    (instanceId) => content.hydrateInstanceContentImages(instanceId),
+  );
   const launcher = new LauncherService(
     microsoftAuth,
     offlineAuth,

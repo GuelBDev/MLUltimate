@@ -1,3 +1,4 @@
+import AdmZip from "adm-zip";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rename, rm, stat } from "node:fs/promises";
@@ -34,17 +35,20 @@ type ScannedEntry = {
   enabled: boolean;
   sizeBytes: number;
   modifiedAt: string;
+  previewDataUrl?: string;
 };
 
 export class InstanceInspectionService {
   constructor(
     private readonly database: LauncherDatabase,
     private readonly instances: InstanceService,
+    private readonly hydrateInstalledContent?: (instanceId: string) => Promise<unknown>,
   ) {}
 
   async inspect(instanceId: string): Promise<InstanceInspection> {
     const instance = await this.instances.getById(instanceId);
     await this.instances.restoreLockedContent(instanceId);
+    await this.hydrateInstalledContent?.(instanceId).catch(() => undefined);
 
     const [content, logs, screenshots, configFilesCount] = await Promise.all([
       this.scanContent(instance.id, instance.gameDir),
@@ -162,6 +166,7 @@ export class InstanceInspectionService {
           projectId: installed?.project_id,
           versionId: installed?.version_id,
           iconUrl: installed?.icon_url ?? undefined,
+          previewDataUrl: entry.previewDataUrl,
           installedContentId: installed?.id,
         };
       })
@@ -266,6 +271,10 @@ const describeEntry = async (
   const fileName = path.basename(absolutePath);
   const enabled = !fileName.toLowerCase().endsWith(".disabled");
   const cleanName = fileName.replace(/\.disabled$/i, "");
+  const previewDataUrl =
+    category === "resourcepack" || category === "shader"
+      ? await readPackPreview(absolutePath, metadata.isDirectory(), category)
+      : undefined;
 
   return {
     category,
@@ -278,6 +287,7 @@ const describeEntry = async (
       ? await directorySize(absolutePath)
       : metadata.size,
     modifiedAt: metadata.mtime.toISOString(),
+    previewDataUrl,
   };
 };
 
@@ -392,6 +402,102 @@ const imageDataUrl = async (filePath: string) => {
         ? "image/webp"
         : "image/jpeg";
   return `data:${mime};base64,${(await readFile(filePath)).toString("base64")}`;
+};
+
+const readPackPreview = async (
+  absolutePath: string,
+  isDirectory: boolean,
+  category: "resourcepack" | "shader",
+) => {
+  try {
+    if (isDirectory) {
+      const candidates = [
+        "pack.png",
+        "icon.png",
+        "thumbnail.png",
+        "preview.png",
+        ...(category === "shader"
+          ? [
+              "screenshots/preview.png",
+              "screenshots/thumbnail.png",
+              "images/preview.png",
+              "images/thumbnail.png",
+            ]
+          : []),
+      ];
+
+      for (const candidate of candidates) {
+        const imagePath = path.join(absolutePath, ...candidate.split("/"));
+
+        if (!existsSync(imagePath)) continue;
+        const metadata = await stat(imagePath);
+
+        if (metadata.isFile() && metadata.size <= 5 * 1024 * 1024) {
+          return imageDataUrl(imagePath);
+        }
+      }
+
+      return undefined;
+    }
+
+    const zip = new AdmZip(absolutePath);
+    const entries = zip
+      .getEntries()
+      .filter(
+        (entry) =>
+          !entry.isDirectory &&
+          entry.header.size <= 5 * 1024 * 1024 &&
+          /\.(png|jpe?g|webp)$/i.test(entry.entryName),
+      )
+      .sort(
+        (left, right) =>
+          previewEntryScore(right.entryName, category) -
+          previewEntryScore(left.entryName, category),
+      );
+    const selected = entries.find((entry) => previewEntryScore(entry.entryName, category) > 0);
+
+    if (!selected) return undefined;
+
+    return imageBufferDataUrl(selected.getData(), selected.entryName);
+  } catch {
+    return undefined;
+  }
+};
+
+const previewEntryScore = (
+  entryName: string,
+  category: "resourcepack" | "shader",
+) => {
+  const normalized = entryName.replaceAll("\\", "/").toLowerCase();
+  const fileName = normalized.split("/").at(-1) ?? normalized;
+  const depth = normalized.split("/").length;
+
+  if (normalized === "pack.png") return 100;
+  if (depth === 1 && fileName === "icon.png") return 95;
+  if (depth === 1 && /^(preview|thumbnail)\.(png|jpe?g|webp)$/.test(fileName)) return 90;
+
+  if (
+    category === "shader" &&
+    depth <= 3 &&
+    /(^|\/)(screenshots?|images?|preview)\//.test(normalized) &&
+    /(preview|thumbnail|cover|banner)/.test(fileName)
+  ) {
+    return 80;
+  }
+
+  return 0;
+};
+
+const imageBufferDataUrl = (buffer: Buffer, fileName: string) => {
+  const extension = path.extname(fileName).toLowerCase();
+  const mime =
+    extension === ".png"
+      ? "image/png"
+      : extension === ".webp"
+        ? "image/webp"
+        : "image/jpeg";
+
+  return `data:${mime};base64,${buffer.toString("base64")}`;
 };
 
 const resolveSafeRelativePath = (gameDir: string, relativePath: string) => {

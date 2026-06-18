@@ -1085,13 +1085,14 @@ export class InstanceService {
   }
 
   private async rowToInstance(row: InstanceRow): Promise<LauncherInstance> {
-    const [modsCount, resourcepacksCount, shaderpacksCount, dataPacksCount, worldsCount] =
+    const [modsCount, resourcepacksCount, shaderpacksCount, dataPacksCount, worldsCount, shaderSupport] =
       await Promise.all([
       countContentEntries(path.join(row.game_dir, "mods"), [".jar", ".zip"]),
       countContentEntries(path.join(row.game_dir, "resourcepacks"), [".zip"], "pack.mcmeta"),
       countContentEntries(path.join(row.game_dir, "shaderpacks"), [".zip"], "shaders"),
       countDataPacks(row.game_dir),
       countWorlds(row.game_dir),
+      detectShaderSupport(row),
     ]);
 
     return {
@@ -1110,6 +1111,7 @@ export class InstanceService {
       shaderpacksCount,
       dataPacksCount,
       worldsCount,
+      shaderSupport,
       contentManagementEnabled: row.content_management_enabled !== 0,
       sourceProvider: row.source_provider ?? undefined,
       sourceProjectId: row.source_project_id ?? undefined,
@@ -1187,6 +1189,69 @@ const countDataPacks = async (gameDir: string) => {
   } catch {
     return rootCount;
   }
+};
+
+const detectShaderSupport = async (row: InstanceRow) => {
+  const engines = new Set<string>();
+  const declaredProfile = [
+    row.loader,
+    row.loader_version ?? "",
+    row.minecraft_version,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  if (row.loader === "iris" || row.loader === "iris-sodium") {
+    engines.add(row.loader === "iris-sodium" ? "Iris + Sodium" : "Iris");
+  }
+
+  if (declaredProfile.includes("optifine")) {
+    engines.add("OptiFine");
+  }
+
+  try {
+    const files = await readdir(path.join(row.game_dir, "mods"), { withFileTypes: true });
+    const names = files
+      .filter(
+        (entry) =>
+          entry.isFile() &&
+          /\.(jar|zip)$/i.test(entry.name) &&
+          !entry.name.toLowerCase().endsWith(".disabled"),
+      )
+      .map((entry) => entry.name.toLowerCase());
+    const has = (pattern: RegExp) => names.some((name) => pattern.test(name));
+    const hasSodium = has(/^sodium(?:[-_.+](?:fabric|neoforge|forge))?[-_.+]?\d/i);
+    const hasEmbeddium = has(
+      /^embeddium(?:[-_.+](?:fabric|neoforge|forge))?[-_.+]?\d/i,
+    );
+
+    if (has(/^iris(?:[-_.+](?:fabric|neoforge|forge))?[-_.+]?\d/i)) {
+      engines.add(hasSodium ? "Iris + Sodium" : "Iris");
+    }
+
+    if (has(/^oculus(?:[-_.+](?:mc|neoforge|forge))?[-_.+]?\d/i)) {
+      engines.add(hasEmbeddium ? "Oculus + Embeddium" : "Oculus");
+    }
+
+    if (has(/^optifine(?:[-_.+]|\d|$)/i)) {
+      engines.add("OptiFine");
+    }
+
+    if (has(/^angelica(?:[-_.+]|\d|$)/i)) {
+      engines.add("Angelica");
+    }
+
+    if (has(/^shadersmod(?:[-_.+]|\d|$)/i)) {
+      engines.add("ShadersMod");
+    }
+  } catch {
+    // Instancias sem pasta de mods continuam validas, mas nao suportam shader packs.
+  }
+
+  return {
+    supported: engines.size > 0,
+    engines: Array.from(engines),
+  };
 };
 
 const normalizeImageExtension = (extension: string) => {

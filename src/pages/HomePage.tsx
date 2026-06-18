@@ -99,19 +99,19 @@ const changelog = [
     tag: rawAppVersion,
     date: "Atual",
     changes: [
-      "Instancias agora possuem visao geral, conteudo, changelog, galeria, versoes, logs e screenshots.",
-      "Tempo jogado, categorias de conteudo e inspecao detalhada passam a usar dados reais da instancia.",
-      "Botoes e destaques do launcher foram atualizados para o novo tema azul.",
+      "Texturas e shaders agora exibem fotos do projeto ou a imagem interna do pacote.",
+      "Shaders so podem ser baixados quando a instancia possui um motor grafico reconhecido.",
+      "Iris, Iris + Sodium, OptiFine, Oculus, Angelica e ShadersMod passam a ser detectados automaticamente.",
     ],
   },
   {
-    version: "2.1.0",
-    tag: "alpha 1.0",
+    version: "2.7.0",
+    tag: "alpha 1",
     date: "Anterior",
     changes: [
-      "Modpacks passaram a baixar os arquivos exatos declarados pelo manifesto.",
-      "Lista interna do modpack passou a ser restaurada por lockfile local.",
-      "Versoes especificas da CurseForge passaram a usar o fileID escolhido.",
+      "Instancias receberam overview, conteudo, changelog, galeria, versoes, logs e screenshots.",
+      "Tempo jogado, categorias e inspecao detalhada passaram a usar dados reais.",
+      "Botoes e destaques do launcher foram atualizados para o tema azul.",
     ],
   },
 ];

@@ -117,6 +117,10 @@ export type LauncherInstance = {
   shaderpacksCount: number;
   dataPacksCount: number;
   worldsCount: number;
+  shaderSupport: {
+    supported: boolean;
+    engines: string[];
+  };
   contentManagementEnabled: boolean;
   sourceProvider?: ContentProvider;
   sourceProjectId?: string;
@@ -368,6 +372,7 @@ export type InstanceContentEntry = {
   projectId?: string;
   versionId?: string;
   iconUrl?: string;
+  previewDataUrl?: string;
   installedContentId?: string;
 };
 

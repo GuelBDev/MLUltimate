@@ -455,6 +455,23 @@ export class ContentService {
       .map(rowToInstalledContent);
   }
 
+  async hydrateInstanceContentImages(
+    instanceId: string,
+    types: ContentType[] = ["resourcepack", "shader"],
+  ) {
+    await this.instances.restoreLockedContent(instanceId);
+
+    if (types.length === 0) return;
+
+    const placeholders = types.map(() => "?").join(", ");
+    const rows = this.database.all<InstalledContentRow>(
+      `SELECT * FROM installed_content WHERE instance_id = ? AND type IN (${placeholders})`,
+      [instanceId, ...types],
+    );
+
+    await this.hydrateContentIcons(rows);
+  }
+
   async checkInstalledUpdates(instanceId: string) {
     await this.instances.restoreLockedContent(instanceId);
 
@@ -775,7 +792,7 @@ export class ContentService {
   ): Promise<InstallableFile | null> {
     const loader = normalizeContentLoader(instance.loader) ?? instance.loader;
 
-    if (!canInstallContentInLoader(row.type, instance.loader)) {
+    if (!canInstallContentInInstance(row.type, instance)) {
       return null;
     }
 
@@ -1074,8 +1091,8 @@ export class ContentService {
     const instance = await this.instances.getById(input.instanceId);
     assertContentManagementEnabled(instance.contentManagementEnabled, input.type);
 
-    if (!canInstallContentInLoader(input.type, instance.loader)) {
-      throw new Error(contentInstallBlockReason(input.type, instance.loader));
+    if (!canInstallContentInInstance(input.type, instance)) {
+      throw new Error(contentInstallBlockReason(input.type, instance));
     }
 
     if (installedProjectIds.has(input.projectId)) {
@@ -1465,8 +1482,8 @@ export class ContentService {
     const instance = await this.instances.getById(input.instanceId);
     assertContentManagementEnabled(instance.contentManagementEnabled, input.type);
 
-    if (!canInstallContentInLoader(input.type, instance.loader)) {
-      throw new Error(contentInstallBlockReason(input.type, instance.loader));
+    if (!canInstallContentInInstance(input.type, instance)) {
+      throw new Error(contentInstallBlockReason(input.type, instance));
     }
 
     if (installedProjectIds.has(input.projectId)) {
@@ -2028,23 +2045,27 @@ const normalizeContentLoader = (loader?: LoaderType): LoaderType | undefined => 
   return loader;
 };
 
-const canInstallContentInLoader = (type: ContentType, loader: LoaderType) => {
+const canInstallContentInInstance = (
+  type: ContentType,
+  instance: LauncherInstance,
+) => {
   if (type === "resourcepack") {
     return true;
   }
 
   if (type === "shader") {
-    return loader === "iris" || loader === "iris-sodium";
+    return instance.shaderSupport.supported;
   }
 
-  return loader !== "vanilla";
+  return instance.loader !== "vanilla";
 };
 
-const contentInstallBlockReason = (type: ContentType, loader: LoaderType) => {
+const contentInstallBlockReason = (
+  type: ContentType,
+  instance: LauncherInstance,
+) => {
   if (type === "shader") {
-    return loader === "vanilla"
-      ? "Shaders precisam de um motor grÃ¡fico. Crie uma instÃ¢ncia Iris ou Iris + Sodium."
-      : "Este shader nÃ£o Ã© compatÃ­vel com o motor grÃ¡fico desta instÃ¢ncia.";
+    return `A instancia ${instance.name} nao possui um motor de shader reconhecido. Instale Iris, Iris + Sodium, OptiFine, Oculus, Angelica ou ShadersMod antes de adicionar shaders.`;
   }
 
   if (type === "modpack") {

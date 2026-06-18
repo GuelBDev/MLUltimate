@@ -340,6 +340,11 @@ export const InstanceDetailPage = ({
                   {current.sourceProvider}
                 </Badge>
               ) : null}
+              {current.shaderSupport.supported ? (
+                <Badge tone="blue">
+                  Shaders: {current.shaderSupport.engines.join(", ")}
+                </Badge>
+              ) : null}
             </div>
             <p className="mt-2 text-sm text-[#B8C2D0]">
               Minecraft {current.minecraftVersion} · {Math.round(current.ramMb / 1024)} GB RAM
@@ -481,6 +486,12 @@ export const InstanceDetailPage = ({
                     onClick={() =>
                       onExplore(categoryToContentType(category)!, current.id)
                     }
+                    disabled={category === "shader" && !current.shaderSupport.supported}
+                    title={
+                      category === "shader" && !current.shaderSupport.supported
+                        ? "Instale Iris, OptiFine, Oculus, Angelica ou outro motor de shader primeiro."
+                        : undefined
+                    }
                   >
                     <Plus className="h-4 w-4" />
                     Adicionar
@@ -489,6 +500,13 @@ export const InstanceDetailPage = ({
               ) : null}
             </div>
           </div>
+          {category === "shader" && !current.shaderSupport.supported ? (
+            <div className="border-b border-blue-400/15 bg-blue-500/8 px-4 py-3 text-sm text-blue-100">
+              Esta instancia nao possui um carregador de shaders reconhecido. O download sera
+              liberado automaticamente quando Iris, Iris + Sodium, OptiFine, Oculus, Angelica
+              ou ShadersMod estiver instalado e ativo.
+            </div>
+          ) : null}
           <div className="border-b border-white/10 p-4">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
@@ -808,19 +826,20 @@ const Stat = ({
 const ContentIcon = ({ item }: { item: InstanceContentEntry }) => {
   const category = categories.find((candidate) => candidate.id === item.category);
   const Icon = category?.icon ?? Package;
+  const imageUrl = item.iconUrl ?? item.previewDataUrl;
 
-  if (item.iconUrl) {
+  if (imageUrl) {
     return (
       <img
-        src={item.iconUrl}
+        src={imageUrl}
         alt=""
-        className="h-11 w-11 shrink-0 rounded-lg border border-white/10 object-cover"
+        className="h-14 w-14 shrink-0 rounded-lg border border-white/10 bg-black/20 object-cover"
       />
     );
   }
 
   return (
-    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/6 text-[#60A5FA]">
+    <span className="grid h-14 w-14 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/6 text-[#60A5FA]">
       <Icon className="h-4 w-4" />
     </span>
   );
