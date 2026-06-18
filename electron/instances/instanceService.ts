@@ -12,6 +12,7 @@ import { DownloadManager } from "../downloads/downloadManager";
 import { MinecraftVersionService } from "../minecraft/minecraftVersionService";
 import { getLauncherDataSubpath } from "../utils/launcherPaths";
 import type {
+  ContentProvider,
   CreateInstanceInput,
   ImportInstanceInput,
   InstanceIconSelection,
@@ -122,6 +123,14 @@ const curseForgeFileSchema = z.object({
   }),
 });
 
+const curseForgeProjectClassSchema = z.object({
+  data: z.object({
+    id: z.number(),
+    name: z.string(),
+    classId: z.number().optional(),
+  }),
+});
+
 const modrinthVersionSchema = z.object({
   files: z.array(
     z.object({
@@ -152,7 +161,7 @@ const modpackLockSchema = z.object({
   files: z.array(
     z.object({
       provider: z.enum(["curseforge", "modrinth"]),
-      type: z.enum(["mod", "resourcepack", "shader"]),
+      type: z.enum(["mod", "datapack", "resourcepack", "shader"]),
       projectId: z.string(),
       versionId: z.string(),
       name: z.string(),
@@ -174,12 +183,23 @@ type InstanceRow = {
   game_dir: string;
   icon_path?: string | null;
   content_management_enabled?: number;
+  source_provider?: ContentProvider | null;
+  source_project_id?: string | null;
+  source_version_id?: string | null;
+  source_project_slug?: string | null;
+  play_time_seconds?: number | null;
+  last_played_at?: string | null;
+  last_launched_at?: string | null;
   created_at: string;
   updated_at: string;
 };
 
 export class InstanceService {
   private instancesRoot = getLauncherDataSubpath("Instances");
+  private readonly curseForgeProjectTypeCache = new Map<
+    number,
+    "mod" | "datapack" | "resourcepack" | "shader"
+  >();
 
   constructor(
     private readonly database: LauncherDatabase,
@@ -314,6 +334,61 @@ export class InstanceService {
     await shell.openPath(instance.gameDir);
   }
 
+  async setSourceMetadata(
+    id: string,
+    source: {
+      provider: ContentProvider;
+      projectId: string;
+      versionId: string;
+      projectSlug?: string;
+    },
+  ) {
+    this.database.run(
+      `
+      UPDATE instances
+      SET source_provider = ?, source_project_id = ?, source_version_id = ?,
+          source_project_slug = ?, updated_at = ?
+      WHERE id = ?
+      `,
+      [
+        source.provider,
+        source.projectId,
+        source.versionId,
+        source.projectSlug ?? null,
+        new Date().toISOString(),
+        id,
+      ],
+    );
+
+    return this.getById(id);
+  }
+
+  async markLaunchStarted(id: string, startedAt = new Date().toISOString()) {
+    this.database.run(
+      "UPDATE instances SET last_launched_at = ?, updated_at = ? WHERE id = ?",
+      [startedAt, startedAt, id],
+    );
+  }
+
+  async recordPlaySession(id: string, seconds: number, endedAt = new Date().toISOString()) {
+    const safeSeconds = Math.max(0, Math.round(seconds));
+
+    if (safeSeconds === 0) {
+      return;
+    }
+
+    this.database.run(
+      `
+      UPDATE instances
+      SET play_time_seconds = COALESCE(play_time_seconds, 0) + ?,
+          last_played_at = ?,
+          updated_at = ?
+      WHERE id = ?
+      `,
+      [safeSeconds, endedAt, endedAt, id],
+    );
+  }
+
   async selectIcon(): Promise<InstanceIconSelection | null> {
     const result = await dialog.showOpenDialog({
       title: "Selecionar imagem da instância",
@@ -444,6 +519,10 @@ export class InstanceService {
     }
 
     for (const file of lock.files) {
+      if (file.type === "datapack") {
+        continue;
+      }
+
       this.recordImportedContent({
         instanceId,
         provider: file.provider,
@@ -496,7 +575,7 @@ export class InstanceService {
           loader: loaderFromModrinthDependencies(index.dependencies),
           loaderVersion: loaderVersionFromModrinthDependencies(index.dependencies),
           ramMb: 4096,
-          contentManagementEnabled: false,
+          contentManagementEnabled: true,
         });
 
         try {
@@ -525,7 +604,7 @@ export class InstanceService {
           loader: loaderFromCurseForgeManifest(manifest.minecraft.modLoaders),
           loaderVersion: loaderVersionFromCurseForgeManifest(manifest.minecraft.modLoaders),
           ramMb: 4096,
-          contentManagementEnabled: false,
+          contentManagementEnabled: true,
         });
 
         try {
@@ -694,14 +773,22 @@ export class InstanceService {
     try {
       await runPool(manifest.files, 8, async (fileRef) => {
         this.downloads.throwIfCancelled(taskId);
-        const file = await this.getCurseForgeFile(fileRef.projectID, fileRef.fileID);
+        const [file, importedType] = await Promise.all([
+          this.getCurseForgeFile(fileRef.projectID, fileRef.fileID),
+          this.getCurseForgeProjectType(fileRef.projectID),
+        ]);
         const downloadUrl =
           file.downloadUrl ??
           (await this.getCurseForgeDownloadUrl(fileRef.projectID, fileRef.fileID).catch(() =>
             curseForgeCdnDownloadUrl(file),
           ));
-        const destination = path.join(instance.gameDir, "mods", sanitizeFileName(file.fileName));
-        const relativePath = path.posix.join("mods", sanitizeFileName(file.fileName));
+        const folder = folderForImportedType(importedType);
+        const destination = path.join(
+          instance.gameDir,
+          folder,
+          sanitizeFileName(file.fileName),
+        );
+        const relativePath = path.posix.join(folder, sanitizeFileName(file.fileName));
 
         this.downloads.throwIfCancelled(taskId);
         await this.downloads.download({
@@ -711,19 +798,21 @@ export class InstanceService {
           sha1: curseForgeSha1(file),
           visible: false,
         });
-        this.recordImportedContent({
-          instanceId: instance.id,
-          provider: "curseforge",
-          type: "mod",
-          projectId: String(fileRef.projectID),
-          versionId: String(fileRef.fileID),
-          name: file.displayName ?? file.fileName,
-          fileName: file.fileName,
-          filePath: destination,
-        });
+        if (importedType !== "datapack") {
+          this.recordImportedContent({
+            instanceId: instance.id,
+            provider: "curseforge",
+            type: importedType,
+            projectId: String(fileRef.projectID),
+            versionId: String(fileRef.fileID),
+            name: file.displayName ?? file.fileName,
+            fileName: file.fileName,
+            filePath: destination,
+          });
+        }
         lockedFiles.push({
           provider: "curseforge",
-          type: "mod",
+          type: importedType,
           projectId: String(fileRef.projectID),
           versionId: String(fileRef.fileID),
           name: file.displayName ?? file.fileName,
@@ -845,6 +934,28 @@ export class InstanceService {
     }
 
     return curseForgeFileSchema.parse(await response.json()).data;
+  }
+
+  private async getCurseForgeProjectType(projectId: number) {
+    const cached = this.curseForgeProjectTypeCache.get(projectId);
+
+    if (cached) {
+      return cached;
+    }
+
+    const response = await this.fetchCurseForge(
+      `/mods/${projectId}`,
+      "Buscar categoria do projeto CurseForge",
+    );
+
+    if (!response.ok) {
+      return "mod" as const;
+    }
+
+    const project = curseForgeProjectClassSchema.parse(await response.json()).data;
+    const type = importedTypeFromCurseForgeClassId(project.classId);
+    this.curseForgeProjectTypeCache.set(projectId, type);
+    return type;
   }
 
   private async writeModpackLock(
@@ -974,10 +1085,13 @@ export class InstanceService {
   }
 
   private async rowToInstance(row: InstanceRow): Promise<LauncherInstance> {
-    const [modsCount, resourcepacksCount, shaderpacksCount] = await Promise.all([
-      countFiles(path.join(row.game_dir, "mods"), [".jar"]),
-      countFiles(path.join(row.game_dir, "resourcepacks"), [".zip"]),
-      countFiles(path.join(row.game_dir, "shaderpacks"), [".zip"]),
+    const [modsCount, resourcepacksCount, shaderpacksCount, dataPacksCount, worldsCount] =
+      await Promise.all([
+      countContentEntries(path.join(row.game_dir, "mods"), [".jar", ".zip"]),
+      countContentEntries(path.join(row.game_dir, "resourcepacks"), [".zip"], "pack.mcmeta"),
+      countContentEntries(path.join(row.game_dir, "shaderpacks"), [".zip"], "shaders"),
+      countDataPacks(row.game_dir),
+      countWorlds(row.game_dir),
     ]);
 
     return {
@@ -994,24 +1108,84 @@ export class InstanceService {
       modsCount,
       resourcepacksCount,
       shaderpacksCount,
+      dataPacksCount,
+      worldsCount,
       contentManagementEnabled: row.content_management_enabled !== 0,
+      sourceProvider: row.source_provider ?? undefined,
+      sourceProjectId: row.source_project_id ?? undefined,
+      sourceVersionId: row.source_version_id ?? undefined,
+      sourceProjectSlug: row.source_project_slug ?? undefined,
+      playTimeSeconds: Number(row.play_time_seconds ?? 0),
+      lastPlayedAt: row.last_played_at ?? undefined,
+      lastLaunchedAt: row.last_launched_at ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
   }
 }
 
-const countFiles = async (directory: string, extensions: string[]) => {
+const countContentEntries = async (
+  directory: string,
+  extensions: string[],
+  directoryMarker?: string,
+) => {
   try {
     const files = await readdir(directory, { withFileTypes: true });
 
-    return files.filter(
-      (file) =>
-        file.isFile() &&
-        extensions.some((extension) => file.name.toLowerCase().endsWith(extension)),
-    ).length;
+    return files.filter((file) => {
+      if (file.name.startsWith(".")) {
+        return false;
+      }
+
+      if (file.isDirectory()) {
+        return Boolean(
+          directoryMarker && existsSync(path.join(directory, file.name, directoryMarker)),
+        );
+      }
+
+      const normalized = file.name.toLowerCase().replace(/\.disabled$/, "");
+      return extensions.some((extension) => normalized.endsWith(extension));
+    }).length;
   } catch {
     return 0;
+  }
+};
+
+const countDirectories = async (directory: string) => {
+  try {
+    const files = await readdir(directory, { withFileTypes: true });
+    return files.filter((file) => file.isDirectory()).length;
+  } catch {
+    return 0;
+  }
+};
+
+const countWorlds = (gameDir: string) => countDirectories(path.join(gameDir, "saves"));
+
+const countDataPacks = async (gameDir: string) => {
+  const rootCount = await countContentEntries(
+    path.join(gameDir, "datapacks"),
+    [".zip"],
+    "pack.mcmeta",
+  );
+
+  try {
+    const worlds = await readdir(path.join(gameDir, "saves"), { withFileTypes: true });
+    const counts = await Promise.all(
+      worlds
+        .filter((world) => world.isDirectory())
+        .map((world) =>
+          countContentEntries(
+            path.join(gameDir, "saves", world.name, "datapacks"),
+            [".zip"],
+            "pack.mcmeta",
+          ),
+        ),
+    );
+
+    return rootCount + counts.reduce((total, count) => total + count, 0);
+  } catch {
+    return rootCount;
   }
 };
 
@@ -1158,6 +1332,24 @@ const importedContentTypeFromPath = (filePath: string) => {
   }
 
   return null;
+};
+
+const importedTypeFromCurseForgeClassId = (
+  classId?: number,
+): "mod" | "datapack" | "resourcepack" | "shader" => {
+  if (classId === 12) return "resourcepack";
+  if (classId === 6552) return "shader";
+  if (classId === 6945) return "datapack";
+  return "mod";
+};
+
+const folderForImportedType = (
+  type: "mod" | "datapack" | "resourcepack" | "shader",
+) => {
+  if (type === "resourcepack") return "resourcepacks";
+  if (type === "shader") return "shaderpacks";
+  if (type === "datapack") return "datapacks";
+  return "mods";
 };
 
 const loaderFromModrinthDependencies = (dependencies: Record<string, string>): LoaderType => {

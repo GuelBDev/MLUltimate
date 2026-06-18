@@ -12,6 +12,7 @@ dist
 dist-electron
 dist-ssr
 release
+.qa-data
 installer.log
 .env
 .env.*

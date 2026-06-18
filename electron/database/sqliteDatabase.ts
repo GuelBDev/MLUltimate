@@ -183,6 +183,36 @@ export class LauncherDatabase {
       );
     }
 
+    if (!instanceColumns.includes("source_provider")) {
+      database.run("ALTER TABLE instances ADD COLUMN source_provider TEXT");
+    }
+
+    if (!instanceColumns.includes("source_project_id")) {
+      database.run("ALTER TABLE instances ADD COLUMN source_project_id TEXT");
+    }
+
+    if (!instanceColumns.includes("source_version_id")) {
+      database.run("ALTER TABLE instances ADD COLUMN source_version_id TEXT");
+    }
+
+    if (!instanceColumns.includes("source_project_slug")) {
+      database.run("ALTER TABLE instances ADD COLUMN source_project_slug TEXT");
+    }
+
+    if (!instanceColumns.includes("play_time_seconds")) {
+      database.run(
+        "ALTER TABLE instances ADD COLUMN play_time_seconds INTEGER NOT NULL DEFAULT 0",
+      );
+    }
+
+    if (!instanceColumns.includes("last_played_at")) {
+      database.run("ALTER TABLE instances ADD COLUMN last_played_at TEXT");
+    }
+
+    if (!instanceColumns.includes("last_launched_at")) {
+      database.run("ALTER TABLE instances ADD COLUMN last_launched_at TEXT");
+    }
+
     const installedContentColumns = this.all<{ name: string }>(
       "PRAGMA table_info(installed_content)",
     ).map((column) => column.name);

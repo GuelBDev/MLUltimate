@@ -9,6 +9,7 @@ import { ContentService } from "./content/contentService";
 import { LauncherService } from "./launcher/launcherService";
 import { DownloadManager } from "./downloads/downloadManager";
 import { InstanceService } from "./instances/instanceService";
+import { InstanceInspectionService } from "./instances/instanceInspectionService";
 import { JavaRuntimeService } from "./java/javaRuntimeService";
 import { MinecraftVersionService } from "./minecraft/minecraftVersionService";
 import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
@@ -29,6 +30,10 @@ if (!gotSingleInstanceLock) {
 }
 
 const showMainWindow = () => {
+  if (process.env.MLULTIMATE_QA_HIDDEN === "1") {
+    return;
+  }
+
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
   }
@@ -132,6 +137,7 @@ const bootstrap = async () => {
   const javaRuntimes = new JavaRuntimeService(downloads);
   const minecraftVersions = new MinecraftVersionService(database, downloads, javaRuntimes);
   const instances = new InstanceService(database, minecraftVersions, downloads);
+  const instanceInspection = new InstanceInspectionService(database, instances);
   const content = new ContentService(database, downloads, instances);
   const launcher = new LauncherService(
     microsoftAuth,
@@ -163,6 +169,7 @@ const bootstrap = async () => {
     downloads,
     minecraftVersions,
     instances,
+    instanceInspection,
     content,
     apiKeys,
     avatar,

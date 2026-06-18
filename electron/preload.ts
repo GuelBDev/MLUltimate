@@ -13,6 +13,10 @@ import type {
   InstalledContent,
   InstalledContentUpdateInfo,
   ImportInstanceInput,
+  InstanceInspection,
+  InstanceFileActionInput,
+  ToggleInstanceFileInput,
+  ReadInstanceTextFileInput,
   InstanceIconSelection,
   LaunchEvent,
   LaunchCancelRequest,
@@ -81,6 +85,18 @@ const api = {
       ipcRenderer.invoke("instances:select-icon") as Promise<InstanceIconSelection | null>,
     importInstance: (input: ImportInstanceInput) =>
       ipcRenderer.invoke("instances:import", input) as Promise<LauncherInstance | null>,
+    inspect: (instanceId: string) =>
+      ipcRenderer.invoke("instances:inspect", instanceId) as Promise<InstanceInspection>,
+    toggleFile: (input: ToggleInstanceFileInput) =>
+      ipcRenderer.invoke("instances:toggle-file", input) as Promise<InstanceInspection>,
+    removeFile: (input: InstanceFileActionInput) =>
+      ipcRenderer.invoke("instances:remove-file", input) as Promise<InstanceInspection>,
+    readTextFile: (input: ReadInstanceTextFileInput) =>
+      ipcRenderer.invoke("instances:read-text-file", input) as Promise<string>,
+    openSubfolder: (input: {
+      instanceId: string;
+      folder: "logs" | "screenshots" | "saves" | "mods" | "resourcepacks" | "shaderpacks";
+    }) => ipcRenderer.invoke("instances:open-subfolder", input) as Promise<void>,
   },
   content: {
     search: (input: ContentSearchInput) =>

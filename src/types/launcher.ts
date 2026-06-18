@@ -115,7 +115,16 @@ export type LauncherInstance = {
   modsCount: number;
   resourcepacksCount: number;
   shaderpacksCount: number;
+  dataPacksCount: number;
+  worldsCount: number;
   contentManagementEnabled: boolean;
+  sourceProvider?: ContentProvider;
+  sourceProjectId?: string;
+  sourceVersionId?: string;
+  sourceProjectSlug?: string;
+  playTimeSeconds: number;
+  lastPlayedAt?: string;
+  lastLaunchedAt?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -185,6 +194,7 @@ export type ContentVersion = {
   loaders: LoaderType[];
   downloads?: number;
   changelog?: string;
+  releaseType?: "release" | "beta" | "alpha";
 };
 
 export type ContentGalleryImage = {
@@ -196,10 +206,23 @@ export type ContentGalleryImage = {
 export type ContentProjectDetails = ContentSearchResult & {
   body?: string;
   sourceUrl?: string;
+  categories?: string[];
   versions: ContentVersion[];
   gallery: ContentGalleryImage[];
+  modpackContent?: ModpackContentEntry[];
   commentsNote?: string;
   contentNote?: string;
+};
+
+export type ModpackContentEntry = {
+  provider: ContentProvider;
+  projectId: string;
+  versionId: string;
+  category: "mod" | "datapack" | "resourcepack" | "shader";
+  name: string;
+  fileName?: string;
+  iconUrl?: string;
+  required: boolean;
 };
 
 export type InstallContentInput = {
@@ -223,6 +246,7 @@ export type ContentProjectInput = {
   projectId: string;
   minecraftVersion?: string;
   loader?: LoaderType;
+  includeModpackContent?: boolean;
 };
 
 export type ImportInstanceInput = {
@@ -322,4 +346,63 @@ export type InstalledContentUpdateInfo = {
   latestVersionId?: string;
   latestVersionName?: string;
   latestFileName?: string;
+};
+
+export type InstanceContentCategory =
+  | "mod"
+  | "datapack"
+  | "resourcepack"
+  | "shader"
+  | "world";
+
+export type InstanceContentEntry = {
+  id: string;
+  category: InstanceContentCategory;
+  name: string;
+  fileName: string;
+  relativePath: string;
+  enabled: boolean;
+  sizeBytes: number;
+  modifiedAt: string;
+  provider?: ContentProvider;
+  projectId?: string;
+  versionId?: string;
+  iconUrl?: string;
+  installedContentId?: string;
+};
+
+export type InstanceLogFile = {
+  name: string;
+  relativePath: string;
+  sizeBytes: number;
+  modifiedAt: string;
+};
+
+export type InstanceScreenshot = {
+  name: string;
+  relativePath: string;
+  sizeBytes: number;
+  createdAt: string;
+  imageDataUrl?: string;
+};
+
+export type InstanceInspection = {
+  content: InstanceContentEntry[];
+  logs: InstanceLogFile[];
+  screenshots: InstanceScreenshot[];
+  configFilesCount: number;
+  totalContentSizeBytes: number;
+};
+
+export type InstanceFileActionInput = {
+  instanceId: string;
+  relativePath: string;
+};
+
+export type ToggleInstanceFileInput = InstanceFileActionInput & {
+  enabled: boolean;
+};
+
+export type ReadInstanceTextFileInput = InstanceFileActionInput & {
+  maxBytes?: number;
 };

@@ -7,6 +7,7 @@ import { ContentService } from "../content/contentService";
 import { DownloadManager } from "../downloads/downloadManager";
 import { OfflineAuthService } from "../auth/offlineAuthService";
 import { InstanceService } from "../instances/instanceService";
+import { InstanceInspectionService } from "../instances/instanceInspectionService";
 import { LauncherService } from "../launcher/launcherService";
 import { MinecraftVersionService } from "../minecraft/minecraftVersionService";
 import { ApiKeyStore } from "../settings/apiKeyStore";
@@ -97,11 +98,30 @@ const contentProjectSchema = z.object({
   projectId: z.string(),
   minecraftVersion: z.string().optional(),
   loader: z.enum(["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"]).optional(),
+  includeModpackContent: z.boolean().optional(),
 });
 
 const importInstanceSchema = z.object({
   source: z.enum(["archive", "code"]),
   code: z.string().optional(),
+});
+
+const instanceFileActionSchema = z.object({
+  instanceId: z.string().min(1),
+  relativePath: z.string().min(1),
+});
+
+const toggleInstanceFileSchema = instanceFileActionSchema.extend({
+  enabled: z.boolean(),
+});
+
+const readInstanceTextFileSchema = instanceFileActionSchema.extend({
+  maxBytes: z.number().int().min(16_384).max(2_000_000).optional(),
+});
+
+const openInstanceSubfolderSchema = z.object({
+  instanceId: z.string().min(1),
+  folder: z.enum(["logs", "screenshots", "saves", "mods", "resourcepacks", "shaderpacks"]),
 });
 
 const updateSettingsSchema = z.object({
@@ -122,6 +142,7 @@ type IpcDeps = {
   downloads: DownloadManager;
   minecraftVersions: MinecraftVersionService;
   instances: InstanceService;
+  instanceInspection: InstanceInspectionService;
   content: ContentService;
   apiKeys: ApiKeyStore;
   avatar: AvatarService;
@@ -135,6 +156,7 @@ export const registerIpcHandlers = ({
   downloads,
   minecraftVersions,
   instances,
+  instanceInspection,
   content,
   apiKeys,
   avatar,
@@ -188,6 +210,21 @@ export const registerIpcHandlers = ({
   ipcMain.handle("instances:select-icon", async () => instances.selectIcon());
   ipcMain.handle("instances:import", async (_, input: unknown) =>
     instances.importInstance(importInstanceSchema.parse(input)),
+  );
+  ipcMain.handle("instances:inspect", async (_, instanceId: unknown) =>
+    instanceInspection.inspect(z.string().min(1).parse(instanceId)),
+  );
+  ipcMain.handle("instances:toggle-file", async (_, input: unknown) =>
+    instanceInspection.toggleFile(toggleInstanceFileSchema.parse(input)),
+  );
+  ipcMain.handle("instances:remove-file", async (_, input: unknown) =>
+    instanceInspection.removeFile(instanceFileActionSchema.parse(input)),
+  );
+  ipcMain.handle("instances:read-text-file", async (_, input: unknown) =>
+    instanceInspection.readTextFile(readInstanceTextFileSchema.parse(input)),
+  );
+  ipcMain.handle("instances:open-subfolder", async (_, input: unknown) =>
+    instanceInspection.openSubfolder(openInstanceSubfolderSchema.parse(input)),
   );
   ipcMain.handle("content:search", async (_, input: unknown) =>
     content.search(searchContentSchema.parse(input)),

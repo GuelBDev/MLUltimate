@@ -29,8 +29,15 @@ type ExplorePageProps = {
 const providerFilters: ContentProviderFilter[] = ["all", "modrinth", "curseforge"];
 const types: ContentType[] = ["mod", "modpack", "resourcepack", "shader"];
 const loaders: LoaderType[] = ["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"];
-const detailTabs = ["content", "gallery", "versions", "comments"] as const;
+const detailTabs = ["overview", "content", "changelog", "gallery", "versions"] as const;
 type DetailTab = (typeof detailTabs)[number];
+const detailTabLabels: Record<DetailTab, string> = {
+  overview: "Overview",
+  content: "Conteúdo",
+  changelog: "Changelog",
+  gallery: "Galeria",
+  versions: "Versões",
+};
 
 type InstallTarget = {
   project: ContentSearchResult | ContentProjectDetails;
@@ -61,7 +68,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   const [version, setVersion] = useState("");
   const [results, setResults] = useState<ContentSearchResult[]>([]);
   const [selectedProject, setSelectedProject] = useState<ContentSearchResult | null>(null);
-  const [activeTab, setActiveTab] = useState<DetailTab>("versions");
+  const [activeTab, setActiveTab] = useState<DetailTab>("overview");
   const [installTarget, setInstallTarget] = useState<InstallTarget | null>(null);
   const [providerInstallTarget, setProviderInstallTarget] = useState<InstallTarget | null>(null);
   const [loadClicks, setLoadClicks] = useState(0);
@@ -159,7 +166,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
 
   const openProject = (project: ContentSearchResult) => {
     setSelectedProject(project);
-    setActiveTab("versions");
+    setActiveTab("overview");
     details.mutate(project);
   };
 
@@ -540,7 +547,7 @@ const ProjectDetails = ({
 
   useEffect(() => {
     if (!visibleTabs.includes(activeTab)) {
-      onTabChange("versions");
+      onTabChange("overview");
     }
   }, [activeTab, onTabChange, visibleTabs]);
 
@@ -601,14 +608,14 @@ const ProjectDetails = ({
           <button
             key={tab}
             type="button"
-            className={`border-b-2 px-1 pb-3 text-sm capitalize ${
+            className={`border-b-2 px-1 pb-3 text-sm ${
               activeTab === tab
-                ? "border-[#f05a28] text-white"
+                ? "border-[#3B82F6] text-white"
                 : "border-transparent text-[#94A3B8] hover:text-white"
             }`}
             onClick={() => onTabChange(tab)}
           >
-            {tab}
+            {detailTabLabels[tab]}
           </button>
         ))}
       </div>
@@ -620,6 +627,30 @@ const ProjectDetails = ({
       ) : null}
 
       <Card className="rounded-sm border-white/10 bg-[#1f1f1f] p-5">
+        {activeTab === "overview" ? (
+          <div className="space-y-5">
+            {(project?.categories ?? []).length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {project?.categories?.map((category) => (
+                  <Badge key={category} tone="slate">
+                    {category}
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
+            <div className="whitespace-pre-wrap text-sm leading-7 text-[#D8DEE9]">
+              {project?.body ?? current.description}
+            </div>
+            {project?.gallery[0] ? (
+              <img
+                src={project.gallery[0].url}
+                alt=""
+                className="max-h-[520px] w-full rounded-sm object-cover"
+              />
+            ) : null}
+          </div>
+        ) : null}
+
         {activeTab === "versions" ? (
           <div className="space-y-2">
             <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -668,8 +699,11 @@ const ProjectDetails = ({
           </div>
         ) : null}
 
-        {activeTab === "comments" ? (
-          <EmptyDetail text={project?.commentsNote ?? "Comentários indisponíveis."} />
+        {activeTab === "changelog" ? (
+          <div className="whitespace-pre-wrap text-sm leading-7 text-[#D8DEE9]">
+            {latestVersion?.changelog ??
+              "O autor não publicou um changelog para a versão mais recente."}
+          </div>
         ) : null}
 
         {activeTab === "content" ? (
@@ -684,29 +718,56 @@ const ProjectDetails = ({
                   placeholder="Pesquisar conteúdo do projeto"
                 />
               </div>
-              <Badge tone="slate">{filteredVersions.length} arquivos</Badge>
+              <Badge tone="slate">{project?.modpackContent?.length ?? 0} itens</Badge>
             </div>
-            {filteredVersions.slice(0, 60).map((version) => (
-              <div
-                key={`content-${version.id}`}
-                className="grid grid-cols-1 gap-3 border-b border-white/8 px-2 py-3 text-sm last:border-b-0 sm:grid-cols-[1fr_120px_120px]"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <ContentTypeIcon type={current.type} />
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-white">{version.fileName}</p>
-                    <p className="mt-1 truncate text-[#94A3B8]">{version.name}</p>
+            {(project?.modpackContent ?? [])
+              .filter((item) => {
+                const normalized = versionQuery.trim().toLowerCase();
+                return (
+                  !normalized ||
+                  [item.name, item.fileName, item.category, item.provider]
+                    .filter(Boolean)
+                    .join(" ")
+                    .toLowerCase()
+                    .includes(normalized)
+                );
+              })
+              .map((item) => (
+                <div
+                  key={`content-${item.provider}-${item.projectId}-${item.versionId}-${item.fileName ?? item.name}`}
+                  className="grid grid-cols-1 gap-3 border-b border-white/8 px-2 py-3 text-sm last:border-b-0 sm:grid-cols-[1fr_130px_110px]"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    {item.iconUrl ? (
+                      <img src={item.iconUrl} alt="" className="h-9 w-9 rounded-lg object-cover" />
+                    ) : (
+                      <ContentTypeIcon
+                        type={
+                          item.category === "resourcepack"
+                            ? "resourcepack"
+                            : item.category === "shader"
+                              ? "shader"
+                              : "mod"
+                        }
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-white">{item.name}</p>
+                      <p className="mt-1 truncate text-[#94A3B8]">
+                        {item.fileName ?? `Projeto ${item.projectId}`}
+                      </p>
+                    </div>
                   </div>
+                  <span className="capitalize text-[#B8C2D0]">{item.category}</span>
+                  <span className="text-[#B8C2D0]">
+                    {item.required ? "Obrigatório" : "Opcional"}
+                  </span>
                 </div>
-                <span className="text-[#B8C2D0]">{version.gameVersions.at(0) ?? "-"}</span>
-                <span className="text-[#B8C2D0]">{version.provider}</span>
-              </div>
-            ))}
-            {versions.length === 0 ? (
-              <EmptyDetail text={project?.contentNote ?? "Conteúdo aparece depois de instalar na instância."} />
-            ) : null}
-            {versions.length > 0 && filteredVersions.length === 0 ? (
-              <EmptyDetail text="Nenhum arquivo encontrado para esta busca." />
+              ))}
+            {(project?.modpackContent ?? []).length === 0 ? (
+              <EmptyDetail
+                text={project?.contentNote ?? "O manifesto do modpack não expôs conteúdo."}
+              />
             ) : null}
           </div>
         ) : null}

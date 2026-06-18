@@ -1,3 +1,4 @@
+import AdmZip from "adm-zip";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -20,6 +21,7 @@ import type {
   InstalledContent,
   LauncherInstance,
   LoaderType,
+  ModpackContentEntry,
 } from "../../src/types/launcher";
 
 const MODRINTH_API = "https://api.modrinth.com/v2";
@@ -62,6 +64,7 @@ const projectInputSchema = z.object({
   projectId: z.string().min(1),
   minecraftVersion: z.string().optional(),
   loader: z.enum(["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"]).optional(),
+  includeModpackContent: z.boolean().optional().default(true),
 });
 
 const modrinthSearchSchema = z.object({
@@ -94,6 +97,7 @@ const modrinthProjectSchema = z.object({
   source_url: z.string().nullable().optional(),
   wiki_url: z.string().nullable().optional(),
   discord_url: z.string().nullable().optional(),
+  categories: z.array(z.string()).optional().default([]),
   gallery: z
     .array(
       z.object({
@@ -117,6 +121,7 @@ const modrinthVersionSchema = z.object({
   version_number: z.string().optional(),
   date_published: z.string().optional(),
   downloads: z.number().optional(),
+  version_type: z.enum(["release", "beta", "alpha"]).optional(),
   game_versions: z.array(z.string()).default([]),
   loaders: z.array(z.string()).default([]),
   changelog: z.string().nullable().optional(),
@@ -169,6 +174,7 @@ const curseForgeSearchSchema = z.object({
 const curseForgeProjectSchema = z.object({
   data: z.object({
     id: z.number(),
+    classId: z.number().optional(),
     name: z.string(),
     slug: z.string().optional(),
     summary: z.string().default(""),
@@ -182,7 +188,31 @@ const curseForgeProjectSchema = z.object({
       .optional(),
     authors: z.array(z.object({ name: z.string() })).optional(),
     dateModified: z.string().optional(),
+    mainFileId: z.number().optional(),
+    categories: z
+      .array(
+        z.object({
+          name: z.string(),
+        }),
+      )
+      .optional()
+      .default([]),
+    screenshots: z
+      .array(
+        z.object({
+          title: z.string().nullable().optional(),
+          description: z.string().nullable().optional(),
+          thumbnailUrl: z.string().optional(),
+          url: z.string(),
+        }),
+      )
+      .optional()
+      .default([]),
   }),
+});
+
+const curseForgeProjectsSchema = z.object({
+  data: z.array(curseForgeProjectSchema.shape.data),
 });
 
 const curseForgeFileDataSchema = z.object({
@@ -213,6 +243,7 @@ const curseForgeFileDataSchema = z.object({
     .default([]),
   fileDate: z.string().optional(),
   downloadCount: z.number().optional(),
+  releaseType: z.number().optional(),
 });
 
 const curseForgeFilesSchema = z.object({
@@ -221,6 +252,43 @@ const curseForgeFilesSchema = z.object({
 
 const curseForgeFileSchema = z.object({
   data: curseForgeFileDataSchema,
+});
+
+const stringResponseSchema = z.object({ data: z.string() });
+
+const curseForgeManifestPreviewSchema = z.object({
+  files: z
+    .array(
+      z.object({
+        projectID: z.number(),
+        fileID: z.number(),
+        required: z.boolean().optional().default(true),
+      }),
+    )
+    .default([]),
+  overrides: z.string().optional().default("overrides"),
+});
+
+const modrinthIndexPreviewSchema = z.object({
+  files: z
+    .array(
+      z.object({
+        path: z.string(),
+        hashes: z.object({ sha1: z.string().optional() }).optional(),
+        env: z
+          .object({
+            client: z.string().optional(),
+          })
+          .optional(),
+      }),
+    )
+    .default([]),
+});
+
+const modrinthContentProjectSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  icon_url: z.string().nullable().optional(),
 });
 
 type InstalledContentRow = {
@@ -251,6 +319,7 @@ type InstallableFile = {
 
 export class ContentService {
   private readonly projectIconCache = new Map<string, string | null>();
+  private readonly modpackContentCache = new Map<string, ModpackContentEntry[]>();
 
   constructor(
     private readonly database: LauncherDatabase,
@@ -313,11 +382,17 @@ export class ContentService {
         });
 
         const instance = await this.instances.importArchiveFile(archivePath);
-        return this.instances.update({
+        const updated = await this.instances.update({
           id: instance.id,
           name: project.title,
           iconPath,
-          contentManagementEnabled: false,
+          contentManagementEnabled: true,
+        });
+        return this.instances.setSourceMetadata(updated.id, {
+          provider: parsed.provider,
+          projectId: parsed.projectId,
+          versionId: selected.versionId,
+          projectSlug: project.slug,
         });
       } finally {
         await rm(tempDir, { recursive: true, force: true });
@@ -344,7 +419,12 @@ export class ContentService {
       versionId: selected.versionId,
     });
 
-    return this.instances.getById(instance.id);
+    return this.instances.setSourceMetadata(instance.id, {
+      provider: parsed.provider,
+      projectId: parsed.projectId,
+      versionId: selected.versionId,
+      projectSlug: project.slug,
+    });
   }
 
   async getProject(input: ContentProjectInput): Promise<ContentProjectDetails> {
@@ -1177,6 +1257,10 @@ export class ContentService {
 
     const project = modrinthProjectSchema.parse(await projectResponse.json());
     const contentVersions = versions.map((version) => toModrinthContentVersion(version));
+    const modpackContent =
+      input.type === "modpack" && input.includeModpackContent && versions[0]
+        ? await this.getModrinthModpackContent(project.id, versions[0]).catch(() => [])
+        : undefined;
 
     return {
       provider: "modrinth",
@@ -1197,6 +1281,7 @@ export class ContentService {
       iconUrl: project.icon_url ?? undefined,
       projectUrl: project.slug ? `https://modrinth.com/${input.type}/${project.slug}` : undefined,
       sourceUrl: project.source_url ?? project.wiki_url ?? project.discord_url ?? undefined,
+      categories: project.categories,
       latestGameVersion: latestGameVersion(contentVersions.flatMap((version) => version.gameVersions)),
       compatibleGameVersions: compactGameVersions(
         contentVersions.flatMap((version) => version.gameVersions),
@@ -1210,6 +1295,7 @@ export class ContentService {
         description: image.description ?? undefined,
       })),
       versions: contentVersions,
+      modpackContent,
       commentsNote: "Comentários não são expostos pela API pública do Modrinth.",
       contentNote: "Conteúdo instalado é listado na tela da instância.",
     };
@@ -1218,8 +1304,12 @@ export class ContentService {
   private async getCurseForgeProject(
     input: z.infer<typeof projectInputSchema>,
   ): Promise<ContentProjectDetails> {
-    const [projectResponse, filesResponse] = await Promise.all([
+    const [projectResponse, descriptionResponse, filesResponse] = await Promise.all([
       this.fetchCurseForge(`/mods/${input.projectId}`, "Buscar detalhes na CurseForge"),
+      this.fetchCurseForge(
+        `/mods/${input.projectId}/description`,
+        "Buscar descricao na CurseForge",
+      ).catch(() => null),
       this.getCurseForgeFiles(
         input.projectId,
         input.minecraftVersion,
@@ -1233,7 +1323,39 @@ export class ContentService {
     }
 
     const project = curseForgeProjectSchema.parse(await projectResponse.json()).data;
-    const contentVersions = filesResponse.map((file) => toCurseForgeContentVersion(file));
+    const visibleFiles =
+      input.type === "modpack"
+        ? filesResponse.filter(
+            (file) => !file.isServerPack && file.fileName.toLowerCase().endsWith(".zip"),
+          )
+        : filesResponse;
+    const contentVersions = visibleFiles.map((file) => toCurseForgeContentVersion(file));
+    const description =
+      descriptionResponse?.ok
+        ? htmlToPlainText(stringResponseSchema.parse(await descriptionResponse.json()).data)
+        : project.summary;
+    const latestFile = visibleFiles[0];
+
+    if (latestFile && contentVersions[0]) {
+      const changelogResponse = await this.fetchCurseForge(
+        `/mods/${input.projectId}/files/${latestFile.id}/changelog`,
+        "Buscar changelog na CurseForge",
+      ).catch(() => null);
+
+      if (changelogResponse?.ok) {
+        contentVersions[0].changelog = htmlToPlainText(
+          stringResponseSchema.parse(await changelogResponse.json()).data,
+        );
+      }
+    }
+
+    const modpackContent =
+      input.type === "modpack" && input.includeModpackContent && latestFile
+        ? await this.getCurseForgeModpackContent(project.id, latestFile).catch((error) => {
+            console.warn("Falha ao inspecionar manifesto CurseForge", error);
+            return [];
+          })
+        : undefined;
 
     return {
       provider: "curseforge",
@@ -1250,7 +1372,7 @@ export class ContentService {
       title: project.name,
       author: project.authors?.map((author) => author.name).join(", "),
       description: project.summary,
-      body: project.summary,
+      body: description,
       downloads: project.downloadCount,
       iconUrl: project.logo?.url,
       projectUrl: project.links?.websiteUrl ?? undefined,
@@ -1263,8 +1385,14 @@ export class ContentService {
       compatibleLoaders: Array.from(
         new Set(contentVersions.flatMap((version) => version.loaders)),
       ),
-      gallery: [],
+      categories: project.categories.map((category) => category.name),
+      gallery: project.screenshots.map((image) => ({
+        url: image.url,
+        title: image.title ?? undefined,
+        description: image.description ?? undefined,
+      })),
       versions: contentVersions,
+      modpackContent,
       commentsNote: "Comentários não são expostos pela Core API oficial da CurseForge.",
       contentNote: "Arquivos do projeto aparecem em Versions.",
     };
@@ -1507,21 +1635,314 @@ export class ContentService {
     };
   }
 
-  private fetchCurseForge(pathAndQuery: string, context: string) {
+  private async getCurseForgeModpackContent(
+    projectId: number,
+    file: z.infer<typeof curseForgeFileDataSchema>,
+  ): Promise<ModpackContentEntry[]> {
+    const cacheKey = `curseforge:${projectId}:${file.id}`;
+    const cached = this.modpackContentCache.get(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    const downloadUrl =
+      file.downloadUrl ??
+      (await this.getCurseForgeDownloadUrl(String(projectId), file.id).catch(() =>
+        curseForgeCdnDownloadUrl(file),
+      ));
+    const archive = await this.downloadArchiveForInspection(
+      downloadUrl,
+      file.fileName,
+      `Inspecionar ${file.displayName ?? file.fileName}`,
+    );
+
+    try {
+      const zip = new AdmZip(archive);
+      const manifestEntry = zip.getEntry("manifest.json");
+
+      if (!manifestEntry) {
+        return [];
+      }
+
+      const manifest = curseForgeManifestPreviewSchema.parse(
+        JSON.parse(manifestEntry.getData().toString("utf8")),
+      );
+      const projectIds = Array.from(new Set(manifest.files.map((item) => item.projectID)));
+      const projects = await this.getCurseForgeProjects(projectIds);
+      const projectMap = new Map(projects.map((project) => [project.id, project]));
+      const fallbackFiles = new Map<
+        string,
+        z.infer<typeof curseForgeFileDataSchema>
+      >();
+      const missingRefs = manifest.files.filter(
+        (item) => !projectMap.has(item.projectID),
+      );
+
+      await runPool(missingRefs, 8, async (item) => {
+        const resolved = await this.getCurseForgeFile(
+          String(item.projectID),
+          item.fileID,
+        ).catch(() => null);
+
+        if (resolved) {
+          fallbackFiles.set(`${item.projectID}:${item.fileID}`, resolved);
+        }
+      });
+      const entries: ModpackContentEntry[] = manifest.files.map((item) => {
+        const project = projectMap.get(item.projectID);
+        const fallbackFile = fallbackFiles.get(`${item.projectID}:${item.fileID}`);
+
+        return {
+          provider: "curseforge",
+          projectId: String(item.projectID),
+          versionId: String(item.fileID),
+          category: contentCategoryFromCurseForgeClassId(project?.classId),
+          name:
+            project?.name ??
+            fallbackFile?.displayName ??
+            fallbackFile?.fileName ??
+            `Projeto ${item.projectID}`,
+          fileName: fallbackFile?.fileName,
+          iconUrl: project?.logo?.url,
+          required: item.required,
+        };
+      });
+
+      entries.push(
+        ...listOverrideContent(
+          zip,
+          manifest.overrides,
+          "curseforge",
+          String(projectId),
+          String(file.id),
+        ),
+      );
+      this.modpackContentCache.set(cacheKey, entries);
+      return entries;
+    } finally {
+      await rm(path.dirname(archive), { recursive: true, force: true });
+    }
+  }
+
+  private async getModrinthModpackContent(
+    projectId: string,
+    version: z.infer<typeof modrinthVersionSchema>,
+  ): Promise<ModpackContentEntry[]> {
+    const cacheKey = `modrinth:${projectId}:${version.id}`;
+    const cached = this.modpackContentCache.get(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    const primary = version.files.find((file) => file.primary) ?? version.files[0];
+
+    if (!primary) {
+      return [];
+    }
+
+    const archive = await this.downloadArchiveForInspection(
+      primary.url,
+      primary.filename,
+      `Inspecionar ${version.name}`,
+    );
+
+    try {
+      const zip = new AdmZip(archive);
+      const indexEntry = zip.getEntry("modrinth.index.json");
+
+      if (!indexEntry) {
+        return [];
+      }
+
+      const index = modrinthIndexPreviewSchema.parse(
+        JSON.parse(indexEntry.getData().toString("utf8")),
+      );
+      const hashes = index.files
+        .map((file) => file.hashes?.sha1)
+        .filter((hash): hash is string => Boolean(hash));
+      const versionsByHash = new Map<
+        string,
+        z.infer<typeof modrinthVersionSchema> | null
+      >();
+
+      for (const group of chunk(hashes, 100)) {
+        const response = await fetchWithElectronNet(
+          `${MODRINTH_API}/version_files`,
+          {
+            context: "Resolver conteudo do modpack no Modrinth",
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ hashes: group, algorithm: "sha1" }),
+          },
+        );
+
+        if (response.ok) {
+          const resolved = z
+            .record(z.string(), modrinthVersionSchema.nullable())
+            .parse(await response.json());
+
+          for (const [hash, resolvedVersion] of Object.entries(resolved)) {
+            versionsByHash.set(hash, resolvedVersion);
+          }
+        }
+      }
+
+      const resolvedProjectIds = Array.from(
+        new Set(
+          [...versionsByHash.values()]
+            .map((item) => item?.project_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+      const projects = await this.getModrinthContentProjects(resolvedProjectIds);
+      const projectMap = new Map(projects.map((project) => [project.id, project]));
+      const entries: ModpackContentEntry[] = index.files.map((file) => {
+        const resolved = file.hashes?.sha1
+          ? versionsByHash.get(file.hashes.sha1)
+          : undefined;
+        const project = resolved?.project_id
+          ? projectMap.get(resolved.project_id)
+          : undefined;
+
+        return {
+          provider: "modrinth",
+          projectId: resolved?.project_id ?? projectId,
+          versionId: resolved?.id ?? version.id,
+          category: categoryFromArchivePath(file.path),
+          name: project?.title ?? displayNameFromFile(file.path),
+          fileName: path.basename(file.path),
+          iconUrl: project?.icon_url ?? undefined,
+          required: file.env?.client !== "unsupported",
+        };
+      });
+
+      entries.push(
+        ...listOverrideContent(zip, "overrides", "modrinth", projectId, version.id),
+        ...listOverrideContent(
+          zip,
+          "client-overrides",
+          "modrinth",
+          projectId,
+          version.id,
+        ),
+      );
+      const uniqueEntries = dedupeModpackContent(entries);
+      this.modpackContentCache.set(cacheKey, uniqueEntries);
+      return uniqueEntries;
+    } finally {
+      await rm(path.dirname(archive), { recursive: true, force: true });
+    }
+  }
+
+  private async downloadArchiveForInspection(url: string, fileName: string, label: string) {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "mlultimate-inspect-"));
+    const destination = path.join(directory, sanitizeFileName(fileName));
+
+    await this.downloads.download({
+      label,
+      url,
+      destination,
+      visible: false,
+    });
+
+    return destination;
+  }
+
+  private async getCurseForgeProjects(projectIds: number[]) {
+    const projects: z.infer<typeof curseForgeProjectSchema>["data"][] = [];
+    let bulkSupported = true;
+
+    for (const group of chunk(projectIds, 50)) {
+      if (!bulkSupported) {
+        break;
+      }
+
+      const response = await this.fetchCurseForge(
+        "/mods",
+        "Buscar projetos do modpack na CurseForge",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ modIds: group }),
+        },
+      );
+
+      if (response.ok) {
+        projects.push(...curseForgeProjectsSchema.parse(await response.json()).data);
+      } else {
+        bulkSupported = false;
+      }
+    }
+
+    if (!bulkSupported || projects.length < projectIds.length) {
+      const known = new Set(projects.map((project) => project.id));
+      const missing = projectIds.filter((projectId) => !known.has(projectId));
+
+      await runPool(missing, 12, async (projectId) => {
+        const response = await this.fetchCurseForge(
+          `/mods/${projectId}`,
+          "Buscar item do modpack na CurseForge",
+        ).catch(() => null);
+
+        if (response?.ok) {
+          projects.push(curseForgeProjectSchema.parse(await response.json()).data);
+        }
+      });
+    }
+
+    return projects;
+  }
+
+  private async getModrinthContentProjects(projectIds: string[]) {
+    const projects: z.infer<typeof modrinthContentProjectSchema>[] = [];
+
+    for (const group of chunk(projectIds, 100)) {
+      const params = new URLSearchParams({ ids: JSON.stringify(group) });
+      const response = await fetchWithElectronNet(
+        `${MODRINTH_API}/projects?${params}`,
+        "Buscar projetos do modpack no Modrinth",
+      );
+
+      if (response.ok) {
+        projects.push(
+          ...z.array(modrinthContentProjectSchema).parse(await response.json()),
+        );
+      }
+    }
+
+    return projects;
+  }
+
+  private fetchCurseForge(
+    pathAndQuery: string,
+    context: string,
+    init?: {
+      method?: string;
+      headers?: Record<string, string>;
+      body?: string;
+    },
+  ) {
     const proxyBase = CURSEFORGE_PROXY_URL.trim().replace(/\/$/, "");
 
     if (proxyBase) {
       return fetchWithElectronNet(`${proxyBase}${pathAndQuery}`, {
         context,
-        headers: { Accept: "application/json" },
+        method: init?.method,
+        body: init?.body,
+        headers: { Accept: "application/json", ...init?.headers },
       });
     }
 
     return fetchWithElectronNet(`${CURSEFORGE_API}${pathAndQuery}`, {
       context,
+      method: init?.method,
+      body: init?.body,
       headers: {
         Accept: "application/json",
         "x-api-key": this.requireCurseForgeKey(),
+        ...init?.headers,
       },
     });
   }
@@ -1688,6 +2109,131 @@ const imageExtensionFromUrl = (url: string, contentType: string) => {
   return ".png";
 };
 
+const listOverrideContent = (
+  zip: AdmZip,
+  overrideRoot: string,
+  provider: "modrinth" | "curseforge",
+  projectId: string,
+  versionId: string,
+): ModpackContentEntry[] => {
+  const normalizedRoot = overrideRoot.replaceAll("\\", "/").replace(/^\/+|\/+$/g, "");
+  const entries = new Map<string, ModpackContentEntry>();
+
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) {
+      continue;
+    }
+
+    const normalized = entry.entryName.replaceAll("\\", "/");
+
+    if (!normalized.startsWith(`${normalizedRoot}/`)) {
+      continue;
+    }
+
+    const relative = normalized.slice(normalizedRoot.length + 1);
+    const category = categoryFromArchivePath(relative);
+
+    if (category === "mod" && !relative.toLowerCase().startsWith("mods/")) {
+      continue;
+    }
+
+    const parts = relative.split("/");
+    const categoryFolder = parts[0]?.toLowerCase();
+
+    if (
+      !["mods", "resourcepacks", "shaderpacks", "datapacks"].includes(
+        categoryFolder ?? "",
+      ) ||
+      parts.length !== 2
+    ) {
+      continue;
+    }
+
+    const fileName = parts[1];
+
+    if (!fileName) {
+      continue;
+    }
+
+    const normalizedFileName = fileName.toLowerCase();
+    const validContentFile =
+      category === "mod"
+        ? /\.(jar|zip)$/i.test(normalizedFileName)
+        : /\.zip$/i.test(normalizedFileName);
+
+    if (!validContentFile) {
+      continue;
+    }
+
+    entries.set(`${category}:${fileName.toLowerCase()}`, {
+      provider,
+      projectId,
+      versionId,
+      category,
+      name: displayNameFromFile(fileName),
+      fileName,
+      required: true,
+    });
+  }
+
+  return [...entries.values()];
+};
+
+const categoryFromArchivePath = (
+  archivePath: string,
+): ModpackContentEntry["category"] => {
+  const normalized = archivePath.replaceAll("\\", "/").toLowerCase();
+
+  if (normalized.startsWith("resourcepacks/")) return "resourcepack";
+  if (normalized.startsWith("shaderpacks/")) return "shader";
+  if (normalized.startsWith("datapacks/") || normalized.includes("/datapacks/")) {
+    return "datapack";
+  }
+  return "mod";
+};
+
+const contentCategoryFromCurseForgeClassId = (
+  classId?: number,
+): ModpackContentEntry["category"] => {
+  if (classId === 12) return "resourcepack";
+  if (classId === 6552) return "shader";
+  if (classId === 6945) return "datapack";
+  return "mod";
+};
+
+const displayNameFromFile = (filePath: string) =>
+  path
+    .basename(filePath)
+    .replace(/\.(disabled|jar|zip|mrpack)$/gi, "")
+    .replace(/[-_]+/g, " ")
+    .trim();
+
+const dedupeModpackContent = (entries: ModpackContentEntry[]) => {
+  const unique = new Map<string, ModpackContentEntry>();
+
+  for (const entry of entries) {
+    const key = `${entry.category}:${entry.projectId}:${entry.versionId}:${entry.fileName ?? entry.name}`;
+    unique.set(key.toLowerCase(), entry);
+  }
+
+  return [...unique.values()];
+};
+
+const htmlToPlainText = (html: string) =>
+  html
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
 const chooseMinecraftVersion = (versions: string[]) => {
   const version = latestGameVersion(versions) ?? versions.find(isMinecraftVersion);
 
@@ -1798,6 +2344,7 @@ const toModrinthContentVersion = (
     loaders: version.loaders.filter(isLoaderType),
     downloads: version.downloads,
     changelog: version.changelog ?? undefined,
+    releaseType: version.version_type,
   };
 };
 
@@ -1812,6 +2359,8 @@ const toCurseForgeContentVersion = (
   gameVersions: file.gameVersions,
   loaders: file.gameVersions.map((version) => version.toLowerCase()).filter(isLoaderType),
   downloads: file.downloadCount,
+  releaseType:
+    file.releaseType === 3 ? "alpha" : file.releaseType === 2 ? "beta" : "release",
 });
 
 const isModrinthVersionCompatible = (
@@ -2000,7 +2549,14 @@ const assertContentManagementEnabled = (enabled: boolean, type?: ContentType) =>
 
 const fetchWithElectronNet = async (
   url: string,
-  options: string | { context: string; headers?: Record<string, string> },
+  options:
+    | string
+    | {
+        context: string;
+        headers?: Record<string, string>;
+        method?: string;
+        body?: string;
+      },
 ) => {
   const context = typeof options === "string" ? options : options.context;
   const headers =
@@ -2012,7 +2568,11 @@ const fetchWithElectronNet = async (
         };
 
   try {
-    return await net.fetch(url, { headers });
+    return await net.fetch(url, {
+      headers,
+      method: typeof options === "string" ? undefined : options.method,
+      body: typeof options === "string" ? undefined : options.body,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`${context} falhou: ${message}`, { cause: error });

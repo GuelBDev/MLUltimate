@@ -16,6 +16,9 @@ type LaunchState = {
   cancelled: boolean;
   child?: ChildProcess;
   running: boolean;
+  playStartedAt?: number;
+  playRecordedAt?: number;
+  playTimer?: ReturnType<typeof setInterval>;
 };
 
 export class LauncherService {
@@ -299,6 +302,9 @@ export class LauncherService {
         if (handoffTimer) {
           clearTimeout(handoffTimer);
         }
+        if (launchState.playTimer) {
+          clearInterval(launchState.playTimer);
+        }
         this.activeLaunches.delete(request.instanceId);
         failLaunch(error);
       });
@@ -308,6 +314,10 @@ export class LauncherService {
         if (handoffTimer) {
           clearTimeout(handoffTimer);
         }
+        if (launchState.playTimer) {
+          clearInterval(launchState.playTimer);
+        }
+        this.flushPlayTime(request.instanceId, launchState);
         this.activeLaunches.delete(request.instanceId);
         if (handedOff) {
           this.emit({
@@ -342,6 +352,16 @@ export class LauncherService {
       handoffTimer = setTimeout(() => {
         handedOff = true;
         launchState.running = true;
+        launchState.playStartedAt = Date.now();
+        launchState.playRecordedAt = launchState.playStartedAt;
+        void this.instances.markLaunchStarted(
+          request.instanceId,
+          new Date(launchState.playStartedAt).toISOString(),
+        );
+        launchState.playTimer = setInterval(
+          () => this.flushPlayTime(request.instanceId, launchState),
+          60_000,
+        );
         child.stdout?.off("data", rememberOutput);
         child.stderr?.off("data", rememberOutput);
         child.unref();
@@ -432,6 +452,26 @@ export class LauncherService {
     return [...this.activeLaunches.entries()]
       .filter(([, state]) => state.running && state.child && !state.child.killed)
       .map(([instanceId]) => instanceId);
+  }
+
+  private flushPlayTime(instanceId: string, state: LaunchState) {
+    if (!state.playStartedAt || !state.playRecordedAt) {
+      return;
+    }
+
+    const now = Date.now();
+    const elapsedSeconds = Math.floor((now - state.playRecordedAt) / 1000);
+
+    if (elapsedSeconds <= 0) {
+      return;
+    }
+
+    state.playRecordedAt += elapsedSeconds * 1000;
+    void this.instances.recordPlaySession(
+      instanceId,
+      elapsedSeconds,
+      new Date(now).toISOString(),
+    );
   }
 
   private assertLaunchNotCancelled(

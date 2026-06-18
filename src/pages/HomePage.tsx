@@ -99,19 +99,19 @@ const changelog = [
     tag: rawAppVersion,
     date: "Atual",
     changes: [
-      "Modpacks agora baixam os arquivos exatos declarados pelo manifesto.",
-      "Lista interna do modpack passa a ser restaurada por lockfile local.",
-      "Versoes especificas da CurseForge sao baixadas pelo fileID escolhido.",
+      "Instancias agora possuem visao geral, conteudo, changelog, galeria, versoes, logs e screenshots.",
+      "Tempo jogado, categorias de conteudo e inspecao detalhada passam a usar dados reais da instancia.",
+      "Botoes e destaques do launcher foram atualizados para o novo tema azul.",
     ],
   },
   {
-    version: "2.0.1",
-    tag: "alpha 3",
+    version: "2.1.0",
+    tag: "alpha 1.0",
     date: "Anterior",
     changes: [
-      "Biblioteca com instalacao por instancia compativel.",
-      "Iris e Iris + Sodium adicionados aos perfis.",
-      "Melhorias em shaders, resource packs e verificacao de compatibilidade.",
+      "Modpacks passaram a baixar os arquivos exatos declarados pelo manifesto.",
+      "Lista interna do modpack passou a ser restaurada por lockfile local.",
+      "Versoes especificas da CurseForge passaram a usar o fileID escolhido.",
     ],
   },
 ];

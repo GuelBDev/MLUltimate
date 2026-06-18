@@ -329,7 +329,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
       <div className="flex items-center gap-5 border-b border-white/10 pb-5">
         <button
           type="button"
-          className="flex items-center gap-2 text-sm font-semibold text-white hover:text-[#f05a28]"
+          className="flex items-center gap-2 text-sm font-semibold text-white hover:text-[#60A5FA]"
           onClick={openCreate}
         >
           <Plus className="h-4 w-4" />
@@ -483,7 +483,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                           checked={loader === item.id}
                           onChange={() => setLoader(item.id)}
                           disabled={Boolean(editing)}
-                          className="h-4 w-4 accent-[#f05a28]"
+                          className="h-4 w-4 accent-[#3B82F6]"
                         />
                           {item.title}
                         </div>
@@ -534,7 +534,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                           setRamMode("recommended");
                           updateRamMb(DEFAULT_RAM_MB);
                         }}
-                        className="h-4 w-4 accent-[#f05a28]"
+                        className="h-4 w-4 accent-[#3B82F6]"
                       />
                       <span className="text-sm font-semibold text-white">
                         MLUltimate recomendado - {DEFAULT_RAM_MB}MB
@@ -550,7 +550,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                           setRamMode("custom");
                           updateRamMb(normalizedRamMb === DEFAULT_RAM_MB ? getCustomDefaultRam(maxRamMb) : normalizedRamMb);
                         }}
-                        className="h-4 w-4 accent-[#f05a28]"
+                        className="h-4 w-4 accent-[#3B82F6]"
                       />
                       <span className="text-sm font-semibold text-white">
                         Custom RAM Allocation
@@ -567,7 +567,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                       value={normalizedRamMb}
                       disabled={!customRam}
                       onChange={(event) => updateRamMb(Number(event.target.value))}
-                      className="h-2 w-full cursor-pointer accent-[#f05a28] disabled:cursor-not-allowed"
+                      className="h-2 w-full cursor-pointer accent-[#3B82F6] disabled:cursor-not-allowed"
                     />
                     <div className="flex items-center justify-between text-[11px] text-[#94A3B8]">
                       <span>{formatRam(MIN_RAM_MB)}</span>
@@ -635,7 +635,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                 <input
                   value={importCode}
                   onChange={(event) => setImportCode(event.target.value)}
-                  className="mt-2 h-10 w-full border border-white/30 bg-[#303030] px-3 text-sm text-white outline-none focus:border-[#f05a28]"
+                  className="mt-2 h-10 w-full border border-white/30 bg-[#303030] px-3 text-sm text-white outline-none focus:border-[#3B82F6]"
                   placeholder="CurseForge ID, URL ou código compartilhado"
                 />
               </label>
@@ -649,7 +649,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
               <Button type="button" variant="secondary" className="rounded-sm" onClick={() => setImportOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" className="rounded-sm bg-[#f05a28] hover:bg-[#ff733f]">
+              <Button type="submit" className="rounded-sm bg-[#3B82F6] hover:bg-[#60A5FA]">
                 Importar código
               </Button>
             </div>

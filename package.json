@@ -1,8 +1,8 @@
 {
   "name": "mlultimate-launcher",
   "private": true,
-  "version": "2.1.0-alpha.1.0",
-  "description": "MLUltimate Launcher 2.1.0 desktop launcher for Minecraft.",
+  "version": "2.7.0-alpha.1",
+  "description": "MLUltimate Launcher 2.7.0 desktop launcher for Minecraft.",
   "author": "MLUltimate",
   "desktopName": "MLUltimate Launcher",
   "repository": {

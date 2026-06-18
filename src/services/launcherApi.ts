@@ -8,6 +8,9 @@ import type {
   InstallContentAsInstanceInput,
   InstalledContentUpdateInfo,
   ImportInstanceInput,
+  InstanceFileActionInput,
+  ToggleInstanceFileInput,
+  ReadInstanceTextFileInput,
   LaunchEvent,
   LaunchCancelRequest,
   LaunchRequest,
@@ -146,6 +149,34 @@ export const launcherApi = {
   importInstance: async (input: ImportInstanceInput) => {
     if (!hasBridge()) throw desktopOnly();
     return window.mlultimate.instances.importInstance(input);
+  },
+
+  inspectInstance: async (instanceId: string) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.inspect(instanceId);
+  },
+
+  toggleInstanceFile: async (input: ToggleInstanceFileInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.toggleFile(input);
+  },
+
+  removeInstanceFile: async (input: InstanceFileActionInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.removeFile(input);
+  },
+
+  readInstanceTextFile: async (input: ReadInstanceTextFileInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.readTextFile(input);
+  },
+
+  openInstanceSubfolder: async (
+    instanceId: string,
+    folder: "logs" | "screenshots" | "saves" | "mods" | "resourcepacks" | "shaderpacks",
+  ) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.openSubfolder({ instanceId, folder });
   },
 
   searchContent: async (input: ContentSearchInput) => {

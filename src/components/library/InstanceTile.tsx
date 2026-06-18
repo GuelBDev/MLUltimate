@@ -1,4 +1,4 @@
-import { FolderOpen, MoreVertical, Pencil, Play, Power, Trash2, X } from "lucide-react";
+import { Clock3, FolderOpen, MoreVertical, Pencil, Play, Power, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import instanceDefaultImage from "../../assets/instance-default.png";
 import type { DownloadItem, LaunchEvent, LauncherInstance } from "../../types/launcher";
@@ -69,7 +69,7 @@ export const InstanceTile = ({
           </div>
           <button
             type="button"
-            className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-sm bg-black/70 text-white transition hover:bg-[#f05a28]"
+            className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-sm bg-black/70 text-white transition hover:bg-[#3B82F6]"
             onClick={(event) => {
               event.stopPropagation();
               setMenuOpen((value) => !value);
@@ -83,6 +83,10 @@ export const InstanceTile = ({
           <p className="truncate text-sm font-semibold text-white">{instance.name}</p>
           <p className="mt-1 truncate text-xs text-[#B8C2D0]">
             {instance.loader} | {instance.modsCount} mods
+          </p>
+          <p className="mt-2 flex items-center gap-1.5 text-xs text-[#94A3B8]">
+            <Clock3 className="h-3.5 w-3.5 text-[#60A5FA]" />
+            {formatPlayTime(instance.playTimeSeconds)} jogados
           </p>
           {activityLabel ? (
             <div className="mt-3 rounded-sm border border-white/10 bg-black/20 p-2">
@@ -125,7 +129,7 @@ export const InstanceTile = ({
         ) : (
           <Button
             type="button"
-            className="h-9 w-full rounded-sm bg-[#f05a28] hover:bg-[#ff733f]"
+            className="h-9 w-full rounded-sm bg-[#3B82F6] hover:bg-[#60A5FA]"
             onClick={() => onPlay(instance)}
           >
             <Play className="h-4 w-4 fill-white" />
@@ -173,4 +177,10 @@ export const InstanceTile = ({
       ) : null}
     </div>
   );
+};
+
+const formatPlayTime = (seconds: number) => {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return hours > 0 ? `${hours}h ${minutes}min` : `${minutes} min`;
 };
