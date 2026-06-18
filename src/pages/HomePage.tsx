@@ -99,19 +99,19 @@ const changelog = [
     tag: rawAppVersion,
     date: "Atual",
     changes: [
-      "Texturas e shaders agora exibem fotos do projeto ou a imagem interna do pacote.",
-      "Shaders so podem ser baixados quando a instancia possui um motor grafico reconhecido.",
-      "Iris, Iris + Sodium, OptiFine, Oculus, Angelica e ShadersMod passam a ser detectados automaticamente.",
+      "Importacao aceita pacotes CurseForge e arquivos manifest.json soltos.",
+      "Perfis podem ser compartilhados em ZIP com manifest.json e pasta overrides.",
+      "Config, datapacks, mods, resourcepacks e shaderpacks ficam selecionados por padrao na exportacao.",
     ],
   },
   {
     version: "2.7.0",
-    tag: "alpha 1",
+    tag: "alpha 2",
     date: "Anterior",
     changes: [
-      "Instancias receberam overview, conteudo, changelog, galeria, versoes, logs e screenshots.",
-      "Tempo jogado, categorias e inspecao detalhada passaram a usar dados reais.",
-      "Botoes e destaques do launcher foram atualizados para o tema azul.",
+      "Texturas e shaders passaram a exibir fotos do projeto ou do pacote.",
+      "Shaders passaram a exigir um motor grafico reconhecido na instancia.",
+      "Iris, OptiFine, Oculus, Angelica e ShadersMod passaram a ser detectados automaticamente.",
     ],
   },
 ];

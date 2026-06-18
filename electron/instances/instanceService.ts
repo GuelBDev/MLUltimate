@@ -1,5 +1,5 @@
 import AdmZip from "adm-zip";
-import { dialog, net, shell } from "electron";
+import { app, dialog, net, shell } from "electron";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -14,6 +14,9 @@ import { getLauncherDataSubpath } from "../utils/launcherPaths";
 import type {
   ContentProvider,
   CreateInstanceInput,
+  ExportInstanceFolder,
+  ExportInstanceInput,
+  ExportInstanceResult,
   ImportInstanceInput,
   InstanceIconSelection,
   LauncherInstance,
@@ -30,6 +33,15 @@ const MODRINTH_API = "https://api.modrinth.com/v2";
 const IRIS_PROJECT_ID = "YL57xq9U";
 const SODIUM_PROJECT_ID = "AANobbMI";
 const MODPACK_LOCK_FILE = "mlultimate-modpack-lock.json";
+
+type InstalledContentRow = {
+  provider: ContentProvider;
+  project_id: string;
+  version_id: string;
+  file_path: string;
+  enabled?: number;
+  installed_at: string;
+};
 
 const createInstanceSchema = z.object({
   name: z.string().trim().min(2).max(64),
@@ -57,6 +69,13 @@ const importInstanceSchema = z.object({
   code: z.string().trim().optional(),
 });
 
+const exportInstanceSchema = z.object({
+  instanceId: z.string().min(1),
+  folders: z
+    .array(z.enum(["config", "datapacks", "mods", "resourcepacks", "shaderpacks"]))
+    .min(1),
+});
+
 const mlultimateManifestSchema = z.object({
   name: z.string().min(2),
   minecraftVersion: z.string().min(1),
@@ -81,6 +100,10 @@ const modrinthIndexSchema = z.object({
 
 const curseForgeManifestSchema = z.object({
   name: z.string().min(1),
+  version: z.string().optional().default("1.0.0"),
+  author: z.string().optional().default("MLUltimate"),
+  manifestType: z.string().optional().default("minecraftModpack"),
+  manifestVersion: z.number().optional().default(1),
   minecraft: z.object({
     version: z.string(),
     modLoaders: z
@@ -495,7 +518,10 @@ export class InstanceService {
       title: "Importar instância",
       properties: ["openFile"],
       filters: [
-        { name: "Pacotes Minecraft", extensions: ["zip", "mrpack", "mlultimate", "rar"] },
+        {
+          name: "Pacotes Minecraft e manifestos",
+          extensions: ["zip", "mrpack", "mlultimate", "rar", "json"],
+        },
       ],
     });
 
@@ -503,11 +529,95 @@ export class InstanceService {
       return null;
     }
 
-    return this.importArchive(result.filePaths[0]);
+    return this.importFile(result.filePaths[0]);
   }
 
   async importArchiveFile(archivePath: string): Promise<LauncherInstance> {
-    return this.importArchive(archivePath);
+    return this.importFile(archivePath);
+  }
+
+  async exportInstance(input: ExportInstanceInput): Promise<ExportInstanceResult | null> {
+    const parsed = exportInstanceSchema.parse(input);
+    const instance = await this.getById(parsed.instanceId);
+    const suggestedName = `${sanitizeFileName(instance.name)}-${sanitizeFileName(instance.minecraftVersion)}.zip`;
+    const result = await dialog.showSaveDialog({
+      title: "Compartilhar modpack",
+      defaultPath: path.join(app.getPath("downloads"), suggestedName),
+      filters: [{ name: "Pacote CurseForge", extensions: ["zip"] }],
+    });
+
+    if (result.canceled || !result.filePath) {
+      return null;
+    }
+
+    return this.exportInstanceFile(parsed, result.filePath);
+  }
+
+  async exportInstanceFile(
+    input: ExportInstanceInput,
+    destination: string,
+  ): Promise<ExportInstanceResult> {
+    const parsed = exportInstanceSchema.parse(input);
+    const instance = await this.getById(parsed.instanceId);
+    const selectedFolders = new Set<ExportInstanceFolder>(parsed.folders);
+    const installedRows = this.database.all<InstalledContentRow>(
+      "SELECT * FROM installed_content WHERE instance_id = ? ORDER BY installed_at ASC",
+      [instance.id],
+    );
+    const trackedFiles = installedRows.filter((row) => {
+      if (row.provider !== "curseforge" || row.enabled === 0) return false;
+      const relativePath = normalizeArchivePath(path.relative(instance.gameDir, row.file_path));
+      const folder = relativePath.split("/")[0] as ExportInstanceFolder;
+      return selectedFolders.has(folder) && existsSync(row.file_path);
+    });
+    const trackedPaths = new Set(
+      trackedFiles.map((row) => path.resolve(row.file_path).toLowerCase()),
+    );
+    const manifestFiles = Array.from(
+      new Map(
+        trackedFiles.map((row) => [
+          `${row.project_id}:${row.version_id}`,
+          {
+            projectID: Number(row.project_id),
+            fileID: Number(row.version_id),
+            required: true,
+          },
+        ]),
+      ).values(),
+    ).filter((file) => Number.isInteger(file.projectID) && Number.isInteger(file.fileID));
+    const manifest = {
+      minecraft: {
+        version: instance.minecraftVersion,
+        modLoaders: curseForgeModLoadersForInstance(instance),
+      },
+      manifestType: "minecraftModpack",
+      manifestVersion: 1,
+      name: instance.name,
+      version: "1.0.0",
+      author: "MLUltimate",
+      files: manifestFiles,
+      overrides: "overrides",
+    };
+    const zip = new AdmZip();
+    zip.addFile("manifest.json", Buffer.from(JSON.stringify(manifest, null, 2), "utf8"));
+    let overrideFiles = 0;
+
+    for (const folder of parsed.folders) {
+      const source = path.join(instance.gameDir, folder);
+      overrideFiles += await addFolderToZip(zip, source, `overrides/${folder}`, trackedPaths);
+    }
+
+    const normalizedDestination = destination.toLowerCase().endsWith(".zip")
+      ? destination
+      : `${destination}.zip`;
+    await mkdir(path.dirname(normalizedDestination), { recursive: true });
+    zip.writeZip(normalizedDestination);
+
+    return {
+      filePath: normalizedDestination,
+      manifestFiles: manifestFiles.length,
+      overrideFiles,
+    };
   }
 
   async restoreLockedContent(instanceId: string) {
@@ -533,6 +643,51 @@ export class InstanceService {
         fileName: file.fileName,
         filePath: path.join(instance.gameDir, file.relativePath),
       });
+    }
+  }
+
+  private async importFile(filePath: string) {
+    if (path.extname(filePath).toLowerCase() === ".json") {
+      return this.importCurseForgeManifestFile(filePath);
+    }
+
+    return this.importArchive(filePath);
+  }
+
+  private async importCurseForgeManifestFile(manifestPath: string) {
+    const manifest = curseForgeManifestSchema.parse(
+      JSON.parse(await readFile(manifestPath, "utf8")),
+    );
+    return this.createFromCurseForgeManifest(manifest, path.dirname(manifestPath));
+  }
+
+  private async createFromCurseForgeManifest(
+    manifest: z.infer<typeof curseForgeManifestSchema>,
+    packageRoot?: string,
+  ) {
+    const instance = await this.create({
+      name: manifest.name,
+      minecraftVersion: manifest.minecraft.version,
+      loader: loaderFromCurseForgeManifest(manifest.minecraft.modLoaders),
+      loaderVersion: loaderVersionFromCurseForgeManifest(manifest.minecraft.modLoaders),
+      ramMb: 4096,
+      contentManagementEnabled: true,
+    });
+
+    try {
+      if (packageRoot) {
+        const overridesPath = path.join(packageRoot, manifest.overrides);
+
+        if (existsSync(overridesPath)) {
+          await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
+        }
+      }
+
+      await this.downloadCurseForgeManifestFiles(manifest, instance);
+      return instance;
+    } catch (error) {
+      await this.remove(instance.id).catch(() => undefined);
+      throw error;
     }
   }
 
@@ -598,29 +753,7 @@ export class InstanceService {
         const manifest = curseForgeManifestSchema.parse(
           JSON.parse(await readFile(curseForgeManifestPath, "utf8")),
         );
-        const instance = await this.create({
-          name: manifest.name,
-          minecraftVersion: manifest.minecraft.version,
-          loader: loaderFromCurseForgeManifest(manifest.minecraft.modLoaders),
-          loaderVersion: loaderVersionFromCurseForgeManifest(manifest.minecraft.modLoaders),
-          ramMb: 4096,
-          contentManagementEnabled: true,
-        });
-
-        try {
-          const overridesPath = path.join(tempDir, manifest.overrides);
-
-          if (existsSync(overridesPath)) {
-            await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
-          }
-
-          await this.downloadCurseForgeManifestFiles(manifest, instance);
-
-          return instance;
-        } catch (error) {
-          await this.remove(instance.id).catch(() => undefined);
-          throw error;
-        }
+        return await this.createFromCurseForgeManifest(manifest, tempDir);
       }
 
       throw new Error(
@@ -639,7 +772,12 @@ export class InstanceService {
     }
 
     if (existsSync(trimmed)) {
-      return this.importArchive(trimmed);
+      return this.importFile(trimmed);
+    }
+
+    if (trimmed.startsWith("{")) {
+      const manifest = curseForgeManifestSchema.parse(JSON.parse(trimmed));
+      return this.createFromCurseForgeManifest(manifest);
     }
 
     if (trimmed.startsWith("MLU:")) {
@@ -1346,6 +1484,38 @@ const copyArchiveContents = async (
   }
 };
 
+const addFolderToZip = async (
+  zip: AdmZip,
+  source: string,
+  archivePath: string,
+  excludedPaths: Set<string>,
+): Promise<number> => {
+  if (!existsSync(source)) return 0;
+
+  const entries = await readdir(source, { withFileTypes: true });
+  let count = 0;
+
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
+    const absolutePath = path.join(source, entry.name);
+    const entryArchivePath = path.posix.join(archivePath, entry.name);
+
+    if (entry.isDirectory()) {
+      count += await addFolderToZip(zip, absolutePath, entryArchivePath, excludedPaths);
+      continue;
+    }
+
+    if (!entry.isFile() || excludedPaths.has(path.resolve(absolutePath).toLowerCase())) {
+      continue;
+    }
+
+    zip.addLocalFile(absolutePath, path.posix.dirname(entryArchivePath));
+    count += 1;
+  }
+
+  return count;
+};
+
 const normalizeArchivePath = (value: string) => value.replaceAll("\\", "/");
 
 const runPool = async <T>(
@@ -1450,6 +1620,18 @@ const loaderVersionFromCurseForgeManifest = (
   const loader = modLoaders.find((item) => item.primary) ?? modLoaders.at(0);
 
   return normalizeLoaderVersion(loaderFromCurseForgeManifest(modLoaders), loader?.id);
+};
+
+const curseForgeModLoadersForInstance = (instance: LauncherInstance) => {
+  const loader = isFabricBasedLoader(instance.loader) ? "fabric" : instance.loader;
+
+  if (loader === "vanilla") return [];
+
+  const id = instance.loaderVersion
+    ? `${loader}-${instance.loaderVersion}`
+    : `${loader}-${instance.minecraftVersion}`;
+
+  return [{ id, primary: true }];
 };
 
 const normalizeLoaderVersion = (loader: LoaderType, version?: string) => {

@@ -628,7 +628,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
             <div className="space-y-4">
               <Button type="button" className="w-full rounded-sm" onClick={importArchive}>
                 <Upload className="h-4 w-4" />
-                Importar arquivo .zip, .mrpack, .mlultimate ou .rar
+                Importar .zip, .json, .mrpack, .mlultimate ou .rar
               </Button>
               <label className="block">
                 <span className="text-sm font-semibold text-white">Codigo ou URL</span>
@@ -636,7 +636,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                   value={importCode}
                   onChange={(event) => setImportCode(event.target.value)}
                   className="mt-2 h-10 w-full border border-white/30 bg-[#303030] px-3 text-sm text-white outline-none focus:border-[#3B82F6]"
-                  placeholder="CurseForge ID, URL ou código compartilhado"
+                  placeholder="CurseForge ID, URL, JSON ou código compartilhado"
                 />
               </label>
               {error ? (

@@ -106,6 +106,13 @@ const importInstanceSchema = z.object({
   code: z.string().optional(),
 });
 
+const exportInstanceSchema = z.object({
+  instanceId: z.string().min(1),
+  folders: z
+    .array(z.enum(["config", "datapacks", "mods", "resourcepacks", "shaderpacks"]))
+    .min(1),
+});
+
 const instanceFileActionSchema = z.object({
   instanceId: z.string().min(1),
   relativePath: z.string().min(1),
@@ -210,6 +217,9 @@ export const registerIpcHandlers = ({
   ipcMain.handle("instances:select-icon", async () => instances.selectIcon());
   ipcMain.handle("instances:import", async (_, input: unknown) =>
     instances.importInstance(importInstanceSchema.parse(input)),
+  );
+  ipcMain.handle("instances:export", async (_, input: unknown) =>
+    instances.exportInstance(exportInstanceSchema.parse(input)),
   );
   ipcMain.handle("instances:inspect", async (_, instanceId: unknown) =>
     instanceInspection.inspect(z.string().min(1).parse(instanceId)),

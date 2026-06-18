@@ -258,6 +258,24 @@ export type ImportInstanceInput = {
   code?: string;
 };
 
+export type ExportInstanceFolder =
+  | "config"
+  | "datapacks"
+  | "mods"
+  | "resourcepacks"
+  | "shaderpacks";
+
+export type ExportInstanceInput = {
+  instanceId: string;
+  folders: ExportInstanceFolder[];
+};
+
+export type ExportInstanceResult = {
+  filePath: string;
+  manifestFiles: number;
+  overrideFiles: number;
+};
+
 export type InstanceIconSelection = {
   iconPath: string;
   iconDataUrl: string;

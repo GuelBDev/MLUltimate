@@ -8,6 +8,7 @@ import type {
   InstallContentAsInstanceInput,
   InstalledContentUpdateInfo,
   ImportInstanceInput,
+  ExportInstanceInput,
   InstanceFileActionInput,
   ToggleInstanceFileInput,
   ReadInstanceTextFileInput,
@@ -149,6 +150,11 @@ export const launcherApi = {
   importInstance: async (input: ImportInstanceInput) => {
     if (!hasBridge()) throw desktopOnly();
     return window.mlultimate.instances.importInstance(input);
+  },
+
+  exportInstance: async (input: ExportInstanceInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.exportInstance(input);
   },
 
   inspectInstance: async (instanceId: string) => {

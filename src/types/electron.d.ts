@@ -12,6 +12,8 @@ import type {
   InstalledContent,
   InstalledContentUpdateInfo,
   ImportInstanceInput,
+  ExportInstanceInput,
+  ExportInstanceResult,
   InstanceInspection,
   InstanceFileActionInput,
   ToggleInstanceFileInput,
@@ -61,6 +63,7 @@ declare global {
         openFolder: (instanceId: string) => Promise<void>;
         selectIcon: () => Promise<InstanceIconSelection | null>;
         importInstance: (input: ImportInstanceInput) => Promise<LauncherInstance | null>;
+        exportInstance: (input: ExportInstanceInput) => Promise<ExportInstanceResult | null>;
         inspect: (instanceId: string) => Promise<InstanceInspection>;
         toggleFile: (input: ToggleInstanceFileInput) => Promise<InstanceInspection>;
         removeFile: (input: InstanceFileActionInput) => Promise<InstanceInspection>;

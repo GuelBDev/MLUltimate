@@ -13,6 +13,8 @@ import type {
   InstalledContent,
   InstalledContentUpdateInfo,
   ImportInstanceInput,
+  ExportInstanceInput,
+  ExportInstanceResult,
   InstanceInspection,
   InstanceFileActionInput,
   ToggleInstanceFileInput,
@@ -85,6 +87,8 @@ const api = {
       ipcRenderer.invoke("instances:select-icon") as Promise<InstanceIconSelection | null>,
     importInstance: (input: ImportInstanceInput) =>
       ipcRenderer.invoke("instances:import", input) as Promise<LauncherInstance | null>,
+    exportInstance: (input: ExportInstanceInput) =>
+      ipcRenderer.invoke("instances:export", input) as Promise<ExportInstanceResult | null>,
     inspect: (instanceId: string) =>
       ipcRenderer.invoke("instances:inspect", instanceId) as Promise<InstanceInspection>,
     toggleFile: (input: ToggleInstanceFileInput) =>

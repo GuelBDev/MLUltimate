@@ -14,6 +14,7 @@ import {
   Power,
   RefreshCw,
   Search,
+  Share2,
   Sparkles,
   Trash2,
   X,
@@ -33,6 +34,7 @@ import { launcherApi } from "../services/launcherApi";
 import type {
   ContentType,
   DownloadItem,
+  ExportInstanceFolder,
   InstanceContentCategory,
   InstanceContentEntry,
   LaunchEvent,
@@ -75,6 +77,22 @@ const categories: Array<{
   { id: "shader", label: "Shaders", icon: Sparkles },
   { id: "world", label: "Mundos", icon: MapIcon },
 ];
+
+const defaultExportFolders: ExportInstanceFolder[] = [
+  "config",
+  "datapacks",
+  "mods",
+  "resourcepacks",
+  "shaderpacks",
+];
+
+const exportFolderLabels: Record<ExportInstanceFolder, string> = {
+  config: "config",
+  datapacks: "datapacks",
+  mods: "mods",
+  resourcepacks: "resourcepacks",
+  shaderpacks: "shaderpacks",
+};
 
 export const InstanceDetailPage = ({
   instance,
@@ -122,6 +140,9 @@ export const InstanceDetailPage = ({
   const [logQuery, setLogQuery] = useState("");
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchEvent, setLaunchEvent] = useState<LaunchEvent | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [exportFolders, setExportFolders] =
+    useState<ExportInstanceFolder[]>(defaultExportFolders);
   const effectiveSelectedLog =
     selectedLog ??
     inspection.data?.logs.find((log) => log.name.toLowerCase() === "latest.log")
@@ -174,6 +195,23 @@ export const InstanceDetailPage = ({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["instances"] });
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
+    },
+  });
+  const exportProfile = useMutation({
+    mutationFn: () =>
+      launcherApi.exportInstance({
+        instanceId: current.id,
+        folders: exportFolders,
+      }),
+    onSuccess: async (result) => {
+      if (!result) return;
+      setShareOpen(false);
+      await dialog.alert({
+        title: "Modpack exportado",
+        description: `Pacote salvo em ${result.filePath}. O manifest.json possui ${result.manifestFiles} arquivo(s) da CurseForge e ${result.overrideFiles} arquivo(s) em overrides.`,
+        confirmLabel: "Concluir",
+        tone: "success",
+      });
     },
   });
 
@@ -385,6 +423,16 @@ export const InstanceDetailPage = ({
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setExportFolders(defaultExportFolders);
+                setShareOpen(true);
+              }}
+            >
+              <Share2 className="h-4 w-4" />
+              Compartilhar
+            </Button>
             <Button variant="secondary" onClick={() => openFolder.mutate(current.id)}>
               <FolderOpen className="h-4 w-4" />
               Pasta
@@ -410,6 +458,90 @@ export const InstanceDetailPage = ({
       {launchError ? (
         <div className="rounded-sm border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
           {launchError}
+        </div>
+      ) : null}
+
+      {shareOpen ? (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/75 p-4 backdrop-blur-sm">
+          <section className="my-4 w-full max-w-xl overflow-hidden rounded-2xl border border-white/12 bg-[#1f1f1f] shadow-2xl shadow-black/50">
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#60A5FA]">
+                  Pacote CurseForge
+                </p>
+                <h2 className="mt-2 text-xl font-semibold text-white">Compartilhar perfil</h2>
+                <p className="mt-2 text-sm leading-6 text-[#94A3B8]">
+                  Cria um ZIP com manifest.json e overrides, pronto para importar no MLUltimate
+                  e compatível com o padrão de modpacks da CurseForge.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="rounded-xl p-2 text-[#94A3B8] hover:bg-white/8 hover:text-white"
+                onClick={() => setShareOpen(false)}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="rounded-xl border border-blue-300/15 bg-blue-500/8 px-4 py-3 text-sm leading-6 text-blue-100">
+                Arquivos reconhecidos da CurseForge serão baixados pelo manifest.json. Mods
+                locais ou de outros catálogos serão incluídos em overrides para não se perderem.
+              </div>
+              <div>
+                <p className="mb-3 text-sm font-semibold text-white">
+                  Selecione os arquivos e pastas do pacote
+                </p>
+                <div className="overflow-hidden rounded-xl border border-white/10 bg-[#161B22]">
+                  {defaultExportFolders.map((folder) => {
+                    const checked = exportFolders.includes(folder);
+                    return (
+                      <label
+                        key={folder}
+                        className="flex cursor-pointer items-center gap-3 border-b border-white/8 px-4 py-3 text-sm text-[#D8DEE9] last:border-0 hover:bg-white/5"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            setExportFolders((current) =>
+                              checked
+                                ? current.filter((item) => item !== folder)
+                                : [...current, folder],
+                            )
+                          }
+                          className="h-5 w-5 accent-[#3B82F6]"
+                        />
+                        <span className="font-medium">{exportFolderLabels[folder]}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              {exportProfile.error instanceof Error ? (
+                <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                  {exportProfile.error.message}
+                </div>
+              ) : null}
+            </div>
+            <div className="flex justify-end gap-3 border-t border-white/10 px-5 py-4">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setShareOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => exportProfile.mutate()}
+                disabled={exportFolders.length === 0 || exportProfile.isPending}
+              >
+                <Share2 className="h-4 w-4" />
+                {exportProfile.isPending ? "Exportando..." : "Exportar"}
+              </Button>
+            </div>
+          </section>
         </div>
       ) : null}
 
