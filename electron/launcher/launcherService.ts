@@ -247,7 +247,16 @@ export class LauncherService {
     const loaderProfileGameArgs = loaderProfile?.arguments?.game
       ? resolveArguments(loaderProfile.arguments.game, replacements)
       : [];
-    const gameArgs = [...vanillaGameArgs, ...lightweightGameArgs, ...loaderProfileGameArgs];
+    const legacyLoaderGameArgs = loaderProfile?.minecraftArguments
+      ? splitMinecraftArguments(loaderProfile.minecraftArguments).map((argument) =>
+          replacePlaceholders(argument, replacements),
+        )
+      : null;
+    const gameArgs = legacyLoaderGameArgs ?? [
+      ...vanillaGameArgs,
+      ...lightweightGameArgs,
+      ...loaderProfileGameArgs,
+    ];
     this.emit({
       id: request.instanceId,
       type: "step",
