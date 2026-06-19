@@ -399,6 +399,9 @@ export const InstanceDetailPage = ({
               <span>{current.modsCount} mods</span>
               <span>{current.resourcepacksCount} texturas</span>
               <span>{current.shaderpacksCount} shaders</span>
+              {current.modpackFilesCount ? (
+                <span>{current.modpackFilesCount} arquivos do pacote</span>
+              ) : null}
             </div>
             {activity && activityLabel ? (
               <div className="mt-4 max-w-xl rounded-sm border border-white/10 bg-black/20 p-3">

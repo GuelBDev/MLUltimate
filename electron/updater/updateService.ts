@@ -1,5 +1,6 @@
 import { app } from "electron";
 import { autoUpdater, type UpdateInfo } from "electron-updater";
+import { spawn } from "node:child_process";
 import type { UpdaterState } from "../../src/types/launcher";
 
 type EmitUpdaterState = (state: UpdaterState) => void;
@@ -151,6 +152,7 @@ export class UpdateService {
       return;
     }
 
+    schedulePostUpdateRelaunch();
     autoUpdater.quitAndInstall(true, true);
   }
 
@@ -315,6 +317,37 @@ const isDesktopInstallerAsset = (asset: { name: string }) =>
   asset.name.endsWith(".exe") && !asset.name.toLowerCase().includes("installer");
 
 const normalizeVersion = (version: string) => version.replace(/^v/i, "");
+
+const schedulePostUpdateRelaunch = () => {
+  if (process.platform !== "win32" || !app.isPackaged) {
+    return;
+  }
+
+  const executable = app.getPath("exe").replaceAll("'", "''");
+  const script = [
+    `$launcherPid = ${process.pid}`,
+    `$launcherExe = '${executable}'`,
+    "try { Wait-Process -Id $launcherPid -Timeout 120 -ErrorAction SilentlyContinue } catch {}",
+    "Start-Sleep -Seconds 20",
+    "for ($attempt = 0; $attempt -lt 24; $attempt++) {",
+    "  if (Test-Path -LiteralPath $launcherExe) {",
+    "    try { Start-Process -FilePath $launcherExe; exit 0 } catch {}",
+    "  }",
+    "  Start-Sleep -Seconds 5",
+    "}",
+  ].join("; ");
+  const watchdog = spawn(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script],
+    {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    },
+  );
+
+  watchdog.unref();
+};
 
 const compareVersions = (left: string, right: string) => {
   const leftParts = toComparableVersion(left);

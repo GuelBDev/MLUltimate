@@ -55,11 +55,17 @@ export class LauncherService {
     });
 
     try {
-      const instance = await this.instances.getById(request.instanceId);
+      const instance = await this.instances.applyModpackRuntimeRecommendations(
+        request.instanceId,
+      );
 
-      if (!["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge"].includes(instance.loader)) {
+      if (
+        !["vanilla", "fabric", "iris", "iris-sodium", "quilt", "forge", "neoforge"].includes(
+          instance.loader,
+        )
+      ) {
         throw new Error(
-          `A execucao real de ${instance.loader} ainda precisa de instalador proprio. Vanilla, Fabric, Forge e NeoForge ja estao conectados.`,
+          `A execução real de ${instance.loader} ainda precisa de instalador próprio.`,
         );
       }
 
@@ -101,7 +107,16 @@ export class LauncherService {
         instance.minecraftVersion,
       );
       if (isFabricBasedLoader(instance.loader)) {
-        await this.minecraftVersions.installFabricLoader(instance.minecraftVersion);
+        await this.minecraftVersions.installFabricLoader(
+          instance.minecraftVersion,
+          instance.loaderVersion,
+        );
+      }
+      if (instance.loader === "quilt") {
+        await this.minecraftVersions.installQuiltLoader(
+          instance.minecraftVersion,
+          instance.loaderVersion,
+        );
       }
       if (instance.loader === "forge") {
         await this.minecraftVersions.installForgeLoader(
@@ -124,8 +139,19 @@ export class LauncherService {
 
     const fabricProfile =
       isFabricBasedLoader(instance.loader)
-        ? await this.minecraftVersions.readInstalledFabricProfile(instance.minecraftVersion)
+        ? await this.minecraftVersions.readInstalledFabricProfile(
+            instance.minecraftVersion,
+            instance.loaderVersion,
+          )
         : null;
+    const quiltProfile =
+      instance.loader === "quilt"
+        ? await this.minecraftVersions.readInstalledQuiltProfile(
+            instance.minecraftVersion,
+            instance.loaderVersion,
+          )
+        : null;
+    const lightweightProfile = fabricProfile ?? quiltProfile;
     const forgeProfile =
       instance.loader === "forge"
         ? await this.minecraftVersions.readInstalledForgeProfile(
@@ -146,8 +172,8 @@ export class LauncherService {
         .filter((libraryPath): libraryPath is string => Boolean(libraryPath))
         .map((libraryPath) => path.join(minecraftRoot, "libraries", libraryPath))
         .filter((libraryPath) => existsSync(libraryPath));
-    const fabricLibraries = fabricProfile
-      ? fabricProfile.libraries
+    const lightweightLibraries = lightweightProfile
+      ? lightweightProfile.libraries
           .map((library) => path.join(minecraftRoot, "libraries", mavenPath(library.name)))
           .filter((libraryPath) => existsSync(libraryPath))
       : [];
@@ -160,15 +186,15 @@ export class LauncherService {
           .map((libraryPath) => path.join(minecraftRoot, "libraries", libraryPath))
           .filter((libraryPath) => existsSync(libraryPath))
       : [];
-    const classpath = [
+    const classpath = uniquePaths([
       ...vanillaLibraries,
-      ...fabricLibraries,
+      ...lightweightLibraries,
       ...loaderLibraries,
       installedAfterDownload.jar_path,
-    ].join(path.delimiter);
+    ]).join(path.delimiter);
 
     const selectedVersionName =
-      loaderProfile?.id ?? fabricProfile?.id ?? versionJson.id ?? instance.minecraftVersion;
+      loaderProfile?.id ?? lightweightProfile?.id ?? versionJson.id ?? instance.minecraftVersion;
     const libraryDirectory = path.join(minecraftRoot, "libraries");
     const replacements = {
       auth_player_name: session.name,
@@ -195,8 +221,8 @@ export class LauncherService {
     const vanillaJvmArgs = versionJson.arguments?.jvm
       ? resolveArguments(versionJson.arguments.jvm, replacements)
       : [`-Djava.library.path=${nativesDir}`, "-cp", classpath];
-    const fabricJvmArgs = fabricProfile?.arguments?.jvm
-      ? resolveArguments(fabricProfile.arguments.jvm, replacements)
+    const lightweightJvmArgs = lightweightProfile?.arguments?.jvm
+      ? resolveArguments(lightweightProfile.arguments.jvm, replacements)
       : [];
     const loaderProfileJvmArgs = loaderProfile?.arguments?.jvm
       ? ensureMinecraftJarIsIgnored(
@@ -206,7 +232,7 @@ export class LauncherService {
       : [];
     const loaderJvmArgs = stripMemoryJvmArgs([
       ...vanillaJvmArgs,
-      ...fabricJvmArgs,
+      ...lightweightJvmArgs,
       ...loaderProfileJvmArgs,
     ]);
     const jvmArgs = [...buildMemoryJvmArgs(instance.ramMb), ...loaderJvmArgs];
@@ -215,13 +241,13 @@ export class LauncherService {
       : splitMinecraftArguments(versionJson.minecraftArguments ?? "").map((argument) =>
           replacePlaceholders(argument, replacements),
         );
-    const fabricGameArgs = fabricProfile?.arguments?.game
-      ? resolveArguments(fabricProfile.arguments.game, replacements)
+    const lightweightGameArgs = lightweightProfile?.arguments?.game
+      ? resolveArguments(lightweightProfile.arguments.game, replacements)
       : [];
     const loaderProfileGameArgs = loaderProfile?.arguments?.game
       ? resolveArguments(loaderProfile.arguments.game, replacements)
       : [];
-    const gameArgs = [...vanillaGameArgs, ...fabricGameArgs, ...loaderProfileGameArgs];
+    const gameArgs = [...vanillaGameArgs, ...lightweightGameArgs, ...loaderProfileGameArgs];
     this.emit({
       id: request.instanceId,
       type: "step",
@@ -235,7 +261,8 @@ export class LauncherService {
       component: versionJson.javaVersion?.component,
       majorVersion: versionJson.javaVersion?.majorVersion,
     });
-    const mainClass = loaderProfile?.mainClass ?? fabricProfile?.mainClass ?? versionJson.mainClass;
+    const mainClass =
+      loaderProfile?.mainClass ?? lightweightProfile?.mainClass ?? versionJson.mainClass;
 
     this.emit({
       id: request.instanceId,
@@ -264,7 +291,7 @@ export class LauncherService {
         }
 
         output.push(text);
-        if (output.length > 20) {
+        if (output.length > 80) {
           output.shift();
         }
 
@@ -321,7 +348,7 @@ export class LauncherService {
         this.flushPlayTime(request.instanceId, launchState);
         this.activeLaunches.delete(request.instanceId);
         if (handedOff) {
-          const details = output.slice(-8).join("\n").slice(-2200);
+          const details = summarizeLaunchFailure(output);
           this.emit({
             id: request.instanceId,
             type: code === 0 ? "closed" : "error",
@@ -607,6 +634,34 @@ const splitMinecraftArguments = (input: string) =>
 
 const stripMemoryJvmArgs = (args: string[]) =>
   args.filter((argument) => !/^-Xm[sx]/i.test(argument));
+
+const uniquePaths = (paths: string[]) => {
+  const seen = new Set<string>();
+
+  return paths.filter((candidate) => {
+    const key = path.resolve(candidate).toLowerCase();
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+};
+
+const summarizeLaunchFailure = (output: string[]) => {
+  const lines = output.flatMap((entry) => entry.split(/\r?\n/));
+  const rootCause = lines.find((line) =>
+    /exception in thread|caused by:|\[(?:fatal|error)\]|java\.[\w.]+(?:exception|error):/i.test(
+      line,
+    ),
+  );
+  const tail = lines.slice(-18);
+  const selected = rootCause && !tail.includes(rootCause) ? [rootCause, ...tail] : tail;
+
+  return selected.join("\n").slice(-3000);
+};
 
 const ensureMinecraftJarIsIgnored = (args: string[], minecraftJarName: string) =>
   args.map((argument) => {

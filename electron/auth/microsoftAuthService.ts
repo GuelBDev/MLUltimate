@@ -42,6 +42,16 @@ const minecraftLoginSchema = z.object({
 const minecraftProfileSchema = z.object({
   id: z.string(),
   name: z.string(),
+  skins: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        state: z.string().optional(),
+        url: z.string().url(),
+        variant: z.string().optional(),
+      }),
+    )
+    .default([]),
 });
 
 const graphMeSchema = z.object({
@@ -65,7 +75,9 @@ export class MicrosoftAuthService {
       return { status: "signed-out", encryptionAvailable: this.tokenStore.isEncryptionAvailable() };
     }
 
-    const refreshed = await this.refreshIfNeeded(secureSession);
+    const refreshed = await this.ensureProfileAppearance(
+      await this.refreshIfNeeded(secureSession),
+    );
 
     return {
       status: "signed-in",
@@ -128,7 +140,9 @@ export class MicrosoftAuthService {
       throw new Error("Entre com uma conta Microsoft antes de iniciar esta instância.");
     }
 
-    const refreshed = await this.refreshIfNeeded(secureSession);
+    const refreshed = await this.ensureProfileAppearance(
+      await this.refreshIfNeeded(secureSession),
+    );
     const licenseVerified = await this.verifyMinecraftLicense(
       refreshed.minecraftAccessToken,
     );
@@ -221,6 +235,14 @@ export class MicrosoftAuthService {
     const profile = licenseVerified
       ? await this.fetchMinecraftProfile(minecraft.access_token)
       : null;
+    const skin = profile?.skins.find((candidate) => candidate.state === "ACTIVE") ??
+      profile?.skins.at(0);
+    const minecraftSkinUrl = skin?.url ?? previous?.minecraftSkinUrl;
+    const minecraftSkinDataUrl = minecraftSkinUrl
+      ? await downloadImageDataUrl(minecraftSkinUrl).catch(
+          () => previous?.minecraftSkinDataUrl,
+        )
+      : previous?.minecraftSkinDataUrl;
 
     return {
       provider: "microsoft",
@@ -244,6 +266,8 @@ export class MicrosoftAuthService {
       uhs: xsts.uhs,
       minecraftName: profile?.name ?? previous?.minecraftName,
       minecraftUuid: profile?.id ?? previous?.minecraftUuid,
+      minecraftSkinUrl,
+      minecraftSkinDataUrl,
       licenseVerified,
       licenseCheckedAt: new Date().toISOString(),
     };
@@ -363,6 +387,35 @@ export class MicrosoftAuthService {
     return minecraftProfileSchema.parse(await response.json());
   }
 
+  private async ensureProfileAppearance(session: SecureMicrosoftSession) {
+    if (!session.licenseVerified || session.minecraftSkinDataUrl) {
+      return session;
+    }
+
+    try {
+      const profile = await this.fetchMinecraftProfile(session.minecraftAccessToken);
+      const skin = profile?.skins.find((candidate) => candidate.state === "ACTIVE") ??
+        profile?.skins.at(0);
+
+      if (!profile || !skin) {
+        return session;
+      }
+
+      const hydrated = {
+        ...session,
+        minecraftName: profile.name,
+        minecraftUuid: profile.id,
+        minecraftSkinUrl: skin.url,
+        minecraftSkinDataUrl: await downloadImageDataUrl(skin.url).catch(() => undefined),
+      };
+
+      this.tokenStore.saveSession(hydrated);
+      return hydrated;
+    } catch {
+      return session;
+    }
+  }
+
   private async waitForOAuthCallback() {
     this.cancelPendingOAuth?.();
 
@@ -445,6 +498,7 @@ export class MicrosoftAuthService {
       displayName: session.displayName,
       email: session.email,
       avatarLabel: (session.minecraftName ?? session.displayName).slice(0, 2).toUpperCase(),
+      skinDataUrl: session.minecraftSkinDataUrl,
       license: {
         status: session.licenseVerified ? "verified" : "unverified",
         checkedAt: session.licenseCheckedAt,
@@ -479,6 +533,23 @@ const parseJsonResponse = async (response: Response, context: string) => {
   }
 
   return json;
+};
+
+const downloadImageDataUrl = async (url: string) => {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`Skin do Minecraft retornou ${response.status}.`);
+  }
+
+  const bytes = Buffer.from(await response.arrayBuffer());
+
+  if (bytes.length === 0 || bytes.length > 2 * 1024 * 1024) {
+    throw new Error("Skin do Minecraft vazia ou grande demais.");
+  }
+
+  const contentType = response.headers.get("content-type")?.split(";")[0] ?? "image/png";
+  return `data:${contentType};base64,${bytes.toString("base64")}`;
 };
 
 const addressPort = (server: ReturnType<typeof createServer>) => {

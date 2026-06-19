@@ -57,6 +57,7 @@ export const AccountPanel = () => {
           <MinecraftHead
             skin={equippedSkin}
             username={account?.displayName}
+            accountSkinDataUrl={account?.skinDataUrl}
             fallback={account?.avatarLabel ?? "ML"}
           />
           <div className="min-w-0">
@@ -157,24 +158,28 @@ const MicrosoftIcon = () => (
 const MinecraftHead = ({
   skin,
   username,
+  accountSkinDataUrl,
   fallback,
 }: {
   skin?: LauncherSkin;
   username?: string;
+  accountSkinDataUrl?: string;
   fallback: string;
 }) => {
-  const skinUrl = skin?.imageDataUrl ?? skin?.previewUrl;
+  const [failedUrl, setFailedUrl] = useState("");
+  const skinUrl = skin?.imageDataUrl ?? skin?.previewUrl ?? accountSkinDataUrl;
   const usernameHeadUrl =
     username?.trim() && username !== "Nenhuma conta"
       ? `https://mc-heads.net/avatar/${encodeURIComponent(username.trim())}/64`
       : "";
 
-  if (skinUrl) {
+  if (skinUrl && failedUrl !== skinUrl) {
     return (
       <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-[#1F2937] shadow-lg shadow-black/20">
         <img
           src={skinUrl}
           alt=""
+          onError={() => setFailedUrl(skinUrl)}
           className="origin-top-left [image-rendering:pixelated]"
           style={{
             width: 512,
@@ -186,12 +191,13 @@ const MinecraftHead = ({
     );
   }
 
-  if (usernameHeadUrl) {
+  if (usernameHeadUrl && failedUrl !== usernameHeadUrl) {
     return (
       <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-[#1F2937] shadow-lg shadow-black/20">
         <img
           src={usernameHeadUrl}
           alt=""
+          onError={() => setFailedUrl(usernameHeadUrl)}
           className="h-full w-full object-cover [image-rendering:pixelated]"
         />
       </div>

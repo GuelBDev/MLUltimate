@@ -78,11 +78,46 @@ const pageTitles: Record<PageId, string> = {
 };
 
 function AppShell() {
+  const queryClient = useQueryClient();
   const [activePage, setActivePage] = useState<PageId>("home");
+  const [pageRevision, setPageRevision] = useState(0);
   const [exploreContext, setExploreContext] = useState<{
     type: ContentType;
     instanceId?: string;
   }>({ type: "mod" });
+  const refreshActivePage = useCallback(() => {
+    void queryClient.invalidateQueries();
+    setPageRevision((revision) => revision + 1);
+  }, [queryClient]);
+  const changePage = useCallback(
+    (page: PageId) => {
+      if (page === activePage) {
+        refreshActivePage();
+        return;
+      }
+
+      setActivePage(page);
+    },
+    [activePage, refreshActivePage],
+  );
+
+  useEffect(() => {
+    const refreshOnShortcut = (event: KeyboardEvent) => {
+      const isRefresh =
+        event.key === "F5" ||
+        ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "r");
+
+      if (!isRefresh) {
+        return;
+      }
+
+      event.preventDefault();
+      refreshActivePage();
+    };
+
+    window.addEventListener("keydown", refreshOnShortcut);
+    return () => window.removeEventListener("keydown", refreshOnShortcut);
+  }, [refreshActivePage]);
 
   const page = useMemo(() => {
     switch (activePage) {
@@ -91,7 +126,7 @@ function AppShell() {
           <LibraryPage
             onExploreInstance={(type, instanceId) => {
               setExploreContext({ type, instanceId });
-              setActivePage("explore");
+              changePage("explore");
             }}
           />
         );
@@ -114,20 +149,20 @@ function AppShell() {
         return (
           <HomePage
             focus={activePage}
-            onNavigate={setActivePage}
+            onNavigate={changePage}
             onExploreInstance={(type, instanceId) => {
               setExploreContext({ type, instanceId });
-              setActivePage("explore");
+              changePage("explore");
             }}
           />
         );
     }
-  }, [activePage, exploreContext.instanceId, exploreContext.type]);
+  }, [activePage, changePage, exploreContext.instanceId, exploreContext.type]);
 
   return (
     <div className="h-dvh overflow-hidden bg-[#0D1117] pt-8 text-white">
       <div className="grid h-[calc(100dvh-2rem)] grid-cols-[76px_minmax(0,1fr)] xl:grid-cols-[228px_minmax(0,1fr)] 2xl:grid-cols-[248px_minmax(0,1fr)_320px]">
-        <Sidebar activePage={activePage} onPageChange={setActivePage} />
+        <Sidebar activePage={activePage} onPageChange={changePage} />
 
         <main className="min-w-0 overflow-y-auto border-l border-white/8 2xl:border-x">
           <div className="mx-auto flex min-h-full w-full max-w-[1120px] flex-col gap-5 px-3 py-4 sm:px-5 lg:gap-6 lg:px-7 lg:py-6">
@@ -146,7 +181,7 @@ function AppShell() {
 
             <AnimatePresence mode="wait">
               <motion.div
-                key={activePage}
+                key={`${activePage}-${pageRevision}`}
                 initial={{ opacity: 0, y: 10, scale: 0.99 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.99 }}

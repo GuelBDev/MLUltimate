@@ -8,6 +8,7 @@ export type PublicAccount = {
   displayName: string;
   email?: string;
   avatarLabel: string;
+  skinDataUrl?: string;
   license: {
     status: LicenseStatus;
     checkedAt?: string;
@@ -116,6 +117,7 @@ export type LauncherInstance = {
   resourcepacksCount: number;
   shaderpacksCount: number;
   dataPacksCount: number;
+  modpackFilesCount?: number;
   worldsCount: number;
   shaderSupport: {
     supported: boolean;

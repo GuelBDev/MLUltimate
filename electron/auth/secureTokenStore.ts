@@ -16,6 +16,8 @@ const secureSessionSchema = z.object({
   uhs: z.string(),
   minecraftName: z.string().optional(),
   minecraftUuid: z.string().optional(),
+  minecraftSkinUrl: z.string().optional(),
+  minecraftSkinDataUrl: z.string().optional(),
   licenseVerified: z.boolean(),
   licenseCheckedAt: z.string().optional(),
 });

@@ -1,7 +1,7 @@
 import AdmZip from "adm-zip";
 import { app, dialog, net, shell } from "electron";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { spawn } from "node:child_process";
@@ -275,9 +275,15 @@ export class InstanceService {
       ],
     );
 
-    void this.prepareInstance(parsed, gameDir).catch(() => undefined);
-
-    return this.getById(id);
+    try {
+      await this.prepareInstance(parsed, gameDir);
+      return this.getById(id);
+    } catch (error) {
+      this.database.run("DELETE FROM installed_content WHERE instance_id = ?", [id]);
+      this.database.run("DELETE FROM instances WHERE id = ?", [id]);
+      await rm(gameDir, { recursive: true, force: true }).catch(() => undefined);
+      throw error;
+    }
   }
 
   async list(): Promise<LauncherInstance[]> {
@@ -412,6 +418,27 @@ export class InstanceService {
     );
   }
 
+  async applyModpackRuntimeRecommendations(id: string) {
+    const instance = await this.getById(id);
+    const lock = await this.readModpackLock(instance.gameDir);
+
+    if (!lock) {
+      return instance;
+    }
+
+    const recommendedRam = recommendedModpackRam(lock.files.length);
+
+    if (instance.ramMb >= recommendedRam) {
+      return instance;
+    }
+
+    this.database.run(
+      "UPDATE instances SET ram_mb = ?, updated_at = ? WHERE id = ?",
+      [recommendedRam, new Date().toISOString(), id],
+    );
+    return this.getById(id);
+  }
+
   async selectIcon(): Promise<InstanceIconSelection | null> {
     const result = await dialog.showOpenDialog({
       title: "Selecionar imagem da instância",
@@ -438,8 +465,13 @@ export class InstanceService {
   }
 
   private async prepareInstance(parsed: z.infer<typeof createInstanceSchema>, gameDir: string) {
+    await this.minecraftVersions.ensureJavaRuntime(parsed.minecraftVersion);
+
     if (isFabricBasedLoader(parsed.loader)) {
-      await this.minecraftVersions.installFabricLoader(parsed.minecraftVersion);
+      await this.minecraftVersions.installFabricLoader(
+        parsed.minecraftVersion,
+        parsed.loaderVersion,
+      );
       if (parsed.loader === "iris" || parsed.loader === "iris-sodium") {
         await this.installModrinthMod(
           IRIS_PROJECT_ID,
@@ -456,6 +488,14 @@ export class InstanceService {
           "Sodium",
         );
       }
+      return;
+    }
+
+    if (parsed.loader === "quilt") {
+      await this.minecraftVersions.installQuiltLoader(
+        parsed.minecraftVersion,
+        parsed.loaderVersion,
+      );
       return;
     }
 
@@ -670,7 +710,7 @@ export class InstanceService {
       minecraftVersion: manifest.minecraft.version,
       loader: loaderFromCurseForgeManifest(manifest.minecraft.modLoaders),
       loaderVersion: loaderVersionFromCurseForgeManifest(manifest.minecraft.modLoaders),
-      ramMb: 4096,
+      ramMb: recommendedModpackRam(manifest.files.length),
       contentManagementEnabled: true,
     });
 
@@ -729,7 +769,7 @@ export class InstanceService {
           minecraftVersion,
           loader: loaderFromModrinthDependencies(index.dependencies),
           loaderVersion: loaderVersionFromModrinthDependencies(index.dependencies),
-          ramMb: 4096,
+          ramMb: recommendedModpackRam(index.files.length),
           contentManagementEnabled: true,
         });
 
@@ -967,6 +1007,12 @@ export class InstanceService {
         });
       });
 
+      assertCompleteModpackDownload(
+        manifest.files.length,
+        lockedFiles,
+        instance.gameDir,
+        manifest.name,
+      );
       await this.writeModpackLock(instance.gameDir, {
         schemaVersion: 1,
         provider: "curseforge",
@@ -1223,7 +1269,15 @@ export class InstanceService {
   }
 
   private async rowToInstance(row: InstanceRow): Promise<LauncherInstance> {
-    const [modsCount, resourcepacksCount, shaderpacksCount, dataPacksCount, worldsCount, shaderSupport] =
+    const [
+      modsCount,
+      resourcepacksCount,
+      shaderpacksCount,
+      dataPacksCount,
+      worldsCount,
+      shaderSupport,
+      modpackLock,
+    ] =
       await Promise.all([
       countContentEntries(path.join(row.game_dir, "mods"), [".jar", ".zip"]),
       countContentEntries(path.join(row.game_dir, "resourcepacks"), [".zip"], "pack.mcmeta"),
@@ -1231,6 +1285,7 @@ export class InstanceService {
       countDataPacks(row.game_dir),
       countWorlds(row.game_dir),
       detectShaderSupport(row),
+      this.readModpackLock(row.game_dir),
     ]);
 
     return {
@@ -1248,6 +1303,7 @@ export class InstanceService {
       resourcepacksCount,
       shaderpacksCount,
       dataPacksCount,
+      modpackFilesCount: modpackLock?.files.length,
       worldsCount,
       shaderSupport,
       contentManagementEnabled: row.content_management_enabled !== 0,
@@ -1517,6 +1573,32 @@ const addFolderToZip = async (
 };
 
 const normalizeArchivePath = (value: string) => value.replaceAll("\\", "/");
+
+const recommendedModpackRam = (fileCount: number) => {
+  const target = fileCount >= 350 ? 8192 : fileCount >= 180 ? 6144 : 4096;
+  const systemMemoryMb = Math.floor(os.totalmem() / 1024 / 1024);
+  const safeMaximum = Math.max(4096, systemMemoryMb - 2048);
+
+  return Math.min(target, safeMaximum);
+};
+
+const assertCompleteModpackDownload = (
+  expectedFiles: number,
+  files: z.infer<typeof modpackLockSchema>["files"],
+  gameDir: string,
+  modpackName: string,
+) => {
+  const missing = files.filter((file) => {
+    const absolutePath = path.join(gameDir, file.relativePath);
+    return !existsSync(absolutePath) || statSync(absolutePath).size === 0;
+  });
+
+  if (files.length !== expectedFiles || missing.length > 0) {
+    throw new Error(
+      `O modpack ${modpackName} ficou incompleto: ${files.length}/${expectedFiles} arquivos registrados e ${missing.length} ausente(s).`,
+    );
+  }
+};
 
 const runPool = async <T>(
   items: T[],

@@ -13,6 +13,7 @@ import type { MinecraftVersionSummary } from "../../src/types/launcher";
 const VERSION_MANIFEST_URL =
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 const FABRIC_META_URL = "https://meta.fabricmc.net/v2";
+const QUILT_META_URL = "https://meta.quiltmc.org/v3";
 const FORGE_MAVEN = "https://maven.minecraftforge.net";
 const FORGE_METADATA_URL = `${FORGE_MAVEN}/net/minecraftforge/forge/maven-metadata.xml`;
 const NEOFORGE_MAVEN = "https://maven.neoforged.net/releases";
@@ -109,7 +110,7 @@ const assetIndexSchema = z.object({
   ),
 });
 
-const fabricLoaderListSchema = z.array(
+const lightweightLoaderListSchema = z.array(
   z.object({
     loader: z.object({
       version: z.string(),
@@ -321,12 +322,25 @@ export class MinecraftVersionService {
     return versionJsonSchema.parse(JSON.parse(await readFile(installed.json_path, "utf8")));
   }
 
-  async installFabricLoader(minecraftVersion: string) {
+  async ensureJavaRuntime(minecraftVersion: string) {
+    await this.installVersion(minecraftVersion);
+    const versionJson = await this.readInstalledVersionJson(minecraftVersion);
+
+    return this.javaRuntimes.resolveJava({
+      component: versionJson.javaVersion?.component,
+      majorVersion: versionJson.javaVersion?.majorVersion,
+    });
+  }
+
+  async installFabricLoader(minecraftVersion: string, requestedLoaderVersion?: string) {
     await this.installVersion(minecraftVersion);
 
     const profilePath = this.getFabricProfilePath(minecraftVersion);
 
-    if (existsSync(profilePath)) {
+    if (
+      existsSync(profilePath) &&
+      (await profileMatchesRequestedLoader(profilePath, requestedLoaderVersion))
+    ) {
       return;
     }
 
@@ -346,15 +360,20 @@ export class MinecraftVersionService {
         throw new Error(`Fabric Meta retornou erro ${loadersResponse.status}.`);
       }
 
-      const latestLoader = fabricLoaderListSchema.parse(await loadersResponse.json()).at(0);
+      const loaders = lightweightLoaderListSchema.parse(await loadersResponse.json());
+      const selectedLoader = chooseRequestedLoader(loaders, requestedLoaderVersion);
 
-      if (!latestLoader) {
-        throw new Error(`Nenhum Fabric Loader encontrado para Minecraft ${minecraftVersion}.`);
+      if (!selectedLoader) {
+        throw new Error(
+          requestedLoaderVersion
+            ? `Fabric Loader ${requestedLoaderVersion} não foi encontrado para Minecraft ${minecraftVersion}.`
+            : `Nenhum Fabric Loader encontrado para Minecraft ${minecraftVersion}.`,
+        );
       }
 
       const profileResponse = await fetchWithElectronNet(
-        `${FABRIC_META_URL}/versions/loader/${minecraftVersion}/${latestLoader.loader.version}/profile/json`,
-        `Buscar perfil Fabric ${latestLoader.loader.version}`,
+        `${FABRIC_META_URL}/versions/loader/${minecraftVersion}/${selectedLoader.loader.version}/profile/json`,
+        `Buscar perfil Fabric ${selectedLoader.loader.version}`,
       );
       this.downloads.throwIfCancelled(taskId);
 
@@ -393,10 +412,16 @@ export class MinecraftVersionService {
     }
   }
 
-  async readInstalledFabricProfile(minecraftVersion: string) {
+  async readInstalledFabricProfile(
+    minecraftVersion: string,
+    _requestedLoaderVersion?: string,
+  ) {
     const profilePath = this.getFabricProfilePath(minecraftVersion);
 
-    if (!existsSync(profilePath)) {
+    if (
+      !existsSync(profilePath) ||
+      !(await profileMatchesRequestedLoader(profilePath, _requestedLoaderVersion))
+    ) {
       throw new Error(`Fabric Loader não está instalado para Minecraft ${minecraftVersion}.`);
     }
 
@@ -405,6 +430,105 @@ export class MinecraftVersionService {
 
   getFabricProfilePath(minecraftVersion: string) {
     return path.join(this.rootDir, "loaders", "fabric", minecraftVersion, "profile.json");
+  }
+
+  async installQuiltLoader(minecraftVersion: string, requestedLoaderVersion?: string) {
+    await this.installVersion(minecraftVersion);
+
+    const profilePath = this.getQuiltProfilePath(minecraftVersion);
+
+    if (
+      existsSync(profilePath) &&
+      (await profileMatchesRequestedLoader(profilePath, requestedLoaderVersion))
+    ) {
+      return;
+    }
+
+    const taskId = this.downloads.createTask(
+      `Quilt ${minecraftVersion}`,
+      path.dirname(profilePath),
+      QUILT_META_URL,
+    );
+
+    try {
+      const loadersResponse = await fetchWithElectronNet(
+        `${QUILT_META_URL}/versions/loader/${minecraftVersion}`,
+        `Buscar Quilt Loader para Minecraft ${minecraftVersion}`,
+      );
+
+      if (!loadersResponse.ok) {
+        throw new Error(`Quilt Meta retornou erro ${loadersResponse.status}.`);
+      }
+
+      const loaders = lightweightLoaderListSchema.parse(await loadersResponse.json());
+      const selectedLoader = chooseRequestedLoader(loaders, requestedLoaderVersion);
+
+      if (!selectedLoader) {
+        throw new Error(
+          requestedLoaderVersion
+            ? `Quilt Loader ${requestedLoaderVersion} não foi encontrado para Minecraft ${minecraftVersion}.`
+            : `Nenhum Quilt Loader encontrado para Minecraft ${minecraftVersion}.`,
+        );
+      }
+
+      const profileResponse = await fetchWithElectronNet(
+        `${QUILT_META_URL}/versions/loader/${minecraftVersion}/${selectedLoader.loader.version}/profile/json`,
+        `Buscar perfil Quilt ${selectedLoader.loader.version}`,
+      );
+      this.downloads.throwIfCancelled(taskId);
+
+      if (!profileResponse.ok) {
+        throw new Error(`Profile Quilt retornou erro ${profileResponse.status}.`);
+      }
+
+      const profile = fabricProfileSchema.parse(await profileResponse.json());
+      await mkdir(path.dirname(profilePath), { recursive: true });
+      await writeFile(profilePath, JSON.stringify(profile, null, 2), "utf8");
+
+      let completed = 0;
+
+      await runPool(profile.libraries, 6, async (library) => {
+        this.downloads.throwIfCancelled(taskId);
+        const libraryPath = mavenPath(library.name);
+        await this.downloads.download({
+          label: `Quilt ${library.name}`,
+          url: new URL(libraryPath.replaceAll("\\", "/"), library.url).toString(),
+          destination: path.join(this.rootDir, "libraries", libraryPath),
+          sha1: library.sha1,
+          visible: false,
+        });
+        completed += 1;
+        this.downloads.updateTask(taskId, {
+          label: `Quilt ${minecraftVersion} - loader ${completed}/${profile.libraries.length}`,
+          progress: Math.round((completed / Math.max(1, profile.libraries.length)) * 100),
+        });
+      });
+
+      this.downloads.completeTask(taskId);
+    } catch (error) {
+      this.downloads.failTask(taskId, error);
+      throw error;
+    }
+  }
+
+  async readInstalledQuiltProfile(
+    minecraftVersion: string,
+    _requestedLoaderVersion?: string,
+  ) {
+    const profilePath = this.getQuiltProfilePath(minecraftVersion);
+
+    if (
+      !existsSync(profilePath) ||
+      !(await profileMatchesRequestedLoader(profilePath, _requestedLoaderVersion))
+    ) {
+      throw new Error(`Quilt Loader não está instalado para Minecraft ${minecraftVersion}.`);
+    }
+
+    return fabricProfileSchema.parse(JSON.parse(await readFile(profilePath, "utf8")));
+  }
+
+  getQuiltProfilePath(minecraftVersion: string) {
+    return path.join(this.rootDir, "loaders", "quilt", minecraftVersion, "profile.json");
   }
 
   async installForgeLoader(minecraftVersion: string, requestedForgeVersion?: string) {
@@ -802,6 +926,47 @@ const rulesAllow = (rules?: z.infer<typeof ruleSchema>[]) => {
   }
 
   return allowed;
+};
+
+const normalizeLightweightLoaderVersion = (version?: string) =>
+  version
+    ?.trim()
+    .replace(/^(?:fabric|quilt)(?:-loader)?-/i, "")
+    .toLowerCase();
+
+const chooseRequestedLoader = (
+  loaders: z.infer<typeof lightweightLoaderListSchema>,
+  requestedLoaderVersion?: string,
+) => {
+  const requested = normalizeLightweightLoaderVersion(requestedLoaderVersion);
+
+  if (!requested) {
+    return loaders.at(0);
+  }
+
+  return loaders.find(
+    (candidate) => candidate.loader.version.toLowerCase() === requested,
+  );
+};
+
+const profileMatchesRequestedLoader = async (
+  profilePath: string,
+  requestedLoaderVersion?: string,
+) => {
+  const requested = normalizeLightweightLoaderVersion(requestedLoaderVersion);
+
+  if (!requested) {
+    return true;
+  }
+
+  try {
+    const profile = fabricProfileSchema.parse(
+      JSON.parse(await readFile(profilePath, "utf8")),
+    );
+    return profile.id.toLowerCase().includes(requested);
+  } catch {
+    return false;
+  }
 };
 
 const runPool = async <T>(
