@@ -199,7 +199,10 @@ export class LauncherService {
       ? resolveArguments(fabricProfile.arguments.jvm, replacements)
       : [];
     const loaderProfileJvmArgs = loaderProfile?.arguments?.jvm
-      ? resolveArguments(loaderProfile.arguments.jvm, replacements)
+      ? ensureMinecraftJarIsIgnored(
+          resolveArguments(loaderProfile.arguments.jvm, replacements),
+          path.basename(installedAfterDownload.jar_path),
+        )
       : [];
     const loaderJvmArgs = stripMemoryJvmArgs([
       ...vanillaJvmArgs,
@@ -254,10 +257,6 @@ export class LauncherService {
       launchState.child = child;
       const output: string[] = [];
       const rememberOutput = (chunk: Buffer) => {
-        if (handedOff) {
-          return;
-        }
-
         const text = chunk.toString("utf8").trim();
 
         if (!text) {
@@ -269,13 +268,15 @@ export class LauncherService {
           output.shift();
         }
 
-        this.emit({
-          id: request.instanceId,
-          type: "console",
-          message: text,
-          progress: 100,
-          createdAt: new Date().toISOString(),
-        });
+        if (!handedOff) {
+          this.emit({
+            id: request.instanceId,
+            type: "console",
+            message: text,
+            progress: 100,
+            createdAt: new Date().toISOString(),
+          });
+        }
       };
 
       const finishLaunch = () => {
@@ -320,10 +321,16 @@ export class LauncherService {
         this.flushPlayTime(request.instanceId, launchState);
         this.activeLaunches.delete(request.instanceId);
         if (handedOff) {
+          const details = output.slice(-8).join("\n").slice(-2200);
           this.emit({
             id: request.instanceId,
-            type: "closed",
-            message: "Minecraft fechado.",
+            type: code === 0 ? "closed" : "error",
+            message:
+              code === 0
+                ? "Minecraft fechado."
+                : details
+                  ? `Minecraft fechou com erro ${code}.\n${details}`
+                  : `Minecraft fechou com erro ${code}.`,
             progress: 0,
             createdAt: new Date().toISOString(),
           });
@@ -362,8 +369,6 @@ export class LauncherService {
           () => this.flushPlayTime(request.instanceId, launchState),
           60_000,
         );
-        child.stdout?.off("data", rememberOutput);
-        child.stderr?.off("data", rememberOutput);
         child.unref();
         this.emit({
           id: request.instanceId,
@@ -373,7 +378,7 @@ export class LauncherService {
           createdAt: new Date().toISOString(),
         });
         finishLaunch();
-      }, 3500);
+      }, 12_000);
     });
 
     this.emit({
@@ -602,6 +607,25 @@ const splitMinecraftArguments = (input: string) =>
 
 const stripMemoryJvmArgs = (args: string[]) =>
   args.filter((argument) => !/^-Xm[sx]/i.test(argument));
+
+const ensureMinecraftJarIsIgnored = (args: string[], minecraftJarName: string) =>
+  args.map((argument) => {
+    if (!argument.startsWith("-DignoreList=")) {
+      return argument;
+    }
+
+    const ignored = argument
+      .slice("-DignoreList=".length)
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    if (!ignored.some((entry) => entry.toLowerCase() === minecraftJarName.toLowerCase())) {
+      ignored.push(minecraftJarName);
+    }
+
+    return `-DignoreList=${ignored.join(",")}`;
+  });
 
 const buildMemoryJvmArgs = (ramMb: number) => {
   const maxMemory = Math.min(65536, Math.max(1024, Math.round(ramMb)));

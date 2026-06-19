@@ -457,7 +457,7 @@ export class ContentService {
 
   async hydrateInstanceContentImages(
     instanceId: string,
-    types: ContentType[] = ["resourcepack", "shader"],
+    types: ContentType[] = ["mod", "resourcepack", "shader"],
   ) {
     await this.instances.restoreLockedContent(instanceId);
 

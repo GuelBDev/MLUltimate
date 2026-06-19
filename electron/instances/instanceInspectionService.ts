@@ -148,10 +148,16 @@ export class InstanceInspectionService {
       scanWorlds(gameDir),
     ]);
 
-    return groups
-      .flat()
-      .map((entry): InstanceContentEntry => {
+    const entries = await Promise.all(
+      groups
+        .flat()
+        .map(async (entry): Promise<InstanceContentEntry> => {
         const installed = installedByPath.get(normalizePath(entry.absolutePath));
+        const previewDataUrl =
+          entry.previewDataUrl ??
+          (entry.category === "mod" && !installed?.icon_url
+            ? await readModPreview(entry.absolutePath)
+            : undefined);
 
         return {
           id: `${entry.category}:${entry.relativePath}`,
@@ -166,11 +172,13 @@ export class InstanceInspectionService {
           projectId: installed?.project_id,
           versionId: installed?.version_id,
           iconUrl: installed?.icon_url ?? undefined,
-          previewDataUrl: entry.previewDataUrl,
+          previewDataUrl,
           installedContentId: installed?.id,
         };
-      })
-      .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
+      }),
+    );
+
+    return entries.sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
   }
 }
 
@@ -498,6 +506,60 @@ const imageBufferDataUrl = (buffer: Buffer, fileName: string) => {
         : "image/jpeg";
 
   return `data:${mime};base64,${buffer.toString("base64")}`;
+};
+
+const readModPreview = async (absolutePath: string) => {
+  try {
+    const zip = new AdmZip(absolutePath);
+    const fabricEntry = zip.getEntry("fabric.mod.json");
+
+    if (fabricEntry) {
+      const metadata = JSON.parse(fabricEntry.getData().toString("utf8")) as {
+        icon?: string | Record<string, string>;
+      };
+      const iconPath =
+        typeof metadata.icon === "string"
+          ? metadata.icon
+          : metadata.icon
+            ? Object.values(metadata.icon).at(-1)
+            : undefined;
+      const iconEntry = iconPath ? zip.getEntry(iconPath) : undefined;
+
+      if (iconEntry && iconEntry.header.size <= 5 * 1024 * 1024) {
+        return imageBufferDataUrl(iconEntry.getData(), iconEntry.entryName);
+      }
+    }
+
+    const forgeMetadata = zip.getEntry("META-INF/mods.toml");
+
+    if (forgeMetadata) {
+      const text = forgeMetadata.getData().toString("utf8");
+      const logoFile = text.match(/^\s*logoFile\s*=\s*["']([^"']+)["']/im)?.[1];
+      const logoEntry = logoFile ? zip.getEntry(logoFile) : undefined;
+
+      if (logoEntry && logoEntry.header.size <= 5 * 1024 * 1024) {
+        return imageBufferDataUrl(logoEntry.getData(), logoEntry.entryName);
+      }
+    }
+
+    const legacyMetadata = zip.getEntry("mcmod.info");
+
+    if (legacyMetadata) {
+      const parsed = JSON.parse(legacyMetadata.getData().toString("utf8")) as
+        | { logoFile?: string }
+        | Array<{ logoFile?: string }>;
+      const logoFile = (Array.isArray(parsed) ? parsed[0] : parsed)?.logoFile;
+      const logoEntry = logoFile ? zip.getEntry(logoFile) : undefined;
+
+      if (logoEntry && logoEntry.header.size <= 5 * 1024 * 1024) {
+        return imageBufferDataUrl(logoEntry.getData(), logoEntry.entryName);
+      }
+    }
+
+    return undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 const resolveSafeRelativePath = (gameDir: string, relativePath: string) => {

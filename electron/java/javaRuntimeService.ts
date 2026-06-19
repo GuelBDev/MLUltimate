@@ -101,9 +101,7 @@ export class JavaRuntimeService {
     }
 
     const major = await detectJavaMajor(javaPath);
-    return major === requiredMajor || (requiredMajor >= 17 && major >= requiredMajor)
-      ? javaPath
-      : null;
+    return major === requiredMajor ? javaPath : null;
   }
 
   private async findCompatibleSystemJava(requiredMajor: number) {
@@ -121,7 +119,7 @@ export class JavaRuntimeService {
     for (const candidate of candidates) {
       const major = await detectJavaMajor(candidate);
 
-      if (major === requiredMajor || (requiredMajor >= 17 && major >= requiredMajor)) {
+      if (major === requiredMajor) {
         return candidate;
       }
     }
