@@ -406,7 +406,9 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
                 </div>
                 <p className="mt-1 text-sm text-[#94A3B8]">
                   {project.author ? `${project.author} | ` : ""}
-                  {project.downloads?.toLocaleString("pt-BR") ?? "downloads indisponiveis"} downloads
+                  {project.downloads?.toLocaleString(document.documentElement.lang) ??
+                    "downloads indisponiveis"}{" "}
+                  downloads
                 </p>
                 <CompatibilityMeta project={project} />
                 <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#94A3B8]">
@@ -576,7 +578,9 @@ const ProjectDetails = ({
             </div>
             <p className="mt-1 text-sm text-[#94A3B8]">
               {current.author ? `by ${current.author} | ` : ""}
-              {current.downloads?.toLocaleString("pt-BR") ?? "downloads indisponiveis"} downloads
+              {current.downloads?.toLocaleString(document.documentElement.lang) ??
+                "downloads indisponiveis"}{" "}
+              downloads
             </p>
             <CompatibilityMeta project={current} />
             <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#B8C2D0]">
@@ -660,10 +664,10 @@ const ProjectDetails = ({
                   value={versionQuery}
                   onChange={(event) => setVersionQuery(event.target.value)}
                   className="h-10 w-full rounded-xl border border-white/10 bg-[#0D1117] pl-9 pr-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
-                  placeholder="Pesquisar versÃ£o, loader ou arquivo"
+                  placeholder="Pesquisar versão, loader ou arquivo"
                 />
               </div>
-              <Badge tone="slate">{filteredVersions.length} versÃµes</Badge>
+              <Badge tone="slate">{filteredVersions.length} versões</Badge>
             </div>
             {filteredVersions.map((version) => (
               <VersionRow
@@ -676,7 +680,7 @@ const ProjectDetails = ({
             ))}
             {versions.length === 0 ? <EmptyDetail text="Carregando versoes..." /> : null}
             {versions.length > 0 && filteredVersions.length === 0 ? (
-              <EmptyDetail text="Nenhuma versÃ£o encontrada para esta busca." />
+              <EmptyDetail text="Nenhuma versão encontrada para esta busca." />
             ) : null}
           </div>
         ) : null}

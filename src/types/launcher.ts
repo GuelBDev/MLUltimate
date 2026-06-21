@@ -311,7 +311,21 @@ export type SaveNicknameSkinInput = {
   name?: string;
 };
 
-export type AppLanguage = "pt-BR" | "pt-PT" | "en" | "fr";
+export type AppLanguage =
+  | "pt-BR"
+  | "pt-PT"
+  | "en"
+  | "es"
+  | "fr"
+  | "de"
+  | "it"
+  | "ru"
+  | "zh-CN"
+  | "ja"
+  | "ko"
+  | "ar"
+  | "hi"
+  | "tr";
 export type MinecraftOpenAction = "none" | "minimize" | "background";
 
 export type LauncherSettings = {

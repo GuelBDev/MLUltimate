@@ -1042,7 +1042,7 @@ const formatPlayTime = (seconds: number) => {
 
 const formatDate = (value?: string) =>
   value
-    ? new Intl.DateTimeFormat("pt-BR", {
+    ? new Intl.DateTimeFormat(document.documentElement.lang || "pt-BR", {
         dateStyle: "short",
         timeStyle: "short",
       }).format(new Date(value))

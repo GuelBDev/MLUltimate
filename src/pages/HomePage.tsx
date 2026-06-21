@@ -99,9 +99,9 @@ const changelog = [
     tag: rawAppVersion,
     date: "Atual",
     changes: [
-      "Importacao aceita pacotes CurseForge e arquivos manifest.json soltos.",
-      "Perfis podem ser compartilhados em ZIP com manifest.json e pasta overrides.",
-      "Config, datapacks, mods, resourcepacks e shaderpacks ficam selecionados por padrao na exportacao.",
+      "Interface completa traduzida para 14 idiomas principais.",
+      "Seletor de idioma ampliado no primeiro acesso e nas Configurações.",
+      "Textos corrompidos e problemas de acentuação foram corrigidos em todo o app.",
     ],
   },
   {

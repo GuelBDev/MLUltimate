@@ -132,7 +132,24 @@ const openInstanceSubfolderSchema = z.object({
 });
 
 const updateSettingsSchema = z.object({
-  language: z.enum(["pt-BR", "pt-PT", "en", "fr"]).optional(),
+  language: z
+    .enum([
+      "pt-BR",
+      "pt-PT",
+      "en",
+      "es",
+      "fr",
+      "de",
+      "it",
+      "ru",
+      "zh-CN",
+      "ja",
+      "ko",
+      "ar",
+      "hi",
+      "tr",
+    ])
+    .optional(),
   languageSelected: z.boolean().optional(),
   minecraftOpenAction: z.enum(["none", "minimize", "background"]).optional(),
 });

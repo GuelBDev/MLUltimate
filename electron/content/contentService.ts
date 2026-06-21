@@ -2069,14 +2069,14 @@ const contentInstallBlockReason = (
   }
 
   if (type === "modpack") {
-    return "Modpacks precisam de uma instÃ¢ncia com loader compatÃ­vel.";
+    return "Modpacks precisam de uma instância com loader compatível.";
   }
 
   if (type === "mod") {
-    return "Mods exigem uma instÃ¢ncia com Fabric, Forge, NeoForge, Quilt, Iris ou Iris + Sodium.";
+    return "Mods exigem uma instância com Fabric, Forge, NeoForge, Quilt, Iris ou Iris + Sodium.";
   }
 
-  return "Este conteÃºdo nÃ£o Ã© compatÃ­vel com a instÃ¢ncia selecionada.";
+  return "Este conteúdo não é compatível com a instância selecionada.";
 };
 
 const folderForType = (type: ContentType) => {

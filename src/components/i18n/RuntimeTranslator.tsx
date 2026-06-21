@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { translations } from "../../i18n/translations";
+import { languageDirection, languageLocale } from "../../constants/languages";
+import { translations, translateText } from "../../i18n/translations";
 import type { AppLanguage } from "../../types/launcher";
 
 const textOriginals = new WeakMap<Text, string>();
@@ -13,7 +14,9 @@ type RuntimeTranslatorProps = {
 
 export function RuntimeTranslator({ language }: RuntimeTranslatorProps) {
   useEffect(() => {
-    document.documentElement.lang = language;
+    document.documentElement.dataset.appLanguage = language;
+    document.documentElement.lang = languageLocale(language);
+    document.documentElement.dir = languageDirection(language);
 
     const apply = () => translateDocument(language);
     apply();
@@ -43,7 +46,6 @@ const translateDocument = (language: AppLanguage) => {
 
 const translateTextNodes = (root: HTMLElement, language: AppLanguage) => {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  const dictionary = translations[language];
 
   while (walker.nextNode()) {
     const node = walker.currentNode as Text;
@@ -55,16 +57,14 @@ const translateTextNodes = (root: HTMLElement, language: AppLanguage) => {
     }
 
     const storedOriginal = textOriginals.get(node);
-    const storedTranslation = storedOriginal
-      ? getTranslatedText(dictionary, storedOriginal)
-      : null;
     const original =
-      storedOriginal && (trimmed === storedOriginal || trimmed === storedTranslation)
+      storedOriginal &&
+      (trimmed === storedOriginal || isKnownTranslation(storedOriginal, trimmed))
         ? storedOriginal
         : trimmed;
     textOriginals.set(node, original);
 
-    const translated = getTranslatedText(dictionary, original);
+    const translated = translateText(language, original);
     const nextText = withOriginalSpacing(text, translated);
 
     if (node.nodeValue !== nextText) {
@@ -74,7 +74,6 @@ const translateTextNodes = (root: HTMLElement, language: AppLanguage) => {
 };
 
 const translateAttributes = (root: HTMLElement, language: AppLanguage) => {
-  const dictionary = translations[language];
   const elements = root.querySelectorAll<HTMLElement>(
     translatedAttributes.map((attribute) => `[${attribute}]`).join(","),
   );
@@ -84,7 +83,7 @@ const translateAttributes = (root: HTMLElement, language: AppLanguage) => {
       if (!element.hasAttribute(attribute)) return;
 
       const original = getOriginalAttribute(element, attribute);
-      const translated = getTranslatedText(dictionary, original);
+      const translated = translateText(language, original);
 
       if (element.getAttribute(attribute) !== translated) {
         element.setAttribute(attribute, translated);
@@ -99,10 +98,7 @@ const getOriginalAttribute = (element: HTMLElement, attribute: TranslatedAttribu
   const current = element.getAttribute(attribute) ?? "";
 
   if (stored) {
-    const dictionary = translations[document.documentElement.lang as AppLanguage] ?? translations["pt-BR"];
-    const storedTranslation = getTranslatedText(dictionary, stored);
-
-    if (current !== stored && current !== storedTranslation) {
+    if (current !== stored && !isKnownTranslation(stored, current)) {
       element.setAttribute(originalAttribute, current);
       return current;
     }
@@ -115,11 +111,10 @@ const getOriginalAttribute = (element: HTMLElement, attribute: TranslatedAttribu
   return original;
 };
 
-const getTranslatedText = (dictionary: Record<string, string>, original: string) =>
-  dictionary[original] ?? dictionary[withoutDiacritics(original)] ?? original;
-
-const withoutDiacritics = (text: string) =>
-  text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const isKnownTranslation = (original: string, current: string) =>
+  (Object.keys(translations) as AppLanguage[]).some(
+    (language) => translateText(language, original) === current,
+  );
 
 const withOriginalSpacing = (current: string, translated: string) => {
   const match = current.match(/^(\s*)(.*?)(\s*)$/s);
@@ -134,5 +129,7 @@ const withOriginalSpacing = (current: string, translated: string) => {
 const shouldSkipTextNode = (node: Text) => {
   const parent = node.parentElement;
 
-  return Boolean(parent?.closest("script, style, textarea, input, select, option"));
+  return Boolean(
+    parent?.closest("script, style, textarea, input, [data-i18n-skip='true']"),
+  );
 };

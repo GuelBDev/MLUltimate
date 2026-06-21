@@ -40,6 +40,23 @@ const defaultSettings: LauncherSettings = {
   languageSelected: false,
   minecraftOpenAction: "none",
 };
+const browserSettingsKey = "mlultimate:browser-settings";
+
+const readBrowserSettings = (): LauncherSettings => {
+  if (typeof localStorage === "undefined") return defaultSettings;
+
+  try {
+    const stored = JSON.parse(localStorage.getItem(browserSettingsKey) ?? "{}") as Partial<LauncherSettings>;
+    return { ...defaultSettings, ...stored };
+  } catch {
+    return defaultSettings;
+  }
+};
+
+const saveBrowserSettings = (settings: LauncherSettings) => {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(browserSettingsKey, JSON.stringify(settings));
+};
 
 const defaultUpdaterState: UpdaterState = {
   status: "idle",
@@ -254,12 +271,16 @@ export const launcherApi = {
   },
 
   getSettings: async () => {
-    if (!hasBridge()) return defaultSettings;
+    if (!hasBridge()) return readBrowserSettings();
     return window.mlultimate.settings.get();
   },
 
   updateSettings: async (input: UpdateLauncherSettingsInput) => {
-    if (!hasBridge()) throw desktopOnly();
+    if (!hasBridge()) {
+      const settings = { ...readBrowserSettings(), ...input };
+      saveBrowserSettings(settings);
+      return settings;
+    }
     return window.mlultimate.settings.update(input);
   },
 

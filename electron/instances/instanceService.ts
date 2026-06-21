@@ -528,14 +528,14 @@ export class InstanceService {
     );
 
     if (!response.ok) {
-      throw new Error(`${label} nÃ£o possui versÃ£o compatÃ­vel com Minecraft ${minecraftVersion}.`);
+      throw new Error(`${label} não possui versão compatível com Minecraft ${minecraftVersion}.`);
     }
 
     const version = z.array(modrinthInstallVersionSchema).parse(await response.json()).at(0);
     const file = version?.files.find((candidate) => candidate.primary) ?? version?.files.at(0);
 
     if (!version || !file) {
-      throw new Error(`${label} nÃ£o possui arquivo para baixar.`);
+      throw new Error(`${label} não possui arquivo para baixar.`);
     }
 
     await mkdir(path.join(gameDir, "mods"), { recursive: true });

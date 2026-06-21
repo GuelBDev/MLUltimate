@@ -210,7 +210,6 @@ function AppRoot() {
   const settings = useQuery({
     queryKey: settingsKey,
     queryFn: launcherApi.getSettings,
-    enabled: !isBooting,
   });
   const saveLanguage = useMutation({
     mutationFn: launcherApi.updateSettings,

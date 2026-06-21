@@ -64,7 +64,7 @@ export const SettingsPage = () => {
           ? "Atualizado"
           : updaterState?.status === "error"
             ? "Erro"
-            : "Idle";
+            : "Aguardando";
   const updateMessage = (() => {
     if (!updaterState) return "Clique em procurar para verificar se existe uma nova versão.";
     if (isChecking) return "Procurando atualizações no GitHub Releases...";
@@ -280,12 +280,13 @@ export const SettingsPage = () => {
               </p>
             </div>
           </div>
-          <Badge tone="blue">
+          <Badge tone="blue" data-i18n-skip="true">
             {languageOptions.find((language) => language.id === settings.data?.language)?.label ?? "Português Brasil"}
           </Badge>
         </div>
 
         <select
+          data-i18n-skip="true"
           value={settings.data?.language ?? "pt-BR"}
           disabled={settings.isLoading || updateSettings.isPending}
           onChange={(event) =>

@@ -20,7 +20,7 @@ export function LanguageSetupScreen({
 
   return (
     <div className="grid min-h-screen place-items-center bg-[#0D1117] px-5 text-white">
-      <Card className="w-full max-w-xl p-6">
+      <Card className="flex max-h-[calc(100dvh-2.5rem)] w-full max-w-3xl flex-col overflow-hidden p-6">
         <div className="flex items-start gap-4">
           <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-[#60A5FA]/25 bg-[#3B82F6]/12">
             <Languages className="h-6 w-6 text-[#60A5FA]" />
@@ -34,7 +34,7 @@ export function LanguageSetupScreen({
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3">
+        <div className="mt-6 grid min-h-0 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
           {languageOptions.map((language) => {
             const active = selectedLanguage === language.id;
 
@@ -42,6 +42,7 @@ export function LanguageSetupScreen({
               <button
                 key={language.id}
                 type="button"
+                data-i18n-skip="true"
                 className={`rounded-2xl border px-4 py-3 text-left transition ${
                   active
                     ? "border-[#60A5FA]/70 bg-[#3B82F6]/15"
@@ -65,7 +66,7 @@ export function LanguageSetupScreen({
 
         <Button
           type="button"
-          className="mt-6 w-full"
+          className="mt-6 w-full shrink-0"
           disabled={saving}
           onClick={() => onSave(selectedLanguage)}
         >

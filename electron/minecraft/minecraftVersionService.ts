@@ -675,7 +675,7 @@ export class MinecraftVersionService {
     const profilePath = this.getNeoForgeProfilePathById(neoForgeProfileId(neoForgeVersion));
 
     if (!(await this.isLoaderProfileComplete(profilePath))) {
-      throw new Error(`NeoForge nÃ£o estÃ¡ instalado para Minecraft ${minecraftVersion}.`);
+      throw new Error(`NeoForge não está instalado para Minecraft ${minecraftVersion}.`);
     }
 
     return loaderProfileSchema.parse(JSON.parse(await readFile(profilePath, "utf8")));

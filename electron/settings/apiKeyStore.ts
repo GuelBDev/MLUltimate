@@ -6,7 +6,22 @@ const languageKey = "app.language";
 const languageSelectedKey = "app.language.selected";
 const minecraftOpenActionKey = "minecraft.open.action";
 const defaultLanguage: AppLanguage = "pt-BR";
-const appLanguages = new Set<AppLanguage>(["pt-BR", "pt-PT", "en", "fr"]);
+const appLanguages = new Set<AppLanguage>([
+  "pt-BR",
+  "pt-PT",
+  "en",
+  "es",
+  "fr",
+  "de",
+  "it",
+  "ru",
+  "zh-CN",
+  "ja",
+  "ko",
+  "ar",
+  "hi",
+  "tr",
+]);
 const minecraftOpenActions = new Set<MinecraftOpenAction>(["none", "minimize", "background"]);
 
 export class ApiKeyStore {

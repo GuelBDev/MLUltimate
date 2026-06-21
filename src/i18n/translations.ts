@@ -1,794 +1,245 @@
+import { generatedTemplates, generatedTranslations } from "./generatedTranslations";
+import { legacyTranslations } from "./legacyTranslations";
 import type { AppLanguage } from "../types/launcher";
 
-type TranslationMap = Record<string, string>;
+export type TranslationMap = Record<string, string>;
 
-const ptBR: TranslationMap = {
-  "Home": "Home",
-  "Avatar": "Avatar",
-  "Biblioteca": "Biblioteca",
-  "Biblioteca de conteúdo": "Biblioteca de conteúdo",
-  "Meus Modpacks": "Meus Modpacks",
-  "Minhas Instâncias": "Minhas Instâncias",
-  "Minhas Instancias": "Minhas Instâncias",
-  "Explorar": "Explorar",
-  "Downloads": "Downloads",
-  "Configuracoes": "Configurações",
-  "Launcher": "Launcher",
-  "Conta do jogo": "Conta do jogo",
-  "Microsoft ou offline": "Microsoft ou offline",
-  "Nenhuma conta": "Nenhuma conta",
-  "Entre com Microsoft ou escolha um nick offline": "Entre com Microsoft ou escolha um nick offline",
-  "Modo": "Modo",
-  "Acesso": "Acesso",
-  "Licenca": "Licença",
-  "Licenca verificada": "Licença verificada",
-  "Licenca pendente": "Licença pendente",
-  "Entrar com Microsoft": "Entrar com Microsoft",
-  "Nome offline": "Nome offline",
-  "Usar modo offline": "Usar modo offline",
-  "Trocar conta": "Trocar conta",
-  "Modo offline": "Modo offline",
-  "O Play so libera offline depois que voce salvar um nick valido.":
-    "O Play só libera offline depois que você salvar um nick válido.",
-  "Perfil offline nao envia autenticacao Microsoft. Servidores que exigem conta oficial, como Hypixel, devem bloquear a entrada.":
-    "Perfil offline não envia autenticação Microsoft. Servidores que exigem conta oficial, como Hypixel, devem bloquear a entrada.",
-  "Instancias reais": "Instâncias reais",
-  "Play vanilla conectado": "Play vanilla conectado",
-  "My Profiles": "Meus perfis",
-  "Suas instancias": "Suas instâncias",
-  "Crie perfis customizados, adicione mods, resource packs e shaders, e abra a instancia pela propria grade.":
-    "Crie perfis customizados, adicione mods, resource packs e shaders, e abra a instância pela própria grade.",
-  "Criar instancia": "Criar instância",
-  "Explorar conteudo": "Explorar conteúdo",
-  "Nenhuma instancia criada": "Nenhuma instância criada",
-  "Va em Biblioteca e crie seu primeiro perfil.": "Vá em Biblioteca e crie seu primeiro perfil.",
-  "Clique em Create para criar um perfil vanilla ou customizado.":
-    "Clique em Criar para criar um perfil vanilla ou customizado.",
-  "Instancias": "Instâncias",
-  "Downloads ativos": "Downloads ativos",
-  "Mods instalados": "Mods instalados",
-  "Atualizacoes": "Atualizações",
-  "Versao instalada:": "Versão instalada:",
-  "Clique em procurar para verificar se existe uma nova versao.":
-    "Clique em procurar para verificar se existe uma nova versão.",
-  "Procurando uma nova versao no GitHub Releases...":
-    "Procurando uma nova versão no GitHub Releases...",
-  "Voce ja esta com o app atualizado.": "Você já está com o app atualizado.",
-  "Verificacao de atualizacao": "Verificação de atualização",
-  "Launcher atualizado": "Launcher atualizado",
-  "Atualizacao pronta": "Atualização pronta",
-  "Procurar atualizacoes": "Procurar atualizações",
-  "Reiniciar e atualizar": "Reiniciar e atualizar",
-  "Pronta": "Pronta",
-  "Atualizado": "Atualizado",
-  "Baixando atualizacao": "Baixando atualização",
-  "Linguagem": "Idioma",
-  "Escolha o idioma do app. A preferencia fica salva neste computador.":
-    "Escolha o idioma do app. A preferência fica salva neste computador.",
-  "Salvar": "Salvar",
-  "Limpar": "Limpar",
-  "Dados locais": "Dados locais",
-  "Instancias, versoes baixadas e conteudo instalado ficam na pasta de dados do launcher. Abra a pasta de uma instancia pela Biblioteca para gerenciar mods, resourcepacks e shaderpacks manualmente quando quiser.":
-    "Instâncias, versões baixadas e conteúdo instalado ficam na pasta de dados do launcher. Abra a pasta de uma instância pela Biblioteca para gerenciar mods, resource packs e shader packs manualmente quando quiser.",
-  "Ao abrir Minecraft": "Ao abrir Minecraft",
-  "Escolha o que o launcher deve fazer depois que a instancia iniciar.":
-    "Escolha o que o launcher deve fazer depois que a instância iniciar.",
-  "Nao fazer nada": "Não fazer nada",
-  "O launcher continua aberto normalmente.": "O launcher continua aberto normalmente.",
-  "Minimizar launcher": "Minimizar launcher",
-  "Quando o Minecraft abrir, o launcher vai para a barra de tarefas.":
-    "Quando o Minecraft abrir, o launcher vai para a barra de tarefas.",
-  "Fechar para segundo plano": "Fechar para segundo plano",
-  "Quando o Minecraft abrir, a janela do launcher fica escondida.":
-    "Quando o Minecraft abrir, a janela do launcher fica escondida.",
-  "Busque uma skin por nick, salve na biblioteca e equipe quando quiser.":
-    "Busque uma skin por nick, salve na biblioteca e equipe quando quiser.",
-  "Digite um nick do Minecraft": "Digite um nick do Minecraft",
-  "Buscar": "Buscar",
-  "Importar PNG": "Importar PNG",
-  "PNG 64x64 ou 64x32": "PNG 64x64 ou 64x32",
-  "NameMC por nick": "NameMC por nick",
-  "Abrir no NameMC": "Abrir no NameMC",
-  "Nome para salvar": "Nome para salvar",
-  "Salvar skin": "Salvar skin",
-  "Nenhuma skin selecionada": "Nenhuma skin selecionada",
-  "Busque um nick ou importe uma imagem PNG customizada.":
-    "Busque um nick ou importe uma imagem PNG customizada.",
-  "Skins salvas": "Skins salvas",
-  "A skin equipada fica marcada para uso dentro do launcher.":
-    "A skin equipada fica marcada para uso dentro do launcher.",
-  "Nenhuma skin salva": "Nenhuma skin salva",
-  "Salve uma skin por nick ou importe uma PNG customizada.":
-    "Salve uma skin por nick ou importe uma PNG customizada.",
-  "Skin customizada": "Skin customizada",
-  "Equipar": "Equipar",
-  "Ativa": "Ativa",
-  "Create": "Criar",
-  "Import": "Importar",
-  "Create Profile": "Criar perfil",
-  "Edit Profile": "Editar perfil",
-  "Modpack Name": "Nome do modpack",
-  "Minecraft Version": "Versão do Minecraft",
-  "Modloader": "Modloader",
-  "RAM": "RAM",
-  "Cancel": "Cancelar",
-  "Save": "Salvar",
-  "Creating...": "Criando...",
-  "Import Profile": "Importar perfil",
-  "Importar arquivo .zip, .mrpack, .mlultimate ou .rar":
-    "Importar arquivo .zip, .mrpack, .mlultimate ou .rar",
-  "Codigo ou URL": "Código ou URL",
-  "CurseForge ID, URL ou codigo compartilhado": "CurseForge ID, URL ou código compartilhado",
-  "Importar codigo": "Importar código",
-  "perfis": "perfis",
-  "Mods, resource packs e shaders entram pelo detalhe do perfil":
-    "Mods, resource packs e shaders entram pelo detalhe do perfil",
-  "Gerenciamento de conteudo": "Gerenciamento de conteúdo",
-  "Permitir gerenciamento de conteudo neste perfil":
-    "Permitir gerenciamento de conteúdo neste perfil",
-  "Quando desligado, o launcher nao altera mods, texturas ou shaders deste perfil.":
-    "Quando desligado, o launcher não altera mods, texturas ou shaders deste perfil.",
-  "Gerenciamento de conteudo desativado": "Gerenciamento de conteúdo desativado",
-  "Nenhum download na fila": "Nenhum download na fila",
-  "Baixe uma versao do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.":
-    "Baixe uma versão do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.",
-  "Cancelar download": "Cancelar download",
-  "Voltar": "Voltar",
-  "Play": "Play",
-  "Add Content": "Adicionar conteúdo",
-  "Nenhum conteudo deste tipo instalado ainda.": "Nenhum conteúdo deste tipo instalado ainda.",
-  "Pesquise livremente e escolha a instancia compativel na hora de instalar.":
-    "Pesquise livremente e escolha a instância compatível na hora de instalar.",
-  "Todas versoes": "Todas as versões",
-  "Todos loaders": "Todos os loaders",
-  "Atualizar lista": "Atualizar lista",
-  "Filtro ativo:": "Filtro ativo:",
-  "Nenhum resultado carregado": "Nenhum resultado carregado",
-  "A lista atualiza sozinha; use o refresh se quiser forcar uma nova consulta.":
-    "A lista atualiza sozinha; use o refresh se quiser forçar uma nova consulta.",
-  "Instalar": "Instalar",
-  "Baixar": "Baixar",
-  "Escolher provedor": "Escolher provedor",
-  "Escolha a origem do download": "Escolha a origem do download",
-  "Este conteúdo existe nos dois catálogos. Os arquivos e a composição do pacote podem variar entre os provedores.":
-    "Este conteúdo existe nos dois catálogos. Os arquivos e a composição do pacote podem variar entre os provedores.",
-  "Baixar com Modrinth": "Baixar com Modrinth",
-  "Usar a versão distribuída pelo catálogo Modrinth.":
-    "Usar a versão distribuída pelo catálogo Modrinth.",
-  "Baixar com CurseForge": "Baixar com CurseForge",
-  "Usar a versão distribuída pelo catálogo CurseForge.":
-    "Usar a versão distribuída pelo catálogo CurseForge.",
-  "Escolher instancia": "Escolher instância",
-  "Fechar": "Fechar",
-  "Compativel": "Compatível",
-  "Bloqueado": "Bloqueado",
-  "Cancelar": "Cancelar",
-  "Nenhuma instancia compativel encontrada.": "Nenhuma instância compatível encontrada.",
-  "Instancias vanilla e incompatíveis aparecem bloqueadas para evitar arquivo quebrado.":
-    "Instâncias vanilla e incompatíveis aparecem bloqueadas para evitar arquivo quebrado.",
-  "Crie uma instancia Fabric, Forge, NeoForge ou Quilt na Biblioteca antes de instalar conteudo.":
-    "Crie uma instância Fabric, Forge, NeoForge ou Quilt na Biblioteca antes de instalar conteúdo.",
-  "Instancia vanilla nao aceita instalacao automatica de mods, shaders ou modpacks.":
-    "Instância vanilla não aceita instalação automática de mods, shaders ou modpacks.",
-  "Inicializando o launcher": "Inicializando o launcher",
-  "Carregando servicos internos": "Carregando serviços internos",
-  "Carregando perfil": "Carregando perfil",
-  "Verificando sessao local": "Verificando sessão local",
-  "Checando atualizacoes": "Checando atualizações",
-  "Procurando uma versao mais recente": "Procurando uma versão mais recente",
-  "Preparando biblioteca": "Preparando biblioteca",
-  "Sincronizando instancias e downloads": "Sincronizando instâncias e downloads",
-  "Abrindo MLUltimate": "Abrindo MLUltimate",
-  "Tudo pronto para jogar": "Tudo pronto para jogar",
-  "Carregando preferencias...": "Carregando preferências...",
-  "Escolha a linguagem": "Escolha o idioma",
-  "Escolha o idioma": "Escolha o idioma",
-  "Selecione o idioma inicial do app. Voce pode alterar isso depois nas Configuracoes.":
-    "Selecione o idioma inicial do app. Você pode alterar isso depois nas Configurações.",
-  "Continuar": "Continuar",
-  "Core carregado": "Core carregado",
-  "Carregando sua conta": "Carregando sua conta",
-  "Perfil local pronto": "Perfil local pronto",
-  "Atualizacao encontrada": "Atualização encontrada",
-  "Baixando atualizacao obrigatoria": "Baixando atualização obrigatória",
-  "Instalando atualizacao": "Instalando atualização",
-  "Atualizacao baixada. Reiniciando para instalar.":
-    "Atualização baixada. Reiniciando para instalar.",
-  "Nao foi possivel verificar updates agora": "Não foi possível verificar updates agora",
-  "Nenhuma atualizacao bloqueando a entrada": "Nenhuma atualização bloqueando a entrada",
-  "Biblioteca pronta": "Biblioteca pronta",
-  "Abrindo launcher": "Abrindo launcher",
-  "Preparando sua experiencia": "Preparando sua experiência",
-  "Falha ao iniciar": "Falha ao iniciar",
-  "Tentar novamente": "Tentar novamente",
+const legacyByLanguage =
+  legacyTranslations as Partial<Record<AppLanguage, TranslationMap>>;
+const legacyPortuguese = legacyByLanguage["pt-BR"] ?? {};
+const expandedLegacy = (language: AppLanguage) => {
+  const locale = legacyByLanguage[language];
+  if (!locale) return {};
+
+  return Object.fromEntries(
+    Object.entries(locale).flatMap(([source, translation]) => {
+      const canonical = legacyPortuguese[source];
+      return canonical && canonical !== source
+        ? [
+            [source, translation],
+            [canonical, translation],
+          ]
+        : [[source, translation]];
+    }),
+  );
+};
+const technicalOverrides: Partial<Record<AppLanguage, TranslationMap>> = {
+  es: {
+    Mods: "Mods",
+    "Mods instalados": "Mods instalados",
+    Shaders: "Shaders",
+  },
+  ru: {
+    Loader: "Загрузчик",
+    Modpacks: "Модпаки",
+    "Minhas Instâncias": "Мои сборки",
+    "Minhas Instancias": "Мои сборки",
+    Instâncias: "Сборки",
+    Instancias: "Сборки",
+    "Criar instância": "Создать сборку",
+    "Criar instancia": "Создать сборку",
+  },
+  "zh-CN": {
+    Biblioteca: "内容库",
+    Loader: "加载器",
+    Modpacks: "整合包",
+    Jogar: "启动游戏",
+  },
+  ja: {
+    Biblioteca: "ライブラリ",
+    Loader: "ローダー",
+    Modpacks: "Modパック",
+    Jogar: "プレイ",
+    "Minhas Instâncias": "マイインスタンス",
+    "Minhas Instancias": "マイインスタンス",
+  },
+  ko: {
+    Biblioteca: "라이브러리",
+    Loader: "로더",
+    Modpacks: "모드팩",
+    Jogar: "플레이",
+  },
+  ar: {
+    Mods: "Mods",
+    "Mods instalados": "Mods المثبتة",
+    Shaders: "Shaders",
+    Loader: "مُحمّل المودات",
+    Modpacks: "حزم المودات",
+    "Fechar para segundo plano": "إخفاء في الخلفية",
+  },
+  hi: {
+    Biblioteca: "लाइब्रेरी",
+    Loader: "लोडर",
+    Modpacks: "मॉडपैक",
+    "Minhas Instâncias": "मेरे इंस्टेंस",
+    "Minhas Instancias": "मेरे इंस्टेंस",
+    Instâncias: "इंस्टेंस",
+    Instancias: "इंस्टेंस",
+    "Criar instância": "इंस्टेंस बनाएँ",
+    "Criar instancia": "इंस्टेंस बनाएँ",
+  },
+  tr: {
+    Loader: "Yükleyici",
+    Modpacks: "Mod paketleri",
+    "Minhas Instâncias": "Kurulumlarım",
+    "Minhas Instancias": "Kurulumlarım",
+    Instâncias: "Kurulumlar",
+    Instancias: "Kurulumlar",
+    "Criar instância": "Kurulum oluştur",
+    "Criar instancia": "Kurulum oluştur",
+  },
 };
 
-const ptPt: TranslationMap = {
-  "Home": "Início",
-  "Avatar": "Avatar",
-  "Biblioteca": "Biblioteca",
-  "Biblioteca de conteúdo": "Biblioteca de conteúdo",
-  "Meus Modpacks": "Os meus modpacks",
-  "Minhas Instâncias": "As minhas instâncias",
-  "Minhas Instancias": "As minhas instâncias",
-  "Explorar": "Explorar",
-  "Downloads": "Transferências",
-  "Configuracoes": "Definições",
-  "Launcher": "Launcher",
-  "Conta do jogo": "Conta do jogo",
-  "Microsoft ou offline": "Microsoft ou offline",
-  "Nenhuma conta": "Nenhuma conta",
-  "Entre com Microsoft ou escolha um nick offline": "Entre com Microsoft ou escolha uma alcunha offline",
-  "Modo": "Modo",
-  "Acesso": "Acesso",
-  "Licenca": "Licença",
-  "Licenca verificada": "Licença verificada",
-  "Licenca pendente": "Licença pendente",
-  "Entrar com Microsoft": "Entrar com Microsoft",
-  "Nome offline": "Nome offline",
-  "Usar modo offline": "Usar modo offline",
-  "Trocar conta": "Trocar conta",
-  "Modo offline": "Modo offline",
-  "O Play so libera offline depois que voce salvar um nick valido.":
-    "O Play só fica disponível offline depois de guardar uma alcunha válida.",
-  "Perfil offline nao envia autenticacao Microsoft. Servidores que exigem conta oficial, como Hypixel, devem bloquear a entrada.":
-    "O perfil offline não envia autenticação Microsoft. Servidores que exigem conta oficial, como o Hypixel, devem bloquear a entrada.",
-  "Instancias reais": "Instâncias reais",
-  "Play vanilla conectado": "Play vanilla ligado",
-  "My Profiles": "Os meus perfis",
-  "Suas instancias": "As suas instâncias",
-  "Crie perfis customizados, adicione mods, resource packs e shaders, e abra a instancia pela propria grade.":
-    "Crie perfis personalizados, adicione mods, resource packs e shaders, e abra a instância pela própria grelha.",
-  "Criar instancia": "Criar instância",
-  "Explorar conteudo": "Explorar conteúdo",
-  "Nenhuma instancia criada": "Nenhuma instância criada",
-  "Va em Biblioteca e crie seu primeiro perfil.": "Vá a Biblioteca e crie o seu primeiro perfil.",
-  "Clique em Create para criar um perfil vanilla ou customizado.":
-    "Clique em Criar para criar um perfil vanilla ou personalizado.",
-  "Instancias": "Instâncias",
-  "Downloads ativos": "Transferências ativas",
-  "Mods instalados": "Mods instalados",
-  "Atualizacoes": "Atualizações",
-  "Versao instalada:": "Versão instalada:",
-  "Clique em procurar para verificar se existe uma nova versao.":
-    "Clique em procurar para verificar se existe uma nova versão.",
-  "Procurando uma nova versao no GitHub Releases...":
-    "A procurar uma nova versão no GitHub Releases...",
-  "Voce ja esta com o app atualizado.": "A aplicação já está atualizada.",
-  "Verificacao de atualizacao": "Verificação de atualização",
-  "Launcher atualizado": "Launcher atualizado",
-  "Atualizacao pronta": "Atualização pronta",
-  "Procurar atualizacoes": "Procurar atualizações",
-  "Reiniciar e atualizar": "Reiniciar e atualizar",
-  "Pronta": "Pronta",
-  "Atualizado": "Atualizado",
-  "Linguagem": "Idioma",
-  "Escolha o idioma do app. A preferencia fica salva neste computador.":
-    "Escolha o idioma da aplicação. A preferência fica guardada neste computador.",
-  "Salvar": "Guardar",
-  "Limpar": "Limpar",
-  "Dados locais": "Dados locais",
-  "Ao abrir Minecraft": "Ao abrir o Minecraft",
-  "Escolha o que o launcher deve fazer depois que a instancia iniciar.":
-    "Escolha o que o launcher deve fazer depois de a instância iniciar.",
-  "Nao fazer nada": "Não fazer nada",
-  "O launcher continua aberto normalmente.": "O launcher continua aberto normalmente.",
-  "Minimizar launcher": "Minimizar launcher",
-  "Quando o Minecraft abrir, o launcher vai para a barra de tarefas.":
-    "Quando o Minecraft abrir, o launcher vai para a barra de tarefas.",
-  "Fechar para segundo plano": "Fechar para segundo plano",
-  "Quando o Minecraft abrir, a janela do launcher fica escondida.":
-    "Quando o Minecraft abrir, a janela do launcher fica escondida.",
-  "Instancias, versoes baixadas e conteudo instalado ficam na pasta de dados do launcher. Abra a pasta de uma instancia pela Biblioteca para gerenciar mods, resourcepacks e shaderpacks manualmente quando quiser.":
-    "Instâncias, versões transferidas e conteúdo instalado ficam na pasta de dados do launcher. Abra a pasta de uma instância pela Biblioteca para gerir mods, resource packs e shader packs manualmente quando quiser.",
-  "Busque uma skin por nick, salve na biblioteca e equipe quando quiser.":
-    "Procure uma skin por alcunha, guarde-a na biblioteca e equipe-a quando quiser.",
-  "Digite um nick do Minecraft": "Digite uma alcunha do Minecraft",
-  "Buscar": "Pesquisar",
-  "Importar PNG": "Importar PNG",
-  "PNG 64x64 ou 64x32": "PNG 64x64 ou 64x32",
-  "NameMC por nick": "NameMC por alcunha",
-  "Abrir no NameMC": "Abrir no NameMC",
-  "Nome para salvar": "Nome para guardar",
-  "Salvar skin": "Guardar skin",
-  "Nenhuma skin selecionada": "Nenhuma skin selecionada",
-  "Busque um nick ou importe uma imagem PNG customizada.":
-    "Procure uma alcunha ou importe uma imagem PNG personalizada.",
-  "Skins salvas": "Skins guardadas",
-  "A skin equipada fica marcada para uso dentro do launcher.":
-    "A skin equipada fica marcada para utilização dentro do launcher.",
-  "Nenhuma skin salva": "Nenhuma skin guardada",
-  "Salve uma skin por nick ou importe uma PNG customizada.":
-    "Guarde uma skin por alcunha ou importe uma PNG personalizada.",
-  "Skin customizada": "Skin personalizada",
-  "Equipar": "Equipar",
-  "Ativa": "Ativa",
-  "Create": "Criar",
-  "Import": "Importar",
-  "Create Profile": "Criar perfil",
-  "Edit Profile": "Editar perfil",
-  "Modpack Name": "Nome do modpack",
-  "Minecraft Version": "Versão do Minecraft",
-  "Modloader": "Modloader",
-  "RAM": "RAM",
-  "Cancel": "Cancelar",
-  "Save": "Guardar",
-  "Creating...": "A criar...",
-  "Import Profile": "Importar perfil",
-  "Importar arquivo .zip, .mrpack, .mlultimate ou .rar":
-    "Importar ficheiro .zip, .mrpack, .mlultimate ou .rar",
-  "Codigo ou URL": "Código ou URL",
-  "CurseForge ID, URL ou codigo compartilhado": "ID CurseForge, URL ou código partilhado",
-  "Importar codigo": "Importar código",
-  "perfis": "perfis",
-  "Mods, resource packs e shaders entram pelo detalhe do perfil":
-    "Mods, resource packs e shaders são adicionados pelo detalhe do perfil",
-  "Gerenciamento de conteudo": "Gestão de conteúdo",
-  "Permitir gerenciamento de conteudo neste perfil":
-    "Permitir gestão de conteúdo neste perfil",
-  "Quando desligado, o launcher nao altera mods, texturas ou shaders deste perfil.":
-    "Quando desligado, o launcher não altera mods, texturas ou shaders deste perfil.",
-  "Gerenciamento de conteudo desativado": "Gestão de conteúdo desativada",
-  "Nenhum download na fila": "Nenhuma transferência na fila",
-  "Baixe uma versao do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.":
-    "Transfira uma versão do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.",
-  "Cancelar download": "Cancelar transferência",
-  "Voltar": "Voltar",
-  "Play": "Jogar",
-  "Add Content": "Adicionar conteúdo",
-  "Nenhum conteudo deste tipo instalado ainda.": "Nenhum conteúdo deste tipo instalado ainda.",
-  "Pesquise livremente e escolha a instancia compativel na hora de instalar.":
-    "Pesquise livremente e escolha a instância compatível no momento de instalar.",
-  "Todas versoes": "Todas as versões",
-  "Todos loaders": "Todos os loaders",
-  "Atualizar lista": "Atualizar lista",
-  "Filtro ativo:": "Filtro ativo:",
-  "Nenhum resultado carregado": "Nenhum resultado carregado",
-  "A lista atualiza sozinha; use o refresh se quiser forcar uma nova consulta.":
-    "A lista atualiza sozinha; use o refresh se quiser forçar uma nova consulta.",
-  "Instalar": "Instalar",
-  "Baixar": "Transferir",
-  "Escolher provedor": "Escolher fornecedor",
-  "Escolha a origem do download": "Escolha a origem da transferência",
-  "Este conteúdo existe nos dois catálogos. Os arquivos e a composição do pacote podem variar entre os provedores.":
-    "Este conteúdo existe nos dois catálogos. Os ficheiros e a composição do pacote podem variar entre os fornecedores.",
-  "Baixar com Modrinth": "Transferir com o Modrinth",
-  "Usar a versão distribuída pelo catálogo Modrinth.":
-    "Utilizar a versão distribuída pelo catálogo Modrinth.",
-  "Baixar com CurseForge": "Transferir com o CurseForge",
-  "Usar a versão distribuída pelo catálogo CurseForge.":
-    "Utilizar a versão distribuída pelo catálogo CurseForge.",
-  "Escolher instancia": "Escolher instância",
-  "Fechar": "Fechar",
-  "Compativel": "Compatível",
-  "Bloqueado": "Bloqueado",
-  "Cancelar": "Cancelar",
-  "Nenhuma instancia compativel encontrada.": "Nenhuma instância compatível encontrada.",
-  "Inicializando o launcher": "A inicializar o launcher",
-  "Carregando servicos internos": "A carregar serviços internos",
-  "Carregando perfil": "A carregar perfil",
-  "Verificando sessao local": "A verificar sessão local",
-  "Checando atualizacoes": "A verificar atualizações",
-  "Procurando uma versao mais recente": "A procurar uma versão mais recente",
-  "Preparando biblioteca": "A preparar biblioteca",
-  "Sincronizando instancias e downloads": "A sincronizar instâncias e transferências",
-  "Abrindo MLUltimate": "A abrir MLUltimate",
-  "Tudo pronto para jogar": "Tudo pronto para jogar",
-  "Carregando preferencias...": "A carregar preferências...",
-  "Escolha a linguagem": "Escolha o idioma",
-  "Escolha o idioma": "Escolha o idioma",
-  "Selecione o idioma inicial do app. Voce pode alterar isso depois nas Configuracoes.":
-    "Selecione o idioma inicial da aplicação. Pode alterar isto depois nas Definições.",
-  "Continuar": "Continuar",
+export const translations = Object.fromEntries(
+  (Object.keys(generatedTranslations) as AppLanguage[]).map((language) => [
+    language,
+    {
+      ...generatedTranslations[language],
+      ...expandedLegacy(language),
+      ...(technicalOverrides[language] ?? {}),
+    },
+  ]),
+) as unknown as Record<AppLanguage, TranslationMap>;
+
+const templateMatchers = new Map<
+  AppLanguage,
+  Array<{ expression: RegExp; translation: string }>
+>();
+
+export const translateText = (language: AppLanguage, text: string) => {
+  const repaired = repairMojibake(text);
+  const dictionary = translations[language];
+  const direct =
+    dictionary[repaired] ??
+    dictionary[withoutDiacritics(repaired)] ??
+    dictionary[text] ??
+    dictionary[withoutDiacritics(text)];
+
+  if (direct) {
+    return direct;
+  }
+
+  for (const matcher of getTemplateMatchers(language)) {
+    const match = repaired.match(matcher.expression);
+    if (!match) continue;
+
+    return matcher.translation.replace(/\{\{(\d+)\}\}/g, (_, index: string) => {
+      const capture = match[Number(index) + 1];
+      return capture ?? "";
+    });
+  }
+
+  return repaired;
 };
 
-const en: TranslationMap = {
-  "Home": "Home",
-  "Avatar": "Avatar",
-  "Biblioteca": "Library",
-  "Biblioteca de conteúdo": "Content library",
-  "Meus Modpacks": "My Modpacks",
-  "Minhas Instâncias": "My Instances",
-  "Minhas Instancias": "My Instances",
-  "Explorar": "Explore",
-  "Downloads": "Downloads",
-  "Configuracoes": "Settings",
-  "Launcher": "Launcher",
-  "Conta do jogo": "Game account",
-  "Microsoft ou offline": "Microsoft or offline",
-  "Nenhuma conta": "No account",
-  "Entre com Microsoft ou escolha um nick offline": "Sign in with Microsoft or choose an offline nickname",
-  "Modo": "Mode",
-  "Acesso": "Access",
-  "Licenca": "License",
-  "Licenca verificada": "License verified",
-  "Licenca pendente": "License pending",
-  "Entrar com Microsoft": "Sign in with Microsoft",
-  "Nome offline": "Offline name",
-  "Usar modo offline": "Use offline mode",
-  "Trocar conta": "Switch account",
-  "Modo offline": "Offline mode",
-  "O Play so libera offline depois que voce salvar um nick valido.":
-    "Play is enabled offline after you save a valid nickname.",
-  "Perfil offline nao envia autenticacao Microsoft. Servidores que exigem conta oficial, como Hypixel, devem bloquear a entrada.":
-    "Offline profiles do not send Microsoft authentication. Servers that require an official account, such as Hypixel, should block access.",
-  "Instancias reais": "Real instances",
-  "Play vanilla conectado": "Vanilla Play connected",
-  "My Profiles": "My profiles",
-  "Suas instancias": "Your instances",
-  "Crie perfis customizados, adicione mods, resource packs e shaders, e abra a instancia pela propria grade.":
-    "Create custom profiles, add mods, resource packs, and shaders, then launch each instance from the grid.",
-  "Criar instancia": "Create instance",
-  "Explorar conteudo": "Explore content",
-  "Nenhuma instancia criada": "No instance created",
-  "Va em Biblioteca e crie seu primeiro perfil.": "Go to Library and create your first profile.",
-  "Clique em Create para criar um perfil vanilla ou customizado.":
-    "Click Create to create a vanilla or custom profile.",
-  "Instancias": "Instances",
-  "Downloads ativos": "Active downloads",
-  "Mods instalados": "Installed mods",
-  "Atualizacoes": "Updates",
-  "Versao instalada:": "Installed version:",
-  "Clique em procurar para verificar se existe uma nova versao.":
-    "Click check to see whether a new version is available.",
-  "Procurando uma nova versao no GitHub Releases...":
-    "Checking GitHub Releases for a new version...",
-  "Voce ja esta com o app atualizado.": "The app is already up to date.",
-  "Verificacao de atualizacao": "Update check",
-  "Launcher atualizado": "Launcher updated",
-  "Atualizacao pronta": "Update ready",
-  "Procurar atualizacoes": "Check for updates",
-  "Reiniciar e atualizar": "Restart and update",
-  "Pronta": "Ready",
-  "Atualizado": "Updated",
-  "Linguagem": "Language",
-  "Escolha o idioma do app. A preferencia fica salva neste computador.":
-    "Choose the app language. This preference is saved on this computer.",
-  "Salvar": "Save",
-  "Limpar": "Clear",
-  "Dados locais": "Local data",
-  "Ao abrir Minecraft": "When Minecraft opens",
-  "Escolha o que o launcher deve fazer depois que a instancia iniciar.":
-    "Choose what the launcher should do after the instance starts.",
-  "Nao fazer nada": "Do nothing",
-  "O launcher continua aberto normalmente.": "The launcher stays open normally.",
-  "Minimizar launcher": "Minimize launcher",
-  "Quando o Minecraft abrir, o launcher vai para a barra de tarefas.":
-    "When Minecraft opens, the launcher goes to the taskbar.",
-  "Fechar para segundo plano": "Close to background",
-  "Quando o Minecraft abrir, a janela do launcher fica escondida.":
-    "When Minecraft opens, the launcher window is hidden.",
-  "Instancias, versoes baixadas e conteudo instalado ficam na pasta de dados do launcher. Abra a pasta de uma instancia pela Biblioteca para gerenciar mods, resourcepacks e shaderpacks manualmente quando quiser.":
-    "Instances, downloaded versions, and installed content are stored in the launcher data folder. Open an instance folder from Library whenever you want to manage mods, resource packs, and shader packs manually.",
-  "Busque uma skin por nick, salve na biblioteca e equipe quando quiser.":
-    "Search for a skin by nickname, save it to your library, and equip it later.",
-  "Digite um nick do Minecraft": "Type a Minecraft nickname",
-  "Buscar": "Search",
-  "Importar PNG": "Import PNG",
-  "PNG 64x64 ou 64x32": "PNG 64x64 or 64x32",
-  "NameMC por nick": "NameMC by nickname",
-  "Abrir no NameMC": "Open in NameMC",
-  "Nome para salvar": "Name to save",
-  "Salvar skin": "Save skin",
-  "Nenhuma skin selecionada": "No skin selected",
-  "Busque um nick ou importe uma imagem PNG customizada.":
-    "Search for a nickname or import a custom PNG image.",
-  "Skins salvas": "Saved skins",
-  "A skin equipada fica marcada para uso dentro do launcher.":
-    "The equipped skin is marked for use inside the launcher.",
-  "Nenhuma skin salva": "No saved skins",
-  "Salve uma skin por nick ou importe uma PNG customizada.":
-    "Save a skin by nickname or import a custom PNG.",
-  "Skin customizada": "Custom skin",
-  "Equipar": "Equip",
-  "Ativa": "Active",
-  "Create": "Create",
-  "Import": "Import",
-  "Create Profile": "Create profile",
-  "Edit Profile": "Edit profile",
-  "Modpack Name": "Modpack name",
-  "Minecraft Version": "Minecraft version",
-  "Modloader": "Modloader",
-  "RAM": "RAM",
-  "Cancel": "Cancel",
-  "Save": "Save",
-  "Creating...": "Creating...",
-  "Import Profile": "Import profile",
-  "Importar arquivo .zip, .mrpack, .mlultimate ou .rar":
-    "Import .zip, .mrpack, .mlultimate, or .rar file",
-  "Codigo ou URL": "Code or URL",
-  "CurseForge ID, URL ou codigo compartilhado": "CurseForge ID, URL, or shared code",
-  "Importar codigo": "Import code",
-  "perfis": "profiles",
-  "Mods, resource packs e shaders entram pelo detalhe do perfil":
-    "Mods, resource packs, and shaders are added from the profile detail.",
-  "Gerenciamento de conteudo": "Content management",
-  "Permitir gerenciamento de conteudo neste perfil":
-    "Allow content management for this profile",
-  "Quando desligado, o launcher nao altera mods, texturas ou shaders deste perfil.":
-    "When disabled, the launcher will not change mods, textures, or shaders in this profile.",
-  "Gerenciamento de conteudo desativado": "Content management disabled",
-  "Nenhum download na fila": "No downloads queued",
-  "Baixe uma versao do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.":
-    "Download a Minecraft version, mod, texture, or shader to follow progress here.",
-  "Cancelar download": "Cancel download",
-  "Voltar": "Back",
-  "Play": "Play",
-  "Add Content": "Add content",
-  "Nenhum conteudo deste tipo instalado ainda.": "No content of this type installed yet.",
-  "Pesquise livremente e escolha a instancia compativel na hora de instalar.":
-    "Search freely and choose a compatible instance when installing.",
-  "Todas versoes": "All versions",
-  "Todos loaders": "All loaders",
-  "Atualizar lista": "Refresh list",
-  "Filtro ativo:": "Active filter:",
-  "Nenhum resultado carregado": "No results loaded",
-  "A lista atualiza sozinha; use o refresh se quiser forcar uma nova consulta.":
-    "The list refreshes automatically; use refresh if you want to force a new request.",
-  "Instalar": "Install",
-  "Baixar": "Download",
-  "Escolher provedor": "Choose provider",
-  "Escolha a origem do download": "Choose the download source",
-  "Este conteúdo existe nos dois catálogos. Os arquivos e a composição do pacote podem variar entre os provedores.":
-    "This content is available in both catalogs. Files and pack composition may differ between providers.",
-  "Baixar com Modrinth": "Download with Modrinth",
-  "Usar a versão distribuída pelo catálogo Modrinth.":
-    "Use the version distributed through the Modrinth catalog.",
-  "Baixar com CurseForge": "Download with CurseForge",
-  "Usar a versão distribuída pelo catálogo CurseForge.":
-    "Use the version distributed through the CurseForge catalog.",
-  "Escolher instancia": "Choose instance",
-  "Fechar": "Close",
-  "Compativel": "Compatible",
-  "Bloqueado": "Blocked",
-  "Cancelar": "Cancel",
-  "Nenhuma instancia compativel encontrada.": "No compatible instance found.",
-  "Instancias vanilla e incompatíveis aparecem bloqueadas para evitar arquivo quebrado.":
-    "Vanilla and incompatible instances appear blocked to avoid broken files.",
-  "Crie uma instancia Fabric, Forge, NeoForge ou Quilt na Biblioteca antes de instalar conteudo.":
-    "Create a Fabric, Forge, NeoForge, or Quilt instance in Library before installing content.",
-  "Instancia vanilla nao aceita instalacao automatica de mods, shaders ou modpacks.":
-    "Vanilla instances do not support automatic installation of mods, shaders, or modpacks.",
-  "Inicializando o launcher": "Initializing launcher",
-  "Carregando servicos internos": "Loading internal services",
-  "Carregando perfil": "Loading profile",
-  "Verificando sessao local": "Checking local session",
-  "Checando atualizacoes": "Checking updates",
-  "Procurando uma versao mais recente": "Looking for a newer version",
-  "Preparando biblioteca": "Preparing library",
-  "Sincronizando instancias e downloads": "Syncing instances and downloads",
-  "Abrindo MLUltimate": "Opening MLUltimate",
-  "Tudo pronto para jogar": "Ready to play",
-  "Carregando preferencias...": "Loading preferences...",
-  "Escolha a linguagem": "Choose language",
-  "Escolha o idioma": "Choose language",
-  "Selecione o idioma inicial do app. Voce pode alterar isso depois nas Configuracoes.":
-    "Select the initial app language. You can change this later in Settings.",
-  "Continuar": "Continue",
-  "Core carregado": "Core loaded",
-  "Carregando sua conta": "Loading your account",
-  "Perfil local pronto": "Local profile ready",
-  "Atualizacao encontrada": "Update found",
-  "Baixando atualizacao obrigatoria": "Downloading required update",
-  "Instalando atualizacao": "Installing update",
-  "Atualizacao baixada. Reiniciando para instalar.":
-    "Update downloaded. Restarting to install.",
-  "Nao foi possivel verificar updates agora": "Could not check for updates right now",
-  "Nenhuma atualizacao bloqueando a entrada": "No update is blocking startup",
-  "Biblioteca pronta": "Library ready",
-  "Abrindo launcher": "Opening launcher",
-  "Preparando sua experiencia": "Preparing your experience",
-  "Falha ao iniciar": "Startup failed",
-  "Tentar novamente": "Try again",
+export const repairMojibake = (text: string) => {
+  let repaired = text;
+
+  for (let pass = 0; pass < 3 && hasMojibake(repaired); pass += 1) {
+    const bytes = toWindows1252Bytes(repaired);
+    if (!bytes) break;
+
+    try {
+      const decoded = new TextDecoder("utf-8", { fatal: true }).decode(
+        bytes,
+      );
+      if (mojibakeScore(decoded) >= mojibakeScore(repaired)) break;
+      repaired = decoded;
+    } catch {
+      break;
+    }
+  }
+
+  return repaired;
 };
 
-const fr: TranslationMap = {
-  "Home": "Accueil",
-  "Avatar": "Avatar",
-  "Biblioteca": "Bibliothèque",
-  "Biblioteca de conteúdo": "Bibliothèque de contenu",
-  "Meus Modpacks": "Mes modpacks",
-  "Minhas Instâncias": "Mes instances",
-  "Minhas Instancias": "Mes instances",
-  "Explorar": "Explorer",
-  "Downloads": "Téléchargements",
-  "Configuracoes": "Paramètres",
-  "Launcher": "Lanceur",
-  "Conta do jogo": "Compte de jeu",
-  "Microsoft ou offline": "Microsoft ou hors ligne",
-  "Nenhuma conta": "Aucun compte",
-  "Entre com Microsoft ou escolha um nick offline":
-    "Connectez-vous avec Microsoft ou choisissez un pseudo hors ligne",
-  "Modo": "Mode",
-  "Acesso": "Accès",
-  "Licenca": "Licence",
-  "Licenca verificada": "Licence vérifiée",
-  "Licenca pendente": "Licence en attente",
-  "Entrar com Microsoft": "Se connecter avec Microsoft",
-  "Nome offline": "Nom hors ligne",
-  "Usar modo offline": "Utiliser le mode hors ligne",
-  "Trocar conta": "Changer de compte",
-  "Modo offline": "Mode hors ligne",
-  "O Play so libera offline depois que voce salvar um nick valido.":
-    "Le bouton Play est activé hors ligne après l'enregistrement d'un pseudo valide.",
-  "Perfil offline nao envia autenticacao Microsoft. Servidores que exigem conta oficial, como Hypixel, devem bloquear a entrada.":
-    "Le profil hors ligne n'envoie pas d'authentification Microsoft. Les serveurs qui exigent un compte officiel, comme Hypixel, devraient bloquer l'accès.",
-  "Instancias reais": "Instances réelles",
-  "Play vanilla conectado": "Play vanilla connecté",
-  "My Profiles": "Mes profils",
-  "Suas instancias": "Vos instances",
-  "Crie perfis customizados, adicione mods, resource packs e shaders, e abra a instancia pela propria grade.":
-    "Créez des profils personnalisés, ajoutez des mods, packs de ressources et shaders, puis lancez chaque instance depuis la grille.",
-  "Criar instancia": "Créer une instance",
-  "Explorar conteudo": "Explorer le contenu",
-  "Nenhuma instancia criada": "Aucune instance créée",
-  "Va em Biblioteca e crie seu primeiro perfil.": "Allez dans Bibliothèque et créez votre premier profil.",
-  "Clique em Create para criar um perfil vanilla ou customizado.":
-    "Cliquez sur Créer pour créer un profil vanilla ou personnalisé.",
-  "Instancias": "Instances",
-  "Downloads ativos": "Téléchargements actifs",
-  "Mods instalados": "Mods installés",
-  "Atualizacoes": "Mises à jour",
-  "Versao instalada:": "Version installée :",
-  "Clique em procurar para verificar se existe uma nova versao.":
-    "Cliquez sur rechercher pour vérifier s'il existe une nouvelle version.",
-  "Procurando uma nova versao no GitHub Releases...":
-    "Recherche d'une nouvelle version dans GitHub Releases...",
-  "Voce ja esta com o app atualizado.": "L'application est déjà à jour.",
-  "Verificacao de atualizacao": "Vérification des mises à jour",
-  "Launcher atualizado": "Lanceur à jour",
-  "Atualizacao pronta": "Mise à jour prête",
-  "Procurar atualizacoes": "Rechercher des mises à jour",
-  "Reiniciar e atualizar": "Redémarrer et mettre à jour",
-  "Pronta": "Prête",
-  "Atualizado": "À jour",
-  "Linguagem": "Langue",
-  "Escolha o idioma do app. A preferencia fica salva neste computador.":
-    "Choisissez la langue de l'application. La préférence est enregistrée sur cet ordinateur.",
-  "Salvar": "Enregistrer",
-  "Limpar": "Effacer",
-  "Dados locais": "Données locales",
-  "Ao abrir Minecraft": "À l'ouverture de Minecraft",
-  "Escolha o que o launcher deve fazer depois que a instancia iniciar.":
-    "Choisissez ce que le lanceur doit faire après le démarrage de l'instance.",
-  "Nao fazer nada": "Ne rien faire",
-  "O launcher continua aberto normalmente.": "Le lanceur reste ouvert normalement.",
-  "Minimizar launcher": "Réduire le lanceur",
-  "Quando o Minecraft abrir, o launcher vai para a barra de tarefas.":
-    "Quand Minecraft s'ouvre, le lanceur va dans la barre des tâches.",
-  "Fechar para segundo plano": "Fermer en arrière-plan",
-  "Quando o Minecraft abrir, a janela do launcher fica escondida.":
-    "Quand Minecraft s'ouvre, la fenêtre du lanceur est masquée.",
-  "Instancias, versoes baixadas e conteudo instalado ficam na pasta de dados do launcher. Abra a pasta de uma instancia pela Biblioteca para gerenciar mods, resourcepacks e shaderpacks manualmente quando quiser.":
-    "Les instances, versions téléchargées et contenus installés sont stockés dans le dossier de données du lanceur. Ouvrez le dossier d'une instance depuis la Bibliothèque pour gérer les mods, packs de ressources et shader packs manuellement.",
-  "Busque uma skin por nick, salve na biblioteca e equipe quando quiser.":
-    "Recherchez une skin par pseudo, sauvegardez-la dans la bibliothèque et équipez-la plus tard.",
-  "Digite um nick do Minecraft": "Entrez un pseudo Minecraft",
-  "Buscar": "Rechercher",
-  "Importar PNG": "Importer PNG",
-  "PNG 64x64 ou 64x32": "PNG 64x64 ou 64x32",
-  "NameMC por nick": "NameMC par pseudo",
-  "Abrir no NameMC": "Ouvrir dans NameMC",
-  "Nome para salvar": "Nom à enregistrer",
-  "Salvar skin": "Enregistrer la skin",
-  "Nenhuma skin selecionada": "Aucune skin sélectionnée",
-  "Busque um nick ou importe uma imagem PNG customizada.":
-    "Recherchez un pseudo ou importez une image PNG personnalisée.",
-  "Skins salvas": "Skins enregistrées",
-  "A skin equipada fica marcada para uso dentro do launcher.":
-    "La skin équipée est marquée pour une utilisation dans le lanceur.",
-  "Nenhuma skin salva": "Aucune skin enregistrée",
-  "Salve uma skin por nick ou importe uma PNG customizada.":
-    "Enregistrez une skin par pseudo ou importez un PNG personnalisé.",
-  "Skin customizada": "Skin personnalisée",
-  "Equipar": "Équiper",
-  "Ativa": "Active",
-  "Create": "Créer",
-  "Import": "Importer",
-  "Create Profile": "Créer un profil",
-  "Edit Profile": "Modifier le profil",
-  "Modpack Name": "Nom du modpack",
-  "Minecraft Version": "Version Minecraft",
-  "Modloader": "Modloader",
-  "RAM": "RAM",
-  "Cancel": "Annuler",
-  "Save": "Enregistrer",
-  "Creating...": "Création...",
-  "Import Profile": "Importer un profil",
-  "Importar arquivo .zip, .mrpack, .mlultimate ou .rar":
-    "Importer un fichier .zip, .mrpack, .mlultimate ou .rar",
-  "Codigo ou URL": "Code ou URL",
-  "CurseForge ID, URL ou codigo compartilhado": "ID CurseForge, URL ou code partagé",
-  "Importar codigo": "Importer le code",
-  "perfis": "profils",
-  "Mods, resource packs e shaders entram pelo detalhe do perfil":
-    "Les mods, packs de ressources et shaders s'ajoutent depuis le détail du profil.",
-  "Gerenciamento de conteudo": "Gestion du contenu",
-  "Permitir gerenciamento de conteudo neste perfil":
-    "Autoriser la gestion du contenu pour ce profil",
-  "Quando desligado, o launcher nao altera mods, texturas ou shaders deste perfil.":
-    "Quand cette option est désactivée, le lanceur ne modifie pas les mods, textures ou shaders de ce profil.",
-  "Gerenciamento de conteudo desativado": "Gestion du contenu désactivée",
-  "Nenhum download na fila": "Aucun téléchargement en file",
-  "Baixe uma versao do Minecraft, mod, textura ou shader para acompanhar o progresso aqui.":
-    "Téléchargez une version de Minecraft, un mod, une texture ou un shader pour suivre la progression ici.",
-  "Cancelar download": "Annuler le téléchargement",
-  "Voltar": "Retour",
-  "Play": "Jouer",
-  "Add Content": "Ajouter du contenu",
-  "Nenhum conteudo deste tipo instalado ainda.": "Aucun contenu de ce type n'est encore installé.",
-  "Pesquise livremente e escolha a instancia compativel na hora de instalar.":
-    "Recherchez librement et choisissez une instance compatible au moment de l'installation.",
-  "Todas versoes": "Toutes les versions",
-  "Todos loaders": "Tous les loaders",
-  "Atualizar lista": "Actualiser la liste",
-  "Filtro ativo:": "Filtre actif :",
-  "Nenhum resultado carregado": "Aucun résultat chargé",
-  "A lista atualiza sozinha; use o refresh se quiser forcar uma nova consulta.":
-    "La liste se met à jour automatiquement ; utilisez le bouton Actualiser pour forcer une nouvelle requête.",
-  "Instalar": "Installer",
-  "Baixar": "Télécharger",
-  "Escolher provedor": "Choisir le fournisseur",
-  "Escolha a origem do download": "Choisissez la source du téléchargement",
-  "Este conteúdo existe nos dois catálogos. Os arquivos e a composição do pacote podem variar entre os provedores.":
-    "Ce contenu existe dans les deux catalogues. Les fichiers et la composition du pack peuvent varier selon le fournisseur.",
-  "Baixar com Modrinth": "Télécharger avec Modrinth",
-  "Usar a versão distribuída pelo catálogo Modrinth.":
-    "Utiliser la version distribuée dans le catalogue Modrinth.",
-  "Baixar com CurseForge": "Télécharger avec CurseForge",
-  "Usar a versão distribuída pelo catálogo CurseForge.":
-    "Utiliser la version distribuée dans le catalogue CurseForge.",
-  "Escolher instancia": "Choisir une instance",
-  "Fechar": "Fermer",
-  "Compativel": "Compatible",
-  "Bloqueado": "Bloqué",
-  "Cancelar": "Annuler",
-  "Nenhuma instancia compativel encontrada.": "Aucune instance compatible trouvée.",
-  "Instancias vanilla e incompatíveis aparecem bloqueadas para evitar arquivo quebrado.":
-    "Les instances vanilla et incompatibles apparaissent bloquées pour éviter les fichiers cassés.",
-  "Crie uma instancia Fabric, Forge, NeoForge ou Quilt na Biblioteca antes de instalar conteudo.":
-    "Créez une instance Fabric, Forge, NeoForge ou Quilt dans la Bibliothèque avant d'installer du contenu.",
-  "Instancia vanilla nao aceita instalacao automatica de mods, shaders ou modpacks.":
-    "Une instance vanilla n'accepte pas l'installation automatique de mods, shaders ou modpacks.",
-  "Inicializando o launcher": "Initialisation du lanceur",
-  "Carregando servicos internos": "Chargement des services internes",
-  "Carregando perfil": "Chargement du profil",
-  "Verificando sessao local": "Vérification de la session locale",
-  "Checando atualizacoes": "Vérification des mises à jour",
-  "Procurando uma versao mais recente": "Recherche d'une version plus récente",
-  "Preparando biblioteca": "Préparation de la bibliothèque",
-  "Sincronizando instancias e downloads": "Synchronisation des instances et téléchargements",
-  "Abrindo MLUltimate": "Ouverture de MLUltimate",
-  "Tudo pronto para jogar": "Tout est prêt pour jouer",
-  "Carregando preferencias...": "Chargement des préférences...",
-  "Escolha a linguagem": "Choisissez la langue",
-  "Escolha o idioma": "Choisissez la langue",
-  "Selecione o idioma inicial do app. Voce pode alterar isso depois nas Configuracoes.":
-    "Sélectionnez la langue initiale de l'application. Vous pourrez la modifier plus tard dans Paramètres.",
-  "Continuar": "Continuer",
-  "Core carregado": "Core chargé",
-  "Carregando sua conta": "Chargement de votre compte",
-  "Perfil local pronto": "Profil local prêt",
-  "Atualizacao encontrada": "Mise à jour trouvée",
-  "Baixando atualizacao obrigatoria": "Téléchargement de la mise à jour requise",
-  "Instalando atualizacao": "Installation de la mise à jour",
-  "Atualizacao baixada. Reiniciando para instalar.":
-    "Mise à jour téléchargée. Redémarrage pour l'installation.",
-  "Nao foi possivel verificar updates agora": "Impossible de vérifier les mises à jour maintenant",
-  "Nenhuma atualizacao bloqueando a entrada": "Aucune mise à jour ne bloque le démarrage",
-  "Biblioteca pronta": "Bibliothèque prête",
-  "Abrindo launcher": "Ouverture du lanceur",
-  "Preparando sua experiencia": "Préparation de votre expérience",
-  "Falha ao iniciar": "Échec du démarrage",
-  "Tentar novamente": "Réessayer",
+const getTemplateMatchers = (language: AppLanguage) => {
+  const cached = templateMatchers.get(language);
+  if (cached) return cached;
+
+  const matchers = Object.entries(generatedTemplates[language]).map(
+    ([template, translation]) => ({
+      expression: templateExpression(template),
+      translation,
+    }),
+  );
+  templateMatchers.set(language, matchers);
+  return matchers;
 };
 
-export const translations: Record<AppLanguage, TranslationMap> = {
-  "pt-BR": ptBR,
-  "pt-PT": ptPt,
-  en,
-  fr,
+const templateExpression = (template: string) => {
+  const segments = template.split(/\{\{\d+\}\}/g).map(escapeRegExp);
+  const placeholders = template.match(/\{\{\d+\}\}/g) ?? [];
+  let source = "^";
+
+  placeholders.forEach((_, index) => {
+    source += `${segments[index]}(.+?)`;
+  });
+  source += `${segments.at(-1) ?? ""}$`;
+
+  return new RegExp(source, "u");
 };
 
-export const translateText = (language: AppLanguage, text: string) =>
-  translations[language][text] ?? text;
+const escapeRegExp = (text: string) =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const withoutDiacritics = (text: string) =>
+  text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+const hasMojibake = (text: string) =>
+  /(?:Ã[\u0080-\u00bf]|Â[\u0080-\u00bf]|Ãƒ|â(?:€|€™|€œ|€|€“|€”))/u.test(text);
+
+const mojibakeScore = (text: string) =>
+  (
+    text.match(
+      /(?:Ã[\u0080-\u00bf]|Â[\u0080-\u00bf]|Ãƒ|â(?:€|€™|€œ|€|€“|€”)|�)/gu,
+    ) ?? []
+  ).length;
+
+const windows1252Bytes = new Map<string, number>([
+  ["€", 0x80],
+  ["‚", 0x82],
+  ["ƒ", 0x83],
+  ["„", 0x84],
+  ["…", 0x85],
+  ["†", 0x86],
+  ["‡", 0x87],
+  ["ˆ", 0x88],
+  ["‰", 0x89],
+  ["Š", 0x8a],
+  ["‹", 0x8b],
+  ["Œ", 0x8c],
+  ["Ž", 0x8e],
+  ["‘", 0x91],
+  ["’", 0x92],
+  ["“", 0x93],
+  ["”", 0x94],
+  ["•", 0x95],
+  ["–", 0x96],
+  ["—", 0x97],
+  ["˜", 0x98],
+  ["™", 0x99],
+  ["š", 0x9a],
+  ["›", 0x9b],
+  ["œ", 0x9c],
+  ["ž", 0x9e],
+  ["Ÿ", 0x9f],
+]);
+
+const toWindows1252Bytes = (text: string) => {
+  const bytes: number[] = [];
+
+  for (const character of text) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint <= 0xff) {
+      bytes.push(codePoint);
+      continue;
+    }
+
+    const mapped = windows1252Bytes.get(character);
+    if (mapped === undefined) return null;
+    bytes.push(mapped);
+  }
+
+  return Uint8Array.from(bytes);
+};
