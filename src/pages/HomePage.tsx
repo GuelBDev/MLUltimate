@@ -99,6 +99,9 @@ const changelog = [
     tag: rawAppVersion,
     date: "Atual",
     changes: [
+      "Instalador Linux corrigido e validado abrindo o launcher após a instalação.",
+      "Compatibilidade verificada em sistemas baseados no Ubuntu 22.04 e 24.04.",
+      "Dependência de armazenamento seguro adicionada para contas Microsoft no Linux.",
       "Novo instalador DEB compatível com Lubuntu, Ubuntu e derivados.",
       "AppImage portátil disponível como alternativa ao instalador.",
       "Java automático e bibliotecas do Minecraft agora respeitam corretamente o Linux.",
