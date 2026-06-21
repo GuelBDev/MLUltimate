@@ -94,6 +94,11 @@ const createWindow = async () => {
   mainWindow.once("ready-to-show", showMainWindow);
   const windowShowFallback = setTimeout(showMainWindow, 3500);
   mainWindow.once("show", () => clearTimeout(windowShowFallback));
+  mainWindow.webContents.once("did-finish-load", () => {
+    if (process.env.MLULTIMATE_QA_EXIT_AFTER_READY === "1") {
+      setTimeout(() => app.quit(), 1000);
+    }
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://") || url.startsWith("http://")) {
