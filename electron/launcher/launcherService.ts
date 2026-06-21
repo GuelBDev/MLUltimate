@@ -701,6 +701,18 @@ const buildMemoryJvmArgs = (ramMb: number) => {
 const isFabricBasedLoader = (loader: string) =>
   loader === "fabric" || loader === "iris" || loader === "iris-sodium";
 
+const minecraftOperatingSystem = () => {
+  if (process.platform === "win32") {
+    return "windows";
+  }
+
+  if (process.platform === "darwin") {
+    return "osx";
+  }
+
+  return "linux";
+};
+
 const killProcessTree = (child: ChildProcess) =>
   new Promise<void>((resolve) => {
     if (!child.pid || child.killed) {
@@ -740,8 +752,7 @@ const rulesAllow = (
   let allowed = false;
 
   for (const rule of rules) {
-    const osMatches =
-      !rule.os?.name || rule.os.name === "windows" || rule.os.name === process.platform;
+    const osMatches = !rule.os?.name || rule.os.name === minecraftOperatingSystem();
     const featureMatches = !rule.features;
 
     if (osMatches && featureMatches) {

@@ -99,6 +99,9 @@ const changelog = [
     tag: rawAppVersion,
     date: "Atual",
     changes: [
+      "Novo instalador DEB compatível com Lubuntu, Ubuntu e derivados.",
+      "AppImage portátil disponível como alternativa ao instalador.",
+      "Java automático e bibliotecas do Minecraft agora respeitam corretamente o Linux.",
       "Interface completa traduzida para 14 idiomas principais.",
       "Seletor de idioma ampliado no primeiro acesso e nas Configurações.",
       "Textos corrompidos e problemas de acentuação foram corrigidos em todo o app.",

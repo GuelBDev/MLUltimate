@@ -286,7 +286,9 @@ const fetchApiReleaseCandidates = async (): Promise<ReleaseCandidate[]> => {
     .map((release): ReleaseCandidate | null => {
       const version = normalizeVersion(release.tag_name);
       const hasInstaller = release.assets.some(isDesktopInstallerAsset);
-      const hasUpdateManifest = release.assets.some((asset) => asset.name === "latest.yml");
+      const hasUpdateManifest = release.assets.some(
+        (asset) => asset.name === updateManifestName(),
+      );
 
       if (!version || !hasInstaller) {
         return null;
@@ -303,18 +305,31 @@ const fetchApiReleaseCandidates = async (): Promise<ReleaseCandidate[]> => {
 };
 
 const updateManifestExists = async (tag: string) => {
-  const response = await fetch(`${RELEASE_DOWNLOAD_BASE}/${tag}/latest.yml`, {
+  const response = await fetch(
+    `${RELEASE_DOWNLOAD_BASE}/${tag}/${updateManifestName()}`,
+    {
     headers: {
       Accept: "application/x-yaml, text/yaml, text/plain",
       "User-Agent": "MLUltimate-Launcher-Updater",
     },
-  });
+    },
+  );
 
   return response.ok;
 };
 
-const isDesktopInstallerAsset = (asset: { name: string }) =>
-  asset.name.endsWith(".exe") && !asset.name.toLowerCase().includes("installer");
+const updateManifestName = () =>
+  process.platform === "linux" ? "latest-linux.yml" : "latest.yml";
+
+const isDesktopInstallerAsset = (asset: { name: string }) => {
+  const name = asset.name.toLowerCase();
+
+  if (process.platform === "linux") {
+    return name.endsWith(".appimage") || name.endsWith(".deb");
+  }
+
+  return name.endsWith(".exe") && !name.includes("installer");
+};
 
 const normalizeVersion = (version: string) => version.replace(/^v/i, "");
 

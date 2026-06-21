@@ -1,7 +1,7 @@
 {
   "name": "mlultimate-launcher",
   "private": true,
-  "version": "2.7.1-alpha.1",
+  "version": "2.7.1-alpha.2",
   "description": "MLUltimate Launcher 2.7.1 desktop launcher for Minecraft.",
   "author": "MLUltimate",
   "desktopName": "MLUltimate Launcher",
@@ -19,9 +19,10 @@
     "build:electron": "node scripts/build-electron.mjs",
     "i18n:generate": "node scripts/generate-i18n.mjs",
     "build:online-installer": "node scripts/build-online-installer.mjs",
-    "dist": "npm run build && electron-builder --win nsis --linux tar.gz",
+    "dist": "npm run build && electron-builder --win nsis --linux deb AppImage",
     "dist:win": "npm run build && electron-builder --win nsis && npm run build:online-installer",
-    "dist:linux": "npm run build && electron-builder --linux tar.gz",
+    "dist:linux": "npm run build && electron-builder --linux deb AppImage",
+    "dist:linux:deb": "npm run build && electron-builder --linux deb",
     "dist:linux:appimage": "npm run build && electron-builder --linux AppImage",
     "release:github": "npm run build && electron-builder --win nsis --publish always",
     "lint": "eslint .",
@@ -73,10 +74,40 @@
     "linux": {
       "icon": "build/icon.png",
       "synopsis": "Minecraft launcher",
+      "description": "Launcher desktop para instalar, organizar e jogar Minecraft e modpacks.",
+      "maintainer": "MLUltimate <GuelBDev@users.noreply.github.com>",
+      "vendor": "MLUltimate",
+      "artifactName": "MLUltimate-Launcher-${version}-linux-x64.${ext}",
       "syncDesktopName": true,
       "category": "Game",
       "target": [
-        "tar.gz"
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "executableName": "mlultimate-launcher"
+    },
+    "deb": {
+      "priority": "optional",
+      "compression": "xz",
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1"
       ]
     }
   },

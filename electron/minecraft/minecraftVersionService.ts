@@ -917,8 +917,7 @@ const rulesAllow = (rules?: z.infer<typeof ruleSchema>[]) => {
   let allowed = false;
 
   for (const rule of rules) {
-    const osMatches =
-      !rule.os?.name || rule.os.name === "windows" || rule.os.name === process.platform;
+    const osMatches = !rule.os?.name || rule.os.name === minecraftOperatingSystem();
 
     if (osMatches) {
       allowed = rule.action === "allow";
@@ -926,6 +925,18 @@ const rulesAllow = (rules?: z.infer<typeof ruleSchema>[]) => {
   }
 
   return allowed;
+};
+
+const minecraftOperatingSystem = () => {
+  if (process.platform === "win32") {
+    return "windows";
+  }
+
+  if (process.platform === "darwin") {
+    return "osx";
+  }
+
+  return "linux";
 };
 
 const normalizeLightweightLoaderVersion = (version?: string) =>

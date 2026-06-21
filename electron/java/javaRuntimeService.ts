@@ -1,7 +1,7 @@
 import AdmZip from "adm-zip";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { net } from "electron";
@@ -128,8 +128,9 @@ export class JavaRuntimeService {
   }
 
   private async downloadTemurinRuntime(requiredMajor: number) {
+    const operatingSystem = process.platform === "win32" ? "windows" : "linux";
     const response = await fetchWithElectronNet(
-      `${ADOPTIUM_API}/${requiredMajor}/hotspot?architecture=x64&image_type=jre&os=windows&vendor=eclipse`,
+      `${ADOPTIUM_API}/${requiredMajor}/hotspot?architecture=x64&image_type=jre&os=${operatingSystem}&vendor=eclipse`,
       `Buscar Java ${requiredMajor}`,
     );
 
@@ -163,12 +164,16 @@ export class JavaRuntimeService {
 
     await rm(extractDir, { recursive: true, force: true });
     await mkdir(extractDir, { recursive: true });
-    new AdmZip(archivePath).extractAllTo(extractDir, true);
+    await extractRuntimeArchive(archivePath, extractDir);
 
     const java = await this.findJavaInDirectory(extractDir);
 
     if (!java) {
-      throw new Error(`Java ${requiredMajor} foi baixado, mas java.exe não foi encontrado.`);
+      throw new Error(`Java ${requiredMajor} foi baixado, mas o executável não foi encontrado.`);
+    }
+
+    if (process.platform !== "win32") {
+      await chmod(java, 0o755);
     }
 
     return java;
@@ -205,6 +210,31 @@ export class JavaRuntimeService {
     return null;
   }
 }
+
+const extractRuntimeArchive = async (archivePath: string, extractDir: string) => {
+  const normalizedPath = archivePath.toLowerCase();
+
+  if (normalizedPath.endsWith(".zip")) {
+    new AdmZip(archivePath).extractAllTo(extractDir, true);
+    return;
+  }
+
+  if (normalizedPath.endsWith(".tar.gz") || normalizedPath.endsWith(".tgz")) {
+    await new Promise<void>((resolve, reject) => {
+      execFile("tar", ["-xzf", archivePath, "-C", extractDir], (error) => {
+        if (error) {
+          reject(new Error(`Não foi possível extrair o runtime Java: ${error.message}`));
+          return;
+        }
+
+        resolve();
+      });
+    });
+    return;
+  }
+
+  throw new Error(`Formato de runtime Java não suportado: ${path.basename(archivePath)}`);
+};
 
 const normalizeMajorVersion = (majorVersion?: number) => {
   if (!majorVersion || majorVersion < 8) {
