@@ -13,6 +13,7 @@ import { DownloadsPage } from "./pages/DownloadsPage";
 import { ExplorePage } from "./pages/ExplorePage";
 import { HomePage } from "./pages/HomePage";
 import { LibraryPage } from "./pages/LibraryPage";
+import { PvpPage } from "./pages/PvpPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { launcherApi } from "./services/launcherApi";
 import type { ContentType } from "./types/launcher";
@@ -71,6 +72,7 @@ const useHudScaleControls = () => {
 const pageTitles: Record<PageId, string> = {
   home: "Home",
   avatar: "Avatar",
+  pvp: "PVP",
   library: "Minhas Instâncias",
   explore: "Biblioteca",
   downloads: "Downloads",
@@ -134,6 +136,8 @@ function AppShell() {
         return <DownloadsPage />;
       case "avatar":
         return <AvatarPage />;
+      case "pvp":
+        return <PvpPage />;
       case "settings":
         return <SettingsPage />;
       case "explore":

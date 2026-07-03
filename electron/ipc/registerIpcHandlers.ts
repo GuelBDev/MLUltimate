@@ -20,6 +20,14 @@ const offlineLoginSchema = z.object({
 const launchRequestSchema = z.object({
   instanceId: z.string().min(1),
   force: z.boolean().optional(),
+  server: z
+    .object({
+      name: z.string().trim().min(1).max(80).optional(),
+      host: z.string().trim().min(1).max(255),
+      port: z.number().int().min(1).max(65535).optional(),
+      requiresMicrosoft: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 const launchCancelSchema = z

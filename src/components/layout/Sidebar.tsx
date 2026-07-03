@@ -5,6 +5,7 @@ import {
   Home,
   UserRound,
   Settings,
+  Swords,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useDownloads } from "../../hooks/useDownloads";
@@ -13,6 +14,7 @@ import { cn } from "../../utils/cn";
 export type PageId =
   | "home"
   | "avatar"
+  | "pvp"
   | "library"
   | "explore"
   | "downloads"
@@ -27,6 +29,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { id: "home", label: "Home", icon: Home },
   { id: "avatar", label: "Avatar", icon: UserRound },
+  { id: "pvp", label: "PVP", icon: Swords },
   { id: "library", label: "Minhas Instâncias", icon: Blocks },
   { id: "explore", label: "Biblioteca", icon: Compass },
   { id: "downloads", label: "Downloads", icon: Download },

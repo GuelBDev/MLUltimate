@@ -99,6 +99,11 @@ const changelog = [
     tag: rawAppVersion,
     date: "Atual",
     changes: [
+      "Nova aba PVP abaixo do Avatar com logo de espadas cruzadas.",
+      "Central de servidores com Hypixel, MushMC, Minemen Club, PvP Legacy e BlocksMC.",
+      "Servidores premium agora ficam bloqueados quando a conta ativa não é Microsoft licenciada.",
+      "Kit PvP Forge 1.8.9 com HUD, CPS, keystrokes, sprint, otimização e texturas PvP.",
+      "Busca dedicada mostra apenas mods e texturas compatíveis com PvP 1.8.9.",
       "Instalador Linux corrigido e validado abrindo o launcher após a instalação.",
       "Compatibilidade verificada em sistemas baseados no Ubuntu 22.04 e 24.04.",
       "Dependência de armazenamento seguro adicionada para contas Microsoft no Linux.",

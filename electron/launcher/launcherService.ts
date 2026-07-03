@@ -70,6 +70,12 @@ export class LauncherService {
       }
 
       const session = await this.getLaunchSession();
+
+      if (request.server?.requiresMicrosoft && session.provider !== "microsoft") {
+        throw new Error(
+          `${request.server.name ?? request.server.host} exige uma conta Microsoft licenciada. Entre com Microsoft para acessar servidores premium como Hypixel.`,
+        );
+      }
       const installed = this.minecraftVersions.getInstalledVersion(instance.minecraftVersion);
 
       this.assertLaunchNotCancelled(request.instanceId, launchState);
@@ -252,10 +258,16 @@ export class LauncherService {
           replacePlaceholders(argument, replacements),
         )
       : null;
-    const gameArgs = legacyLoaderGameArgs ?? [
-      ...vanillaGameArgs,
-      ...lightweightGameArgs,
-      ...loaderProfileGameArgs,
+    const serverArgs = request.server
+      ? ["--server", request.server.host, "--port", String(request.server.port ?? 25565)]
+      : [];
+    const gameArgs = [
+      ...(legacyLoaderGameArgs ?? [
+        ...vanillaGameArgs,
+        ...lightweightGameArgs,
+        ...loaderProfileGameArgs,
+      ]),
+      ...serverArgs,
     ];
     this.emit({
       id: request.instanceId,
@@ -276,7 +288,9 @@ export class LauncherService {
     this.emit({
       id: request.instanceId,
       type: "step",
-      message: `Abrindo Minecraft ${instance.minecraftVersion}...`,
+      message: request.server
+        ? `Abrindo ${request.server.name ?? request.server.host} no Minecraft ${instance.minecraftVersion}...`
+        : `Abrindo Minecraft ${instance.minecraftVersion}...`,
       progress: 100,
       createdAt: new Date().toISOString(),
     });
@@ -540,6 +554,7 @@ export class LauncherService {
     if (microsoftSession.status === "signed-in") {
       const secure = await this.microsoftAuth.requireLicensedSession();
       return {
+        provider: "microsoft" as const,
         name: secure.minecraftName ?? secure.displayName,
         uuid: secure.minecraftUuid ?? secure.xuid,
         accessToken: secure.minecraftAccessToken,
@@ -558,6 +573,7 @@ export class LauncherService {
     }
 
     return {
+      provider: "offline" as const,
       name: offlineSession.account.displayName,
       uuid: createHash("md5")
         .update(`OfflinePlayer:${offlineSession.account.displayName}`)

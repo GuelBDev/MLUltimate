@@ -35,6 +35,12 @@ export type OfflineLoginInput = {
 export type LaunchRequest = {
   instanceId: string;
   force?: boolean;
+  server?: {
+    name?: string;
+    host: string;
+    port?: number;
+    requiresMicrosoft?: boolean;
+  };
 };
 
 export type LaunchCancelRequest = {
