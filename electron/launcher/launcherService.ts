@@ -187,7 +187,8 @@ export class LauncherService {
     const loaderLibraries = loaderProfile
       ? loaderProfile.libraries
           .filter((library) => rulesAllow(library.rules))
-          .map((library) => library.downloads?.artifact?.path)
+          .filter((library) => library.clientreq !== false)
+          .map((library) => library.downloads?.artifact?.path ?? safeMavenPath(library.name))
           .filter((libraryPath): libraryPath is string => Boolean(libraryPath))
           .map((libraryPath) => path.join(minecraftRoot, "libraries", libraryPath))
           .filter((libraryPath) => existsSync(libraryPath))
@@ -791,4 +792,12 @@ const mavenPath = (coordinate: string) => {
     : `${artifact}-${version}.jar`;
 
   return path.join(...group.split("."), artifact, version, fileName);
+};
+
+const safeMavenPath = (coordinate: string) => {
+  try {
+    return mavenPath(coordinate);
+  } catch {
+    return null;
+  }
 };

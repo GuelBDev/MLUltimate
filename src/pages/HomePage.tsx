@@ -99,6 +99,9 @@ const changelog = [
     tag: rawAppVersion,
     date: "Atual",
     changes: [
+      "Forge 1.8.9 corrigido: instaladores legados agora são instalados manualmente pelo launcher.",
+      "Bibliotecas antigas do Forge agora entram no classpath do Minecraft corretamente.",
+      "Release agora valida criação real de instância Forge 1.8.9 antes de publicar.",
       "Nova aba PVP abaixo do Avatar com logo de espadas cruzadas.",
       "Central de servidores com Hypixel, MushMC, Minemen Club, PvP Legacy e BlocksMC.",
       "Servidores premium agora ficam bloqueados quando a conta ativa não é Microsoft licenciada.",

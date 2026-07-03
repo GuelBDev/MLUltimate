@@ -184,6 +184,16 @@ const bootstrap = async () => {
     avatar,
     updater,
   });
+
+  if (process.env.MLULTIMATE_QA_CREATE_INSTANCE_JSON) {
+    const instance = await instances.create(
+      JSON.parse(process.env.MLULTIMATE_QA_CREATE_INSTANCE_JSON),
+    );
+    console.log(`MLULTIMATE_QA_CREATE_INSTANCE_OK ${instance.id} ${instance.name}`);
+    app.quit();
+    return;
+  }
+
   await createWindow();
 };
 

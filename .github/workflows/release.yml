@@ -32,6 +32,12 @@ jobs:
         run: |
           npm run lint
           npm run build
+          $env:MLULTIMATE_DATA_PATH = Join-Path $env:RUNNER_TEMP "mlultimate-forge-189-smoke"
+          $env:MLULTIMATE_QA_CREATE_INSTANCE_JSON = '{"name":"QA Forge 1.8.9","minecraftVersion":"1.8.9","loader":"forge","ramMb":3072,"contentManagementEnabled":true}'
+          npx electron dist-electron/main.cjs
+          if ($LASTEXITCODE -ne 0) {
+            throw "Forge 1.8.9 smoke test failed"
+          }
 
       - name: Build installer
         env:

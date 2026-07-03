@@ -1,5 +1,6 @@
+import AdmZip from "adm-zip";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { net } from "electron";
@@ -158,6 +159,8 @@ const loaderProfileSchema = z.object({
     .array(
       z.object({
         name: z.string(),
+        url: z.string().url().optional(),
+        clientreq: z.boolean().optional(),
         downloads: z
           .object({
             artifact: loaderArtifactSchema.optional(),
@@ -169,6 +172,27 @@ const loaderProfileSchema = z.object({
       }),
     )
     .default([]),
+});
+
+const legacyForgeProfileSchema = z.object({
+  install: z.object({
+    path: z.string(),
+    filePath: z.string(),
+  }),
+  versionInfo: loaderProfileSchema.passthrough().extend({
+    jar: z.string().optional(),
+    libraries: z
+      .array(
+        z.object({
+          name: z.string(),
+          url: z.string().url().optional(),
+          checksums: z.array(z.string()).optional(),
+          clientreq: z.boolean().optional(),
+          serverreq: z.boolean().optional(),
+        }).passthrough(),
+      )
+      .default([]),
+  }),
 });
 
 type InstalledVersionRow = {
@@ -535,10 +559,12 @@ export class MinecraftVersionService {
     await this.installVersion(minecraftVersion);
 
     const forgeVersion = await this.resolveForgeVersion(minecraftVersion, requestedForgeVersion);
-    const profileId = forgeProfileId(minecraftVersion, forgeVersion);
-    const profilePath = this.getForgeProfilePathById(profileId);
+    const existingProfilePath = await this.findCompleteForgeProfilePath(
+      minecraftVersion,
+      forgeVersion,
+    );
 
-    if (await this.isLoaderProfileComplete(profilePath)) {
+    if (existingProfilePath) {
       return;
     }
 
@@ -577,10 +603,20 @@ export class MinecraftVersionService {
         label: `Forge ${minecraftVersion} - instalando loader`,
         progress: 25,
       });
-      await runJavaInstaller(javaBin, installerPath, this.rootDir, "Forge");
+      const legacyProfile = await readLegacyForgeProfile(installerPath);
+
+      if (legacyProfile) {
+        await this.installLegacyForgeClient(installerPath, legacyProfile, taskId);
+      } else {
+        await runJavaInstaller(javaBin, installerPath, this.rootDir, "Forge");
+      }
       this.downloads.throwIfCancelled(taskId);
 
-      if (!(await this.isLoaderProfileComplete(profilePath))) {
+      const installedProfilePath = legacyProfile
+        ? this.getForgeProfilePathById(legacyProfile.versionInfo.id)
+        : this.getForgeProfilePathById(forgeProfileId(minecraftVersion, forgeVersion));
+
+      if (!(await this.isLoaderProfileComplete(installedProfilePath))) {
         throw new Error("Forge terminou, mas o profile instalado esta incompleto.");
       }
 
@@ -593,11 +629,9 @@ export class MinecraftVersionService {
 
   async readInstalledForgeProfile(minecraftVersion: string, requestedForgeVersion?: string) {
     const forgeVersion = await this.resolveForgeVersion(minecraftVersion, requestedForgeVersion);
-    const profilePath = this.getForgeProfilePathById(
-      forgeProfileId(minecraftVersion, forgeVersion),
-    );
+    const profilePath = await this.findCompleteForgeProfilePath(minecraftVersion, forgeVersion);
 
-    if (!(await this.isLoaderProfileComplete(profilePath))) {
+    if (!profilePath) {
       throw new Error(`Forge não está instalado para Minecraft ${minecraftVersion}.`);
     }
 
@@ -751,6 +785,18 @@ export class MinecraftVersionService {
     return path.join(this.rootDir, "versions", profileId, `${profileId}.json`);
   }
 
+  private async findCompleteForgeProfilePath(minecraftVersion: string, forgeVersion: string) {
+    for (const profileId of forgeProfileIds(minecraftVersion, forgeVersion)) {
+      const profilePath = this.getForgeProfilePathById(profileId);
+
+      if (await this.isLoaderProfileComplete(profilePath)) {
+        return profilePath;
+      }
+    }
+
+    return null;
+  }
+
   private getNeoForgeProfilePathById(profileId: string) {
     return path.join(this.rootDir, "versions", profileId, `${profileId}.json`);
   }
@@ -779,17 +825,115 @@ export class MinecraftVersionService {
       const profile = loaderProfileSchema.parse(JSON.parse(await readFile(profilePath, "utf8")));
 
       return profile.libraries.every((library) => {
-        const artifactPath = library.downloads?.artifact?.path;
-
-        if (!artifactPath) {
+        if (library.clientreq === false) {
           return true;
         }
 
-        return existsSync(path.join(this.rootDir, "libraries", artifactPath));
+        const artifactPath = library.downloads?.artifact?.path;
+
+        if (artifactPath) {
+          return existsSync(path.join(this.rootDir, "libraries", artifactPath));
+        }
+
+        const legacyPath = safeMavenPath(library.name);
+        return legacyPath ? existsSync(path.join(this.rootDir, "libraries", legacyPath)) : true;
       });
     } catch {
       return false;
     }
+  }
+
+  private async installLegacyForgeClient(
+    installerPath: string,
+    profile: z.infer<typeof legacyForgeProfileSchema>,
+    taskId: string,
+  ) {
+    const versionId = profile.versionInfo.id;
+    const versionPath = this.getForgeProfilePathById(versionId);
+    const zip = new AdmZip(installerPath);
+    const forgeLibraryPath = mavenPath(profile.install.path);
+    const forgeJarPath = path.join(this.rootDir, "libraries", forgeLibraryPath);
+    const containedForgeJar = zip.getEntry(profile.install.filePath);
+
+    if (!containedForgeJar) {
+      throw new Error(`Forge legado nao possui ${profile.install.filePath} dentro do instalador.`);
+    }
+
+    await mkdir(path.dirname(versionPath), { recursive: true });
+    await writeFile(versionPath, JSON.stringify(profile.versionInfo, null, 2), "utf8");
+
+    await mkdir(path.dirname(forgeJarPath), { recursive: true });
+
+    if (!existsSync(forgeJarPath)) {
+      zip.extractEntryTo(containedForgeJar, path.dirname(forgeJarPath), false, true);
+
+      const extractedPath = path.join(
+        path.dirname(forgeJarPath),
+        path.basename(profile.install.filePath),
+      );
+
+      if (path.resolve(extractedPath) !== path.resolve(forgeJarPath)) {
+        await rename(extractedPath, forgeJarPath);
+      }
+    }
+
+    const libraries = profile.versionInfo.libraries.filter(
+      (library) => library.clientreq !== false && library.name !== profile.install.path,
+    );
+    let completed = 0;
+
+    for (const library of libraries) {
+      this.downloads.throwIfCancelled(taskId);
+      const libraryPath = safeMavenPath(library.name);
+
+      if (!libraryPath) {
+        completed += 1;
+        continue;
+      }
+
+      const destination = path.join(this.rootDir, "libraries", libraryPath);
+
+      if (!existsSync(destination)) {
+        await this.downloadLegacyForgeLibrary(library, libraryPath, destination);
+      }
+
+      completed += 1;
+      this.downloads.updateTask(taskId, {
+        label: `Forge legado - bibliotecas ${completed}/${libraries.length}`,
+        progress: 30 + Math.round((completed / Math.max(1, libraries.length)) * 65),
+      });
+    }
+  }
+
+  private async downloadLegacyForgeLibrary(
+    library: z.infer<typeof legacyForgeProfileSchema>["versionInfo"]["libraries"][number],
+    libraryPath: string,
+    destination: string,
+  ) {
+    const urls = legacyForgeLibraryUrls(library, libraryPath);
+    const sha1 = library.checksums?.find((checksum) => /^[a-f0-9]{40}$/i.test(checksum));
+    const errors: string[] = [];
+
+    for (const url of urls) {
+      try {
+        await this.downloads.download({
+          label: `Forge legacy ${library.name}`,
+          url,
+          destination,
+          sha1,
+          visible: false,
+        });
+        return;
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    throw new Error(
+      `Nao foi possivel baixar biblioteca Forge legado ${library.name}.\n${errors
+        .slice(-3)
+        .join("\n")}`,
+    );
   }
 
   private async installLibraries(versionJson: z.infer<typeof versionJsonSchema>, taskId: string) {
@@ -1013,8 +1157,68 @@ const mavenPath = (coordinate: string) => {
   return path.join(...group.split("."), artifact, version, fileName);
 };
 
+const safeMavenPath = (coordinate: string) => {
+  try {
+    return mavenPath(coordinate);
+  } catch {
+    return null;
+  }
+};
+
+const readLegacyForgeProfile = async (installerPath: string) => {
+  try {
+    const zip = new AdmZip(installerPath);
+    const profileEntry = zip.getEntry("install_profile.json");
+
+    if (!profileEntry) {
+      return null;
+    }
+
+    const raw = JSON.parse(profileEntry.getData().toString("utf8"));
+    if (!raw.versionInfo) {
+      return null;
+    }
+
+    return legacyForgeProfileSchema.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const legacyForgeLibraryUrls = (
+  library: z.infer<typeof legacyForgeProfileSchema>["versionInfo"]["libraries"][number],
+  libraryPath: string,
+) => {
+  const normalizedLibraryPath = libraryPath.replaceAll("\\", "/");
+  const candidates = [
+    library.url,
+    "https://libraries.minecraft.net/",
+    FORGE_MAVEN,
+    "https://repo1.maven.org/maven2/",
+  ].filter((url): url is string => Boolean(url));
+
+  return Array.from(
+    new Set(
+      candidates.map((baseUrl) =>
+        new URL(normalizedLibraryPath, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString(),
+      ),
+    ),
+  );
+};
+
 const forgeProfileId = (minecraftVersion: string, forgeVersion: string) =>
   `${minecraftVersion}-forge-${forgeVersion.replace(`${minecraftVersion}-`, "")}`;
+
+const legacyForgeProfileId = (minecraftVersion: string, forgeVersion: string) =>
+  `${minecraftVersion}-forge${forgeVersion}`;
+
+const forgeProfileIds = (minecraftVersion: string, forgeVersion: string) =>
+  Array.from(
+    new Set([
+      forgeProfileId(minecraftVersion, forgeVersion),
+      legacyForgeProfileId(minecraftVersion, forgeVersion),
+    ]),
+  );
 
 const neoForgeProfileId = (neoForgeVersion: string) => `neoforge-${neoForgeVersion}`;
 
