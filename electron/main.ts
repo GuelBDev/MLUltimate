@@ -195,6 +195,13 @@ const bootstrap = async () => {
     return;
   }
 
+  if (process.env.MLULTIMATE_QA_IMPORT_ARCHIVE) {
+    const instance = await instances.importArchiveFile(process.env.MLULTIMATE_QA_IMPORT_ARCHIVE);
+    console.log(`MLULTIMATE_QA_IMPORT_ARCHIVE_OK ${instance.id} ${instance.name}`);
+    app.quit();
+    return;
+  }
+
   await createWindow();
 };
 

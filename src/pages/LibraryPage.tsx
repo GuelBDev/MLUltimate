@@ -288,26 +288,60 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
     void launcherApi.killInstance(instance.id);
   };
 
-  const importArchive = () => {
+  const confirmSharedImport = (sourceLabel: string) =>
+    dialog.confirm({
+      title: "Importar instância compartilhada?",
+      description:
+        `O launcher vai baixar e preparar a instância compartilhada por ${sourceLabel}. Confirme apenas se você confia nesse pacote.`,
+      confirmLabel: "Baixar instância",
+      cancelLabel: "Cancelar",
+      tone: "info",
+    });
+
+  const importArchive = async () => {
+    const confirmed = await confirmSharedImport("arquivo");
+
+    if (!confirmed) {
+      return;
+    }
+
+    setImportOpen(false);
     importInstance.mutate(
       { source: "archive" },
       {
         onSuccess: () => {
-          setImportOpen(false);
           void queryClient.invalidateQueries({ queryKey: ["instances"] });
         },
       },
     );
   };
 
-  const importByCode = (event: FormEvent<HTMLFormElement>) => {
+  const importByCode = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    const code = importCode.trim();
+
+    if (!code) {
+      await dialog.alert({
+        title: "Código vazio",
+        description: "Cole um código, URL ou caminho de arquivo para importar a instância compartilhada.",
+        tone: "danger",
+      });
+      return;
+    }
+
+    const confirmed = await confirmSharedImport("código ou URL");
+
+    if (!confirmed) {
+      return;
+    }
+
+    setImportOpen(false);
+    setImportCode("");
     importInstance.mutate(
-      { source: "code", code: importCode },
+      { source: "code", code },
       {
         onSuccess: () => {
-          setImportOpen(false);
-          setImportCode("");
           void queryClient.invalidateQueries({ queryKey: ["instances"] });
         },
       },

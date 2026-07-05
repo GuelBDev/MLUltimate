@@ -253,6 +253,12 @@ export class InstanceService {
       ? await copyInstanceIcon(parsed.iconPath, gameDir)
       : null;
 
+    const loaderVersion = normalizeLoaderVersion(
+      parsed.loader,
+      parsed.loaderVersion,
+      parsed.minecraftVersion,
+    );
+
     this.database.run(
       `
       INSERT INTO instances
@@ -264,7 +270,7 @@ export class InstanceService {
         parsed.name,
         parsed.minecraftVersion,
         parsed.loader,
-        normalizeLoaderVersion(parsed.loader, parsed.loaderVersion) ?? null,
+        loaderVersion ?? null,
         parsed.ramMb,
         parsed.javaPath ?? null,
         gameDir,
@@ -276,7 +282,7 @@ export class InstanceService {
     );
 
     try {
-      await this.prepareInstance(parsed, gameDir);
+      await this.prepareInstance({ ...parsed, loaderVersion }, gameDir);
       return this.getById(id);
     } catch (error) {
       this.database.run("DELETE FROM installed_content WHERE instance_id = ?", [id]);
@@ -348,7 +354,11 @@ export class InstanceService {
         parsed.ramMb ?? current.ramMb,
         parsed.javaPath ?? current.javaPath ?? null,
         iconPath,
-        normalizeLoaderVersion(current.loader, parsed.loaderVersion ?? current.loaderVersion) ?? null,
+        normalizeLoaderVersion(
+          current.loader,
+          parsed.loaderVersion ?? current.loaderVersion,
+          current.minecraftVersion,
+        ) ?? null,
         (parsed.contentManagementEnabled ?? current.contentManagementEnabled) ? 1 : 0,
         new Date().toISOString(),
         parsed.id,
@@ -709,7 +719,10 @@ export class InstanceService {
       name: manifest.name,
       minecraftVersion: manifest.minecraft.version,
       loader: loaderFromCurseForgeManifest(manifest.minecraft.modLoaders),
-      loaderVersion: loaderVersionFromCurseForgeManifest(manifest.minecraft.modLoaders),
+      loaderVersion: loaderVersionFromCurseForgeManifest(
+        manifest.minecraft.modLoaders,
+        manifest.minecraft.version,
+      ),
       ramMb: recommendedModpackRam(manifest.files.length),
       contentManagementEnabled: true,
     });
@@ -1698,10 +1711,15 @@ const loaderFromCurseForgeManifest = (
 
 const loaderVersionFromCurseForgeManifest = (
   modLoaders: Array<{ id: string; primary?: boolean }>,
+  minecraftVersion?: string,
 ) => {
   const loader = modLoaders.find((item) => item.primary) ?? modLoaders.at(0);
 
-  return normalizeLoaderVersion(loaderFromCurseForgeManifest(modLoaders), loader?.id);
+  return normalizeLoaderVersion(
+    loaderFromCurseForgeManifest(modLoaders),
+    loader?.id,
+    minecraftVersion,
+  );
 };
 
 const curseForgeModLoadersForInstance = (instance: LauncherInstance) => {
@@ -1709,30 +1727,37 @@ const curseForgeModLoadersForInstance = (instance: LauncherInstance) => {
 
   if (loader === "vanilla") return [];
 
-  const id = instance.loaderVersion
-    ? `${loader}-${instance.loaderVersion}`
-    : `${loader}-${instance.minecraftVersion}`;
+  const id = instance.loaderVersion ? `${loader}-${instance.loaderVersion}` : loader;
 
   return [{ id, primary: true }];
 };
 
-const normalizeLoaderVersion = (loader: LoaderType, version?: string) => {
+const normalizeLoaderVersion = (loader: LoaderType, version?: string, minecraftVersion?: string) => {
   const trimmed = version?.trim();
 
   if (!trimmed) {
     return undefined;
   }
 
-  if (loader === "forge" && trimmed.toLowerCase().startsWith("forge-")) {
-    return trimmed.slice("forge-".length);
+  const lower = trimmed.toLowerCase();
+
+  if (lower === loader || lower === minecraftVersion?.toLowerCase()) {
+    return undefined;
   }
 
-  if (loader === "neoforge" && trimmed.toLowerCase().startsWith("neoforge-")) {
-    return trimmed.slice("neoforge-".length);
+  if (loader === "forge" && lower.startsWith("forge-")) {
+    const normalized = trimmed.slice("forge-".length);
+    return normalized === minecraftVersion ? undefined : normalized;
   }
 
-  if (loader === "fabric" && trimmed.toLowerCase().startsWith("fabric-")) {
-    return trimmed.slice("fabric-".length);
+  if (loader === "neoforge" && lower.startsWith("neoforge-")) {
+    const normalized = trimmed.slice("neoforge-".length);
+    return normalized === minecraftVersion ? undefined : normalized;
+  }
+
+  if (loader === "fabric" && lower.startsWith("fabric-")) {
+    const normalized = trimmed.slice("fabric-".length);
+    return normalized === minecraftVersion ? undefined : normalized;
   }
 
   return trimmed;
