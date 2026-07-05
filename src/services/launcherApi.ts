@@ -45,6 +45,32 @@ const defaultSettings: LauncherSettings = {
   language: "pt-BR",
   languageSelected: false,
   minecraftOpenAction: "none",
+  appearancePreset: "night-dark",
+  primaryColor: "#3B82F6",
+  secondaryColor: "#60A5FA",
+  backgroundColor: "#0D1117",
+  mainColor: "#0D1117",
+  sidebarColor: "#0A0E14",
+  rightPanelColor: "#0B0F15",
+  cardColor: "#161B22",
+  panelColor: "#0D1117",
+  inputColor: "#0B0F15",
+  borderColor: "#FFFFFF",
+  textColor: "#FFFFFF",
+  mutedTextColor: "#94A3B8",
+  navActiveColor: "#3B82F6",
+  buttonTextColor: "#FFFFFF",
+  backgroundOpacity: 1,
+  mainOpacity: 0.38,
+  surfaceOpacity: 0.82,
+  panelOpacity: 0.7,
+  inputOpacity: 0.92,
+  sidebarOpacity: 0.96,
+  rightPanelOpacity: 0.88,
+  navActiveOpacity: 0.16,
+  borderOpacity: 0.1,
+  backgroundImageOpacity: 0.28,
+  sidebarImageOpacity: 0.22,
 };
 const browserSettingsKey = "mlultimate:browser-settings";
 
@@ -283,7 +309,27 @@ export const launcherApi = {
 
   updateSettings: async (input: UpdateLauncherSettingsInput) => {
     if (!hasBridge()) {
-      const settings = { ...readBrowserSettings(), ...input };
+      const sanitizedInput = Object.fromEntries(
+        Object.entries(input).filter(([, value]) => value !== null),
+      ) as Partial<LauncherSettings>;
+      const settings: LauncherSettings = { ...readBrowserSettings(), ...sanitizedInput };
+
+      if (input.backgroundImageDataUrl === null) {
+        delete settings.backgroundImageDataUrl;
+      }
+
+      if (input.backgroundImageName === null) {
+        delete settings.backgroundImageName;
+      }
+
+      if (input.sidebarImageDataUrl === null) {
+        delete settings.sidebarImageDataUrl;
+      }
+
+      if (input.sidebarImageName === null) {
+        delete settings.sidebarImageName;
+      }
+
       saveBrowserSettings(settings);
       return settings;
     }

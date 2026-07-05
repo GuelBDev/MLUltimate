@@ -402,12 +402,49 @@ export type AppLanguage =
   | "hi"
   | "tr";
 export type MinecraftOpenAction = "none" | "minimize" | "background";
+export type LauncherAppearancePreset =
+  | "night-dark"
+  | "light-mode"
+  | "blue-sky"
+  | "yellow-sun"
+  | "emerald-cave"
+  | "red-velt";
 
 export type LauncherSettings = {
   encryptionAvailable: boolean;
   language: AppLanguage;
   languageSelected: boolean;
   minecraftOpenAction: MinecraftOpenAction;
+  appearancePreset: LauncherAppearancePreset;
+  primaryColor: string;
+  secondaryColor: string;
+  backgroundColor: string;
+  mainColor: string;
+  sidebarColor: string;
+  rightPanelColor: string;
+  cardColor: string;
+  panelColor: string;
+  inputColor: string;
+  borderColor: string;
+  textColor: string;
+  mutedTextColor: string;
+  navActiveColor: string;
+  buttonTextColor: string;
+  backgroundOpacity: number;
+  mainOpacity: number;
+  surfaceOpacity: number;
+  panelOpacity: number;
+  inputOpacity: number;
+  sidebarOpacity: number;
+  rightPanelOpacity: number;
+  navActiveOpacity: number;
+  borderOpacity: number;
+  backgroundImageOpacity: number;
+  sidebarImageOpacity: number;
+  backgroundImageDataUrl?: string;
+  backgroundImageName?: string;
+  sidebarImageDataUrl?: string;
+  sidebarImageName?: string;
 };
 
 export type SystemMemoryInfo = {
@@ -418,6 +455,36 @@ export type UpdateLauncherSettingsInput = {
   language?: AppLanguage;
   languageSelected?: boolean;
   minecraftOpenAction?: MinecraftOpenAction;
+  appearancePreset?: LauncherAppearancePreset;
+  primaryColor?: string;
+  secondaryColor?: string;
+  backgroundColor?: string;
+  mainColor?: string;
+  sidebarColor?: string;
+  rightPanelColor?: string;
+  cardColor?: string;
+  panelColor?: string;
+  inputColor?: string;
+  borderColor?: string;
+  textColor?: string;
+  mutedTextColor?: string;
+  navActiveColor?: string;
+  buttonTextColor?: string;
+  backgroundOpacity?: number;
+  mainOpacity?: number;
+  surfaceOpacity?: number;
+  panelOpacity?: number;
+  inputOpacity?: number;
+  sidebarOpacity?: number;
+  rightPanelOpacity?: number;
+  navActiveOpacity?: number;
+  borderOpacity?: number;
+  backgroundImageOpacity?: number;
+  sidebarImageOpacity?: number;
+  backgroundImageDataUrl?: string | null;
+  backgroundImageName?: string | null;
+  sidebarImageDataUrl?: string | null;
+  sidebarImageName?: string | null;
 };
 
 export type UpdaterStatus =

@@ -16,7 +16,7 @@ import { LibraryPage } from "./pages/LibraryPage";
 import { PvpPage } from "./pages/PvpPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { launcherApi } from "./services/launcherApi";
-import type { ContentType } from "./types/launcher";
+import type { ContentType, LauncherSettings } from "./types/launcher";
 
 const HUD_SCALE_STORAGE_KEY = "mlultimate:hud-scale";
 const HUD_SCALE_MIN = 0.75;
@@ -41,6 +41,143 @@ const saveHudScale = (scale: number) => {
   }
 
   localStorage.setItem(HUD_SCALE_STORAGE_KEY, scale.toFixed(2));
+};
+
+const fallbackAppearance = {
+  primaryColor: "#3B82F6",
+  secondaryColor: "#60A5FA",
+  backgroundColor: "#0D1117",
+  mainColor: "#0D1117",
+  sidebarColor: "#0A0E14",
+  rightPanelColor: "#0B0F15",
+  cardColor: "#161B22",
+  panelColor: "#0D1117",
+  inputColor: "#0B0F15",
+  borderColor: "#FFFFFF",
+  textColor: "#FFFFFF",
+  mutedTextColor: "#94A3B8",
+  navActiveColor: "#3B82F6",
+  buttonTextColor: "#FFFFFF",
+  backgroundOpacity: 1,
+  mainOpacity: 0.38,
+  surfaceOpacity: 0.82,
+  panelOpacity: 0.7,
+  inputOpacity: 0.92,
+  sidebarOpacity: 0.96,
+  rightPanelOpacity: 0.88,
+  navActiveOpacity: 0.16,
+  borderOpacity: 0.1,
+  backgroundImageOpacity: 0.28,
+  sidebarImageOpacity: 0.22,
+};
+
+const readAppearanceColor = (value: string | undefined, fallback: string) =>
+  /^#[0-9a-f]{6}$/i.test(value ?? "") ? value ?? fallback : fallback;
+
+const hexToRgb = (hex: string | undefined, fallback = "#3B82F6") => {
+  const normalized = readAppearanceColor(hex, fallback);
+  const value = Number.parseInt(normalized.slice(1), 16);
+
+  return `${(value >> 16) & 255} ${(value >> 8) & 255} ${value & 255}`;
+};
+
+const clampAppearanceNumber = (value: number | undefined, fallback: number, min: number, max: number) => {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, Number((value as number).toFixed(2))));
+};
+
+const cssUrl = (value?: string) => (value ? `url("${value.replace(/"/g, '\\"')}")` : "none");
+
+const applyAppearanceSettings = (settings: LauncherSettings) => {
+  const root = document.documentElement;
+  const primary = readAppearanceColor(settings.primaryColor, fallbackAppearance.primaryColor);
+  const secondary = readAppearanceColor(settings.secondaryColor, fallbackAppearance.secondaryColor);
+  const background = readAppearanceColor(settings.backgroundColor, fallbackAppearance.backgroundColor);
+  const main = readAppearanceColor(settings.mainColor, fallbackAppearance.mainColor);
+  const sidebar = readAppearanceColor(settings.sidebarColor, fallbackAppearance.sidebarColor);
+  const rightPanel = readAppearanceColor(settings.rightPanelColor, fallbackAppearance.rightPanelColor);
+  const card = readAppearanceColor(settings.cardColor, fallbackAppearance.cardColor);
+  const panel = readAppearanceColor(settings.panelColor, fallbackAppearance.panelColor);
+  const input = readAppearanceColor(settings.inputColor, fallbackAppearance.inputColor);
+  const border = readAppearanceColor(settings.borderColor, fallbackAppearance.borderColor);
+  const text = readAppearanceColor(settings.textColor, fallbackAppearance.textColor);
+  const mutedText = readAppearanceColor(settings.mutedTextColor, fallbackAppearance.mutedTextColor);
+  const navActive = readAppearanceColor(settings.navActiveColor, fallbackAppearance.navActiveColor);
+  const buttonText = readAppearanceColor(settings.buttonTextColor, fallbackAppearance.buttonTextColor);
+  const backgroundOpacity = clampAppearanceNumber(
+    settings.backgroundOpacity,
+    fallbackAppearance.backgroundOpacity,
+    0.35,
+    1,
+  );
+  const mainOpacity = clampAppearanceNumber(settings.mainOpacity, fallbackAppearance.mainOpacity, 0, 1);
+  const surfaceOpacity = clampAppearanceNumber(
+    settings.surfaceOpacity,
+    fallbackAppearance.surfaceOpacity,
+    0.25,
+    1,
+  );
+  const panelOpacity = clampAppearanceNumber(settings.panelOpacity, fallbackAppearance.panelOpacity, 0, 1);
+  const inputOpacity = clampAppearanceNumber(settings.inputOpacity, fallbackAppearance.inputOpacity, 0, 1);
+  const sidebarOpacity = clampAppearanceNumber(
+    settings.sidebarOpacity,
+    fallbackAppearance.sidebarOpacity,
+    0.25,
+    1,
+  );
+  const rightPanelOpacity = clampAppearanceNumber(
+    settings.rightPanelOpacity,
+    fallbackAppearance.rightPanelOpacity,
+    0.25,
+    1,
+  );
+  const navActiveOpacity = clampAppearanceNumber(
+    settings.navActiveOpacity,
+    fallbackAppearance.navActiveOpacity,
+    0,
+    1,
+  );
+  const borderOpacity = clampAppearanceNumber(settings.borderOpacity, fallbackAppearance.borderOpacity, 0, 1);
+
+  root.dataset.appearancePreset = settings.appearancePreset;
+  root.style.setProperty("--app-primary", primary);
+  root.style.setProperty("--app-secondary", secondary);
+  root.style.setProperty("--app-primary-rgb", hexToRgb(primary));
+  root.style.setProperty("--app-secondary-rgb", hexToRgb(secondary));
+  root.style.setProperty("--app-bg-rgb", hexToRgb(background, fallbackAppearance.backgroundColor));
+  root.style.setProperty("--app-main-rgb", hexToRgb(main, fallbackAppearance.mainColor));
+  root.style.setProperty("--app-sidebar-rgb", hexToRgb(sidebar, fallbackAppearance.sidebarColor));
+  root.style.setProperty("--app-right-panel-rgb", hexToRgb(rightPanel, fallbackAppearance.rightPanelColor));
+  root.style.setProperty("--app-card-rgb", hexToRgb(card, fallbackAppearance.cardColor));
+  root.style.setProperty("--app-panel-rgb", hexToRgb(panel, fallbackAppearance.panelColor));
+  root.style.setProperty("--app-input-rgb", hexToRgb(input, fallbackAppearance.inputColor));
+  root.style.setProperty("--app-border-rgb", hexToRgb(border, fallbackAppearance.borderColor));
+  root.style.setProperty("--app-nav-active-rgb", hexToRgb(navActive, fallbackAppearance.navActiveColor));
+  root.style.setProperty("--app-bg-base", `rgb(var(--app-bg-rgb) / ${backgroundOpacity})`);
+  root.style.setProperty("--app-main-overlay", `rgb(var(--app-main-rgb) / ${mainOpacity})`);
+  root.style.setProperty("--app-card-bg", `rgb(var(--app-card-rgb) / ${surfaceOpacity})`);
+  root.style.setProperty("--app-panel-bg", `rgb(var(--app-panel-rgb) / ${panelOpacity})`);
+  root.style.setProperty("--app-input-bg", `rgb(var(--app-input-rgb) / ${inputOpacity})`);
+  root.style.setProperty("--app-sidebar-bg", `rgb(var(--app-sidebar-rgb) / ${sidebarOpacity})`);
+  root.style.setProperty("--app-account-bg", `rgb(var(--app-right-panel-rgb) / ${rightPanelOpacity})`);
+  root.style.setProperty("--app-nav-active-bg", `rgb(var(--app-nav-active-rgb) / ${navActiveOpacity})`);
+  root.style.setProperty("--app-border-color", `rgb(var(--app-border-rgb) / ${borderOpacity})`);
+  root.style.setProperty("--app-text-primary", text);
+  root.style.setProperty("--app-text-muted", mutedText);
+  root.style.setProperty("--app-button-text", buttonText);
+  root.style.setProperty(
+    "--app-bg-image-opacity",
+    String(clampAppearanceNumber(settings.backgroundImageOpacity, fallbackAppearance.backgroundImageOpacity, 0, 1)),
+  );
+  root.style.setProperty(
+    "--app-sidebar-image-opacity",
+    String(clampAppearanceNumber(settings.sidebarImageOpacity, fallbackAppearance.sidebarImageOpacity, 0, 1)),
+  );
+  root.style.setProperty("--app-bg-image", cssUrl(settings.backgroundImageDataUrl));
+  root.style.setProperty("--app-sidebar-image", cssUrl(settings.sidebarImageDataUrl));
 };
 
 const useHudScaleControls = () => {
@@ -164,11 +301,11 @@ function AppShell() {
   }, [activePage, changePage, exploreContext.instanceId, exploreContext.type]);
 
   return (
-    <div className="h-dvh overflow-hidden bg-[#0D1117] pt-8 text-white">
+    <div className="app-shell h-dvh overflow-hidden pt-8 text-white">
       <div className="grid h-[calc(100dvh-2rem)] grid-cols-[76px_minmax(0,1fr)] xl:grid-cols-[228px_minmax(0,1fr)] 2xl:grid-cols-[248px_minmax(0,1fr)_320px]">
         <Sidebar activePage={activePage} onPageChange={changePage} />
 
-        <main className="min-w-0 overflow-y-auto border-l border-white/8 2xl:border-x">
+        <main className="app-main min-w-0 overflow-y-auto border-l border-white/8 2xl:border-x">
           <div className="mx-auto flex min-h-full w-full max-w-[1120px] flex-col gap-5 px-3 py-4 sm:px-5 lg:gap-6 lg:px-7 lg:py-6">
             <header className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -197,7 +334,7 @@ function AppShell() {
           </div>
         </main>
 
-        <aside className="hidden overflow-y-auto bg-[#0B0F15] px-4 py-5 2xl:block 2xl:px-5 2xl:py-6">
+        <aside className="app-account-aside hidden overflow-y-auto px-4 py-5 2xl:block 2xl:px-5 2xl:py-6">
           <AccountPanel />
         </aside>
       </div>
@@ -227,6 +364,14 @@ function AppRoot() {
   const showTitleBar = !isBooting && !isLoadingSettings && !needsLanguageSetup;
   const handleStartupComplete = useCallback(() => setIsBooting(false), []);
 
+  useEffect(() => {
+    if (!settings.data) {
+      return;
+    }
+
+    applyAppearanceSettings(settings.data);
+  }, [settings.data]);
+
   return (
     <>
       {settings.data ? <RuntimeTranslator language={settings.data.language} /> : null}
@@ -237,7 +382,7 @@ function AppRoot() {
         ) : isLoadingSettings ? (
           <motion.div
             key="settings-loading"
-            className="grid min-h-screen place-items-center bg-[#0D1117] text-sm text-[#94A3B8]"
+            className="app-loading grid min-h-screen place-items-center text-sm text-[#94A3B8]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

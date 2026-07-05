@@ -161,6 +161,38 @@ const updateSettingsSchema = z.object({
     .optional(),
   languageSelected: z.boolean().optional(),
   minecraftOpenAction: z.enum(["none", "minimize", "background"]).optional(),
+  appearancePreset: z
+    .enum(["night-dark", "light-mode", "blue-sky", "yellow-sun", "emerald-cave", "red-velt"])
+    .optional(),
+  primaryColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  secondaryColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  backgroundColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  mainColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  sidebarColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  rightPanelColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  cardColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  panelColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  inputColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  borderColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  textColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  mutedTextColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  navActiveColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  buttonTextColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  backgroundOpacity: z.number().min(0.35).max(1).optional(),
+  mainOpacity: z.number().min(0).max(1).optional(),
+  surfaceOpacity: z.number().min(0.25).max(1).optional(),
+  panelOpacity: z.number().min(0).max(1).optional(),
+  inputOpacity: z.number().min(0).max(1).optional(),
+  sidebarOpacity: z.number().min(0.25).max(1).optional(),
+  rightPanelOpacity: z.number().min(0.25).max(1).optional(),
+  navActiveOpacity: z.number().min(0).max(1).optional(),
+  borderOpacity: z.number().min(0).max(1).optional(),
+  backgroundImageOpacity: z.number().min(0).max(1).optional(),
+  sidebarImageOpacity: z.number().min(0).max(1).optional(),
+  backgroundImageDataUrl: z.string().max(7_000_000).nullable().optional(),
+  backgroundImageName: z.string().max(160).nullable().optional(),
+  sidebarImageDataUrl: z.string().max(7_000_000).nullable().optional(),
+  sidebarImageName: z.string().max(160).nullable().optional(),
 });
 
 const saveNicknameSkinSchema = z.object({
@@ -330,6 +362,8 @@ export const registerIpcHandlers = ({
     if (parsed.minecraftOpenAction) {
       apiKeys.saveMinecraftOpenAction(parsed.minecraftOpenAction);
     }
+
+    apiKeys.saveAppearanceSettings(parsed);
 
     return apiKeys.getPublicSettings();
   });

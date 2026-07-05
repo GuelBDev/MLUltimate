@@ -475,6 +475,7 @@ export class AvatarService {
     return {
       id: skin.id,
       name: skin.name,
+      nickname: skin.nickname ?? undefined,
       localPath: skin.local_path,
     };
   }
@@ -489,13 +490,36 @@ export class AvatarService {
     const safePlayerName = sanitizeMinecraftName(playerName);
     const skinsDir = path.join(gameDir, "CustomSkinLoader", "LocalSkin", "skins");
     const destination = path.join(skinsDir, `${safePlayerName}.png`);
+    const copiedNames = new Set<string>();
 
     mkdirSync(skinsDir, { recursive: true });
-    copyFileSync(skin.localPath, destination);
+    this.writeCustomSkinLoaderConfig(gameDir);
+    copySkinForName(skin.localPath, skinsDir, safePlayerName, copiedNames);
+
+    const rows = this.database.all<SkinRow>(
+      "SELECT * FROM avatar_skins WHERE local_path IS NOT NULL ORDER BY equipped_at DESC, created_at DESC",
+    );
+
+    for (const row of rows) {
+      if (!row.local_path || !existsSync(row.local_path)) {
+        continue;
+      }
+
+      const candidateNames = [row.nickname, row.name, row.equipped_at ? playerName : undefined];
+
+      for (const candidateName of candidateNames) {
+        const nick = toMinecraftNickCandidate(candidateName);
+
+        if (nick) {
+          copySkinForName(row.local_path, skinsDir, nick, copiedNames);
+        }
+      }
+    }
 
     return {
       skinName: skin.name,
       destination,
+      copied: copiedNames.size,
     };
   }
 
@@ -536,6 +560,60 @@ export class AvatarService {
     const dir = getLauncherDataSubpath("Skins");
     mkdirSync(dir, { recursive: true });
     return dir;
+  }
+
+  private writeCustomSkinLoaderConfig(gameDir: string) {
+    const configDir = path.join(gameDir, "CustomSkinLoader");
+    const configPath = path.join(configDir, "CustomSkinLoader.json");
+    const config = {
+      version: "15.0.1",
+      loadlist: [
+        {
+          name: "LocalSkin",
+          type: "Legacy",
+          checkPNG: false,
+          skin: "LocalSkin/skins/{USERNAME}.png",
+          model: "auto",
+          cape: "LocalSkin/capes/{USERNAME}.png",
+          elytra: "LocalSkin/elytras/{USERNAME}.png",
+        },
+        {
+          name: "GameProfile",
+          type: "GameProfile",
+        },
+        {
+          name: "Mojang",
+          type: "MojangAPI",
+          apiRoot: "https://api.mojang.com/",
+          sessionRoot: "https://sessionserver.mojang.com/",
+        },
+        {
+          name: "LittleSkin",
+          type: "CustomSkinAPI",
+          root: "https://littleskin.cn/csl/",
+        },
+        {
+          name: "ElyBy",
+          type: "ElyByAPI",
+          root: "http://skinsystem.ely.by/textures/",
+        },
+      ],
+      enableTransparentSkin: true,
+      forceLoadAllTextures: true,
+      enableCape: true,
+      threadPoolSize: 8,
+      enableLogStdOut: false,
+      cacheExpiry: 30,
+      forceUpdateSkull: false,
+      enableLocalProfileCache: false,
+      enableCacheAutoClean: false,
+      forceDisableCache: false,
+    };
+
+    mkdirSync(path.join(configDir, "LocalSkin", "skins"), { recursive: true });
+    mkdirSync(path.join(configDir, "LocalSkin", "capes"), { recursive: true });
+    mkdirSync(path.join(configDir, "LocalSkin", "elytras"), { recursive: true });
+    writeFileSync(configPath, JSON.stringify(config, null, 2));
   }
 
   private toPublicSkin = (skin: SkinRow): LauncherSkin => {
@@ -751,13 +829,28 @@ const lookupMojangProfiles = async (names: string[]) => {
 };
 
 const extractNameMcSkinName = (line: string, id: string) => {
-  const beforeSkinImage = line.split(`https://s.namemc.com/3d/skin/body.png?id=${id}`)[0] ?? "";
-  const linkText = beforeSkinImage.replace(/^\[/, "");
-  const withoutImages = linkText.replace(/!\[[^\]]*\]\([^)]+\)/g, "");
-  const cleaned = withoutImages.replace(/\s+/g, " ").trim();
+  const escapedId = escapeRegExp(id);
+  const linkedName = line.match(
+    new RegExp(
+      String.raw`\[([^\]\n]*?)\s*!\[[^\]]*\]\(https:\/\/s\.namemc\.com\/3d\/skin\/body\.png\?id=${escapedId}`,
+      "i",
+    ),
+  )?.[1];
+  const beforeSkinImage =
+    linkedName ?? line.split(`https://s.namemc.com/3d/skin/body.png?id=${id}`)[0] ?? "";
+  const cleaned = cleanNameMcSkinName(beforeSkinImage);
 
   return cleaned === "—" ? "" : cleaned;
 };
+
+const cleanNameMcSkinName = (value: string) =>
+  value
+    .replace(/!\[[^\]]*\]\([^)]*/g, " ")
+    .replace(/Image\s+\d+:\s*false/gi, " ")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[#*()[\]]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const nameMcSkinDownloadUrl = (skinId: string) => `https://s.namemc.com/i/${skinId}.png`;
 
@@ -784,6 +877,41 @@ const isCloudflareChallenge = (text: string) =>
 
 const sanitizeMinecraftName = (name: string) =>
   name.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 16) || "Player";
+
+const toMinecraftNickCandidate = (name?: string | null) => {
+  if (!name) {
+    return null;
+  }
+
+  const trimmed = name.trim();
+
+  if (!/^[A-Za-z0-9_]{3,16}$/.test(trimmed)) {
+    return null;
+  }
+
+  return trimmed;
+};
+
+const copySkinForName = (
+  sourcePath: string,
+  skinsDir: string,
+  playerName: string,
+  copiedNames: Set<string>,
+) => {
+  const safeName = sanitizeMinecraftName(playerName);
+  const names = new Set([safeName, safeName.toLowerCase()]);
+
+  for (const name of names) {
+    if (copiedNames.has(name)) {
+      continue;
+    }
+
+    copyFileSync(sourcePath, path.join(skinsDir, `${name}.png`));
+    copiedNames.add(name);
+  }
+};
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const assertMinecraftSkinPng = (bytes: Buffer) => {
   const pngSignature = "89504e470d0a1a0a";
