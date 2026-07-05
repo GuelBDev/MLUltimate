@@ -1,12 +1,13 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowLeft, Download, Images, Package, Palette, RefreshCw, Search, Sparkles } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Download, Images, Package, Palette, RefreshCw, Search, Sparkles } from "lucide-react";
 import { SiCurseforge, SiModrinth } from "react-icons/si";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { useInstances } from "../hooks/useInstances";
+import { useInstalledContent } from "../hooks/useInstalledContent";
 import { useMinecraftVersions } from "../hooks/useMinecraftVersions";
 import { launcherApi } from "../services/launcherApi";
 import type {
@@ -17,6 +18,8 @@ import type {
   ContentSearchResult,
   ContentType,
   ContentVersion,
+  InstalledContent,
+  InstalledContentUpdateInfo,
   LauncherInstance,
   LoaderType,
 } from "../types/launcher";
@@ -43,6 +46,8 @@ type InstallTarget = {
   project: ContentSearchResult | ContentProjectDetails;
   version?: ContentVersion;
 };
+
+type InstallDisplayStatus = "available" | "installed" | "update";
 
 const typeLabels: Record<ContentType, string> = {
   mod: "Mods",
@@ -72,6 +77,8 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   const [installTarget, setInstallTarget] = useState<InstallTarget | null>(null);
   const [providerInstallTarget, setProviderInstallTarget] = useState<InstallTarget | null>(null);
   const [loadClicks, setLoadClicks] = useState(0);
+  const [activeOperations, setActiveOperations] = useState<string[]>([]);
+  const [operationError, setOperationError] = useState<string | null>(null);
 
   const releaseVersions = useMemo(
     () =>
@@ -81,9 +88,43 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
     [versions.data],
   );
   const selectedVersion = version;
-  const effectiveVersion = selectedVersion;
-  const effectiveLoader = loader;
+  const targetInstance = useMemo(
+    () =>
+      initialInstanceId
+        ? instances.data?.find((instance) => instance.id === initialInstanceId)
+        : undefined,
+    [initialInstanceId, instances.data],
+  );
+  const effectiveVersion = targetInstance?.minecraftVersion ?? selectedVersion;
+  const effectiveLoader = targetInstance
+    ? normalizeContentLoader(targetInstance.loader)
+    : loader;
   const resultLimit = loadClicks < 3 ? 20 + loadClicks * 20 : 60 + (loadClicks - 2) * 40;
+  const installedContent = useInstalledContent(initialInstanceId);
+  const installedUpdates = useQuery({
+    queryKey: ["installed-content-updates", initialInstanceId],
+    queryFn: () => launcherApi.checkInstalledContentUpdates(initialInstanceId ?? ""),
+    enabled: Boolean(initialInstanceId),
+    staleTime: 60_000,
+  });
+  const updateMap = useMemo(
+    () => new Map((installedUpdates.data ?? []).map((item) => [item.id, item])),
+    [installedUpdates.data],
+  );
+  const visibleResults = useMemo(
+    () => {
+      if (initialInstanceId && !targetInstance) {
+        return [];
+      }
+
+      return targetInstance
+        ? results.filter((project) =>
+            getInstallCompatibility(project, undefined, targetInstance).compatible,
+          )
+        : results;
+    },
+    [initialInstanceId, results, targetInstance],
+  );
 
   const search = useMutation({
     mutationFn: (input: ContentSearchInput) => launcherApi.searchContent(input),
@@ -96,6 +137,8 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
         provider: project.provider,
         type: project.type,
         projectId: project.projectId,
+        minecraftVersion: targetInstance?.minecraftVersion,
+        loader: targetInstance ? normalizeContentLoader(targetInstance.loader) : undefined,
       }),
   });
 
@@ -140,6 +183,90 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
     },
   });
 
+  const updateInstalled = useMutation({
+    mutationFn: launcherApi.updateInstalledContent,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["installed-content", initialInstanceId] });
+      void queryClient.invalidateQueries({ queryKey: ["installed-content-updates", initialInstanceId] });
+      void queryClient.invalidateQueries({ queryKey: ["instance-inspection", initialInstanceId] });
+      void queryClient.invalidateQueries({ queryKey: ["instances"] });
+      void queryClient.invalidateQueries({ queryKey: ["downloads"] });
+    },
+  });
+
+  const addOperation = (key: string) => {
+    setActiveOperations((items) => (items.includes(key) ? items : [...items, key]));
+  };
+
+  const removeOperation = (key: string) => {
+    setActiveOperations((items) => items.filter((item) => item !== key));
+  };
+
+  const runOperation = async (key: string, operation: () => Promise<unknown>) => {
+    setOperationError(null);
+    addOperation(key);
+
+    try {
+      await operation();
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : "Nao foi possivel concluir a acao.");
+    } finally {
+      removeOperation(key);
+    }
+  };
+
+  const refreshInstallState = () => {
+    void queryClient.invalidateQueries({ queryKey: ["installed-content", initialInstanceId] });
+    void queryClient.invalidateQueries({ queryKey: ["installed-content-updates", initialInstanceId] });
+    void queryClient.invalidateQueries({ queryKey: ["instance-inspection", initialInstanceId] });
+    void queryClient.invalidateQueries({ queryKey: ["instances"] });
+    void queryClient.invalidateQueries({ queryKey: ["downloads"] });
+  };
+
+  const startInstallToInstance = (
+    target: InstallTarget,
+    instanceId: string,
+    selectedProviderProject = target.project,
+  ) => {
+    const key = operationKey(selectedProviderProject, target.version?.id, instanceId);
+
+    void runOperation(key, async () => {
+      await install.mutateAsync({
+        project: selectedProviderProject,
+        instanceId,
+        versionId: target.version?.id,
+      });
+      setInstallTarget(null);
+      setProviderInstallTarget(null);
+      refreshInstallState();
+    });
+  };
+
+  const startInstallAsInstance = (
+    target: InstallTarget,
+    selectedProviderProject = target.project,
+  ) => {
+    const key = operationKey(selectedProviderProject, target.version?.id, "new-instance");
+
+    void runOperation(key, async () => {
+      await installAsInstance.mutateAsync({
+        project: selectedProviderProject,
+        versionId: target.version?.id,
+      });
+      setProviderInstallTarget(null);
+      refreshInstallState();
+    });
+  };
+
+  const startUpdateInstalled = (item: InstalledContent) => {
+    const key = `update:${item.id}`;
+
+    void runOperation(key, async () => {
+      await updateInstalled.mutateAsync(item.id);
+      refreshInstallState();
+    });
+  };
+
   const runSearch = () => {
     search.mutate({
       provider,
@@ -181,19 +308,12 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
       target.version?.provider === selectedProvider ? target.version : undefined;
 
     if (project.type === "modpack") {
-      installAsInstance.mutate({
-        project,
-        versionId: selectedContentVersion?.id,
-      });
+      startInstallAsInstance({ project, version: selectedContentVersion }, project);
       return;
     }
 
     if (initialInstanceId) {
-      install.mutate({
-        project,
-        instanceId: initialInstanceId,
-        versionId: selectedContentVersion?.id,
-      });
+      startInstallToInstance({ project, version: selectedContentVersion }, initialInstanceId, project);
       return;
     }
 
@@ -226,7 +346,8 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   };
 
   const error =
-    search.error instanceof Error
+    operationError ??
+    (search.error instanceof Error
       ? search.error.message
       : details.error instanceof Error
         ? details.error.message
@@ -234,7 +355,9 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
           ? install.error.message
           : installAsInstance.error instanceof Error
             ? installAsInstance.error.message
-          : null;
+            : updateInstalled.error instanceof Error
+              ? updateInstalled.error.message
+              : null);
 
   if (selectedProject) {
     const installableProject = details.data
@@ -250,22 +373,28 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
           onTabChange={setActiveTab}
           onBack={() => setSelectedProject(null)}
           onInstall={(version) => requestInstall(installableProject, version)}
-          installing={install.isPending || installAsInstance.isPending}
+          installing={false}
           error={error}
           instances={instances.data ?? []}
+          targetInstance={targetInstance}
+          installedContent={installedContent.data ?? []}
+          updateMap={updateMap}
+          activeOperations={activeOperations}
+          onUpdateInstalled={startUpdateInstalled}
           installTarget={installTarget}
           onCloseInstall={() => setInstallTarget(null)}
           onConfirmInstall={(instanceId) =>
-            install.mutate({
-              project: installTarget?.project ?? details.data ?? selectedProject,
-              instanceId,
-              versionId: installTarget?.version?.id,
-            })
+            installTarget
+              ? startInstallToInstance(installTarget, instanceId)
+              : startInstallToInstance(
+                  { project: details.data ?? selectedProject },
+                  instanceId,
+                )
           }
         />
         <ProviderChoiceDialog
           target={providerInstallTarget}
-          installing={install.isPending || installAsInstance.isPending}
+          installing={false}
           onClose={() => setProviderInstallTarget(null)}
           onSelect={chooseProvider}
         />
@@ -280,10 +409,19 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
           <div>
             <h2 className="text-lg font-semibold text-white">Biblioteca de conteúdo</h2>
             <p className="mt-1 text-sm text-[#94A3B8]">
-              Pesquise livremente e escolha a instância compatível na hora de instalar.
+              {targetInstance
+                ? `Adicionando conteudo em ${targetInstance.name}. So aparecem itens compativeis com esta instancia.`
+                : "Pesquise livremente e escolha a instancia compativel na hora de instalar."}
             </p>
           </div>
-          <Badge tone="blue">{providerLabels[provider]}</Badge>
+          <div className="flex flex-wrap justify-end gap-2">
+            {targetInstance ? (
+              <Badge tone="green">
+                {targetInstance.minecraftVersion} - {targetInstance.loader}
+              </Badge>
+            ) : null}
+            <Badge tone="blue">{providerLabels[provider]}</Badge>
+          </div>
         </div>
 
         <form className="mt-5 flex flex-wrap items-center gap-3" onSubmit={submit}>
@@ -322,6 +460,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
           <select
             value={selectedVersion}
             onChange={(event) => updateSearchShape(() => setVersion(event.target.value))}
+            disabled={Boolean(targetInstance)}
             className="h-11 min-w-0 flex-1 basis-[140px] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             <option value="">Todas versoes</option>
@@ -336,6 +475,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
             onChange={(event) =>
               updateSearchShape(() => setLoader(event.target.value as LoaderType | ""))
             }
+            disabled={Boolean(targetInstance)}
             className="h-11 min-w-0 flex-1 basis-[140px] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
           >
             <option value="">Todos loaders</option>
@@ -363,7 +503,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
         </form>
 
         <p className="mt-3 text-xs text-[#94A3B8]">
-          Filtro ativo: {selectedVersion || "todas as versoes"} - {loader || "todos loaders"}
+          Filtro ativo: {effectiveVersion || "todas as versoes"} - {effectiveLoader || "todos loaders"}
         </p>
 
         {provider !== "modrinth" ? (
@@ -380,7 +520,16 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
       </Card>
 
       <section className="grid gap-4">
-        {results.map((project) => (
+        {visibleResults.map((project) => {
+          const installState = getProjectInstallState(
+            project,
+            installedContent.data ?? [],
+            updateMap,
+          );
+          const busy = isProjectOperationActive(project, activeOperations);
+          const blocked = installState.status === "installed";
+
+          return (
           <Card
             key={`${project.provider}-${project.projectId}`}
             className="p-4 transition hover:border-[#60A5FA]/35 hover:bg-white/7"
@@ -403,6 +552,11 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
                 <div className="flex items-center gap-2">
                   <h3 className="truncate text-base font-semibold text-white">{project.title}</h3>
                   <Badge tone="slate">{typeLabels[project.type]}</Badge>
+                  {installState.status === "installed" ? (
+                    <Badge tone="green">Ja instalado</Badge>
+                  ) : installState.status === "update" ? (
+                    <Badge tone="blue">Atualizacao</Badge>
+                  ) : null}
                 </div>
                 <p className="mt-1 text-sm text-[#94A3B8]">
                   {project.author ? `${project.author} | ` : ""}
@@ -418,15 +572,26 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
               <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
                 <Button
                   type="button"
-                  disabled={install.isPending || installAsInstance.isPending}
+                  disabled={busy || blocked}
                   title={project.type === "modpack" ? "Criar instancia" : "Escolher instancia"}
                   onClick={(event) => {
                     event.stopPropagation();
+                    if (installState.status === "update" && installState.installed) {
+                      startUpdateInstalled(installState.installed);
+                      return;
+                    }
+
                     requestInstall(project);
                   }}
                 >
-                  <Download className="h-4 w-4" />
-                  {project.type === "modpack" ? "Criar instancia" : "Instalar"}
+                  {busy ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : installState.status === "installed" ? (
+                    <CheckCircle2 className="h-4 w-4" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  {projectActionLabel(project, installState.status, busy, Boolean(targetInstance))}
                 </Button>
                 <div className="flex gap-1">
                   {(project.providers ?? [project.provider]).map((item) => (
@@ -438,14 +603,19 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
               </div>
             </button>
           </Card>
-        ))}
+          );
+        })}
       </section>
 
-      {results.length === 0 ? (
+      {visibleResults.length === 0 ? (
         <Card className="p-8 text-center">
-          <p className="text-base font-semibold text-white">Nenhum resultado carregado</p>
+          <p className="text-base font-semibold text-white">
+            {targetInstance ? "Nenhum conteudo compativel encontrado" : "Nenhum resultado carregado"}
+          </p>
           <p className="mt-2 text-sm text-[#94A3B8]">
-            A lista atualiza sozinha; use o refresh se quiser forcar uma nova consulta.
+            {targetInstance
+              ? "A busca esta filtrando pela versao e loader desta instancia."
+              : "A lista atualiza sozinha; use o refresh se quiser forcar uma nova consulta."}
           </p>
         </Card>
       ) : null}
@@ -467,21 +637,17 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
       <InstallInstanceDialog
         target={installTarget}
         instances={instances.data ?? []}
-        installing={install.isPending}
+        installing={false}
         onClose={() => setInstallTarget(null)}
         onInstall={(instanceId) =>
           installTarget
-            ? install.mutate({
-                project: installTarget.project,
-                instanceId,
-                versionId: installTarget.version?.id,
-              })
+            ? startInstallToInstance(installTarget, instanceId)
             : undefined
         }
       />
       <ProviderChoiceDialog
         target={providerInstallTarget}
-        installing={install.isPending || installAsInstance.isPending}
+        installing={false}
         onClose={() => setProviderInstallTarget(null)}
         onSelect={chooseProvider}
       />
@@ -499,6 +665,11 @@ type ProjectDetailsProps = {
   installing: boolean;
   error: string | null;
   instances: LauncherInstance[];
+  targetInstance?: LauncherInstance;
+  installedContent: InstalledContent[];
+  updateMap: Map<string, InstalledContentUpdateInfo>;
+  activeOperations: string[];
+  onUpdateInstalled: (item: InstalledContent) => void;
   installTarget: InstallTarget | null;
   onCloseInstall: () => void;
   onConfirmInstall: (instanceId: string) => void;
@@ -514,6 +685,11 @@ const ProjectDetails = ({
   installing,
   error,
   instances,
+  targetInstance,
+  installedContent,
+  updateMap,
+  activeOperations,
+  onUpdateInstalled,
   installTarget,
   onCloseInstall,
   onConfirmInstall,
@@ -524,12 +700,17 @@ const ProjectDetails = ({
   const latestVersion = versions.at(0);
   const filteredVersions = useMemo(() => {
     const normalized = versionQuery.trim().toLowerCase();
+    const compatibleVersions = targetInstance
+      ? versions.filter((version) =>
+          getInstallCompatibility(current, version, targetInstance).compatible,
+        )
+      : versions;
 
     if (!normalized) {
-      return versions;
+      return compatibleVersions;
     }
 
-    return versions.filter((version) =>
+    return compatibleVersions.filter((version) =>
       [
         version.name,
         version.fileName,
@@ -541,11 +722,13 @@ const ProjectDetails = ({
         .toLowerCase()
         .includes(normalized),
     );
-  }, [versionQuery, versions]);
+  }, [current, targetInstance, versionQuery, versions]);
   const visibleTabs = useMemo(
     () => detailTabs.filter((tab) => tab !== "content" || current.type === "modpack"),
     [current.type],
   );
+  const projectInstallState = getProjectInstallState(current, installedContent, updateMap);
+  const projectBusy = isProjectOperationActive(current, activeOperations);
 
   useEffect(() => {
     if (!visibleTabs.includes(activeTab)) {
@@ -597,12 +780,25 @@ const ProjectDetails = ({
           <Button
             type="button"
             className="shrink-0"
-            onClick={() => onInstall(latestVersion)}
-            disabled={installing}
+            onClick={() => {
+              if (projectInstallState.status === "update" && projectInstallState.installed) {
+                onUpdateInstalled(projectInstallState.installed);
+                return;
+              }
+
+              onInstall(latestVersion);
+            }}
+            disabled={installing || projectBusy || projectInstallState.status === "installed"}
             title="Escolher instância"
           >
-            <Download className="h-4 w-4" />
-            Instalar
+            {projectBusy ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : projectInstallState.status === "installed" ? (
+              <CheckCircle2 className="h-4 w-4" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            {projectActionLabel(current, projectInstallState.status, projectBusy, Boolean(targetInstance))}
           </Button>
         </div>
       </section>
@@ -669,15 +865,36 @@ const ProjectDetails = ({
               </div>
               <Badge tone="slate">{filteredVersions.length} versões</Badge>
             </div>
-            {filteredVersions.map((version) => (
-              <VersionRow
-                key={`${version.provider}-${version.id}`}
-                type={current.type}
-                version={version}
-                onInstall={() => onInstall(version)}
-                installing={installing}
-              />
-            ))}
+            {filteredVersions.map((version) => {
+              const versionInstallState = getProjectInstallState(
+                current,
+                installedContent,
+                updateMap,
+                version,
+              );
+              const versionBusy = activeOperations.includes(
+                operationKey(current, version.id, targetInstance?.id ?? "new-instance"),
+              );
+
+              return (
+                <VersionRow
+                  key={`${version.provider}-${version.id}`}
+                  type={current.type}
+                  version={version}
+                  status={versionInstallState.status}
+                  busy={versionBusy}
+                  onInstall={() => {
+                    if (versionInstallState.status === "update" && versionInstallState.installed) {
+                      onUpdateInstalled(versionInstallState.installed);
+                      return;
+                    }
+
+                    onInstall(version);
+                  }}
+                  installing={installing}
+                />
+              );
+            })}
             {versions.length === 0 ? <EmptyDetail text="Carregando versoes..." /> : null}
             {versions.length > 0 && filteredVersions.length === 0 ? (
               <EmptyDetail text="Nenhuma versão encontrada para esta busca." />
@@ -791,11 +1008,15 @@ const ProjectDetails = ({
 const VersionRow = ({
   type,
   version,
+  status,
+  busy,
   onInstall,
   installing,
 }: {
   type: ContentType;
   version: ContentVersion;
+  status: InstallDisplayStatus;
+  busy: boolean;
   onInstall: () => void;
   installing: boolean;
 }) => (
@@ -809,9 +1030,20 @@ const VersionRow = ({
     </div>
     <span className="text-[#B8C2D0]">{version.gameVersions.at(0) ?? "-"}</span>
     <span className="text-[#B8C2D0]">{version.loaders.join(", ") || version.provider}</span>
-    <Button type="button" size="sm" disabled={installing} onClick={onInstall}>
-      <Download className="h-4 w-4" />
-      Baixar
+    <Button
+      type="button"
+      size="sm"
+      disabled={installing || busy || status === "installed"}
+      onClick={onInstall}
+    >
+      {busy ? (
+        <RefreshCw className="h-4 w-4 animate-spin" />
+      ) : status === "installed" ? (
+        <CheckCircle2 className="h-4 w-4" />
+      ) : (
+        <Download className="h-4 w-4" />
+      )}
+      {status === "installed" ? "Ja instalado" : status === "update" ? "Atualizar" : "Baixar"}
     </Button>
   </div>
 );
@@ -940,6 +1172,80 @@ const ProviderChoiceCard = ({
   );
 };
 
+const getProjectInstallState = (
+  project: ContentSearchResult | ContentProjectDetails,
+  installedContent: InstalledContent[],
+  updateMap: Map<string, InstalledContentUpdateInfo>,
+  version?: ContentVersion,
+): { status: InstallDisplayStatus; installed?: InstalledContent } => {
+  const installed = findInstalledContentForProject(project, installedContent);
+
+  if (!installed) {
+    return { status: "available" };
+  }
+
+  if (version && installed.versionId !== version.id) {
+    return { status: "update", installed };
+  }
+
+  const update = updateMap.get(installed.id);
+
+  if (update?.updateAvailable) {
+    return { status: "update", installed };
+  }
+
+  return { status: "installed", installed };
+};
+
+const findInstalledContentForProject = (
+  project: ContentSearchResult | ContentProjectDetails,
+  installedContent: InstalledContent[],
+) => {
+  const refs = getProjectProviderRefs(project);
+
+  return installedContent.find((item) =>
+    item.type === project.type &&
+    refs.some((ref) => item.provider === ref.provider && item.projectId === ref.projectId),
+  );
+};
+
+const getProjectProviderRefs = (project: ContentSearchResult | ContentProjectDetails) =>
+  getProjectProviders(project).map((provider) => ({
+    provider,
+    projectId: project.providerProjects?.[provider]?.projectId ??
+      (project.provider === provider ? project.projectId : ""),
+  })).filter((ref) => ref.projectId);
+
+const operationKey = (
+  project: ContentSearchResult | ContentProjectDetails,
+  versionId?: string,
+  targetId = "none",
+) => `${project.provider}:${project.type}:${project.projectId}:${versionId ?? "latest"}:${targetId}`;
+
+const isProjectOperationActive = (
+  project: ContentSearchResult | ContentProjectDetails,
+  activeOperations: string[],
+) => {
+  const refs = getProjectProviderRefs(project);
+
+  return activeOperations.some((key) =>
+    refs.some((ref) => key.startsWith(`${ref.provider}:${project.type}:${ref.projectId}:`)),
+  );
+};
+
+const projectActionLabel = (
+  project: ContentSearchResult | ContentProjectDetails,
+  status: InstallDisplayStatus,
+  busy: boolean,
+  hasTargetInstance: boolean,
+) => {
+  if (busy) return "Adicionando...";
+  if (status === "installed") return "Ja instalado";
+  if (status === "update") return "Atualizar";
+  if (project.type === "modpack") return "Criar instancia";
+  return hasTargetInstance ? "Adicionar" : "Instalar";
+};
+
 const InstallInstanceDialog = ({
   target,
   instances,
@@ -959,7 +1265,7 @@ const InstallInstanceDialog = ({
         ? instances.map((instance) => ({
             instance,
             ...getInstallCompatibility(target.project, target.version, instance),
-          }))
+          })).filter((row) => row.compatible)
         : [],
     [instances, target],
   );
@@ -1021,7 +1327,7 @@ const InstallInstanceDialog = ({
 
           {compatibilityRows.length === 0 ? (
             <div className="rounded-xl border border-white/10 bg-[#0D1117] p-6 text-center text-sm text-[#94A3B8]">
-              Crie uma instância em Minhas Instâncias antes de instalar conteúdo.
+              Nenhuma instancia compativel encontrada para este conteudo.
             </div>
           ) : null}
         </div>

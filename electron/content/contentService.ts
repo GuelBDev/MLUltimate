@@ -374,11 +374,10 @@ export class ContentService {
 
       try {
         await this.downloads.download({
-          label: `Modpack ${project.title}`,
+          label: `Criando modpack ${project.title}`,
           url: selected.url,
           destination: archivePath,
           sha1: selected.sha1,
-          visible: false,
         });
 
         const instance = await this.instances.importArchiveFile(archivePath);
@@ -520,7 +519,7 @@ export class ContentService {
     const destination = enabled ? activeDestination : `${activeDestination}.disabled`;
 
     await this.downloads.download({
-      label: `Update ${latest.name}`,
+      label: `Atualizando ${latest.name} em ${instance.name}`,
       url: latest.url,
       destination,
       sha1: latest.sha1,
@@ -1147,6 +1146,7 @@ export class ContentService {
       url: file.url,
       sha1: file.hashes.sha1,
       gameDir: instance.gameDir,
+      instanceName: instance.name,
     });
 
     const dependencies: InstalledContent[] = [];
@@ -1527,6 +1527,7 @@ export class ContentService {
       url: downloadUrl,
       sha1: curseForgeSha1(file),
       gameDir: instance.gameDir,
+      instanceName: instance.name,
     });
 
     if (input.type !== "mod") {
@@ -1602,19 +1603,63 @@ export class ContentService {
     url: string;
     sha1?: string;
     gameDir: string;
+    instanceName: string;
   }): Promise<InstalledContent> {
     const fileName = sanitizeFileName(input.fileName);
     const destination = path.join(input.gameDir, folderForType(input.type), fileName);
+    const existing = this.database.get<InstalledContentRow>(
+      `
+      SELECT * FROM installed_content
+      WHERE instance_id = ? AND provider = ? AND type = ? AND project_id = ?
+      ORDER BY installed_at DESC
+      LIMIT 1
+      `,
+      [input.instanceId, input.provider, input.type, input.projectId],
+    );
+
+    if (
+      existing &&
+      existing.version_id === input.versionId &&
+      existsSync(existing.file_path)
+    ) {
+      return rowToInstalledContent(existing);
+    }
 
     await this.downloads.download({
-      label: `${input.name} (${input.type})`,
+      label: `${existing ? "Atualizando" : "Adicionando"} ${input.name} em ${input.instanceName}`,
       url: input.url,
       destination,
       sha1: input.sha1,
     });
 
-    const id = randomUUID();
     const installedAt = new Date().toISOString();
+
+    if (existing) {
+      if (existsSync(existing.file_path) && path.resolve(existing.file_path) !== path.resolve(destination)) {
+        await rm(existing.file_path, { force: true });
+      }
+
+      this.database.run(
+        `
+        UPDATE installed_content
+        SET version_id = ?, name = ?, file_name = ?, file_path = ?, enabled = ?, installed_at = ?
+        WHERE id = ?
+        `,
+        [
+          input.versionId,
+          input.name,
+          fileName,
+          destination,
+          existing.enabled === 0 ? 0 : 1,
+          installedAt,
+          existing.id,
+        ],
+      );
+
+      return rowToInstalledContent(this.getInstalledContentRow(existing.id));
+    }
+
+    const id = randomUUID();
 
     this.database.run(
       `
