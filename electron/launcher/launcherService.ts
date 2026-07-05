@@ -1,15 +1,16 @@
 import AdmZip from "adm-zip";
 import { createHash } from "node:crypto";
 import { app } from "electron";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
+import { AvatarService } from "../avatar/avatarService";
 import { MicrosoftAuthService } from "../auth/microsoftAuthService";
 import { OfflineAuthService } from "../auth/offlineAuthService";
 import { InstanceService } from "../instances/instanceService";
 import { JavaRuntimeService } from "../java/javaRuntimeService";
 import { MinecraftVersionService } from "../minecraft/minecraftVersionService";
-import type { LaunchEvent, LaunchRequest } from "../../src/types/launcher";
+import type { LauncherInstance, LaunchEvent, LaunchRequest } from "../../src/types/launcher";
 
 type EmitLaunchEvent = (event: LaunchEvent) => void;
 type LaunchState = {
@@ -30,6 +31,7 @@ export class LauncherService {
     private readonly instances: InstanceService,
     private readonly javaRuntimes: JavaRuntimeService,
     private readonly minecraftVersions: MinecraftVersionService,
+    private readonly avatar: AvatarService,
     private readonly emit: EmitLaunchEvent,
   ) {}
 
@@ -58,6 +60,17 @@ export class LauncherService {
       const instance = await this.instances.applyModpackRuntimeRecommendations(
         request.instanceId,
       );
+      const removedPvpArtifacts = cleanupLegacyPvpKitArtifacts(instance);
+
+      if (removedPvpArtifacts.length > 0) {
+        this.emit({
+          id: request.instanceId,
+          type: "step",
+          message: `Reparando Kit PvP: removendo ${removedPvpArtifacts.join(", ")}...`,
+          progress: 12,
+          createdAt: new Date().toISOString(),
+        });
+      }
 
       if (
         !["vanilla", "fabric", "iris", "iris-sodium", "quilt", "forge", "neoforge"].includes(
@@ -70,6 +83,20 @@ export class LauncherService {
       }
 
       const session = await this.getLaunchSession();
+
+      if (session.provider === "offline") {
+        const syncedSkin = this.avatar.syncEquippedSkinForPlayer(instance.gameDir, session.name);
+
+        if (syncedSkin) {
+          this.emit({
+            id: request.instanceId,
+            type: "step",
+            message: `Skin offline aplicada: ${syncedSkin.skinName}.`,
+            progress: 15,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
 
       if (request.server?.requiresMicrosoft && session.provider !== "microsoft") {
         throw new Error(
@@ -717,6 +744,62 @@ const buildMemoryJvmArgs = (ramMb: number) => {
 
 const isFabricBasedLoader = (loader: string) =>
   loader === "fabric" || loader === "iris" || loader === "iris-sodium";
+
+const legacyPvpModPattern = /(basichud|vanillahud|polysprint|oneconfig).*\.jar$/i;
+const legacyPvpFolders = ["OneConfig", ".mixin.out"];
+
+const cleanupLegacyPvpKitArtifacts = (instance: LauncherInstance) => {
+  if (
+    instance.minecraftVersion !== "1.8.9" ||
+    instance.loader !== "forge" ||
+    !instance.name.toLowerCase().includes("pvp")
+  ) {
+    return [];
+  }
+
+  const removed: string[] = [];
+
+  for (const folder of legacyPvpFolders) {
+    if (removePathInsideGameDir(instance.gameDir, folder)) {
+      removed.push(folder);
+    }
+  }
+
+  const modsDir = path.join(instance.gameDir, "mods");
+
+  if (!existsSync(modsDir)) {
+    return removed;
+  }
+
+  for (const entry of readdirSync(modsDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !legacyPvpModPattern.test(entry.name)) {
+      continue;
+    }
+
+    if (removePathInsideGameDir(instance.gameDir, path.join("mods", entry.name))) {
+      removed.push(entry.name);
+    }
+  }
+
+  return removed;
+};
+
+const removePathInsideGameDir = (gameDir: string, relativePath: string) => {
+  const root = path.resolve(gameDir);
+  const target = path.resolve(root, relativePath);
+  const relative = path.relative(root, target);
+
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return false;
+  }
+
+  if (!existsSync(target)) {
+    return false;
+  }
+
+  rmSync(target, { recursive: true, force: true });
+  return true;
+};
 
 const minecraftOperatingSystem = () => {
   if (process.platform === "win32") {

@@ -47,6 +47,22 @@ export type LaunchCancelRequest = {
   instanceId?: string;
 };
 
+export type ServerStatusLookupInput = {
+  hosts: string[];
+};
+
+export type ServerStatusResult = {
+  host: string;
+  online: boolean;
+  playersOnline?: number;
+  playersMax?: number;
+  version?: string;
+  motd?: string;
+  icon?: string;
+  error?: string;
+  retrievedAt?: string;
+};
+
 export type LaunchEventType =
   | "step"
   | "console"
@@ -291,12 +307,45 @@ export type InstanceIconSelection = {
 
 export type SkinSource = "namemc" | "custom";
 
+export type MinecraftSkinVariant = "classic" | "slim";
+
+export type NameMCSkinLibraryCategory = "trending" | "new" | "random" | "tag";
+
 export type SkinSearchResult = {
   nickname: string;
   uuid: string;
   skinUrl: string;
   avatarUrl: string;
   namemcUrl: string;
+  variant?: MinecraftSkinVariant;
+  match?: "exact" | "similar";
+};
+
+export type NameMCSkinLibraryItem = {
+  id: string;
+  name: string;
+  skinUrl: string;
+  previewUrl: string;
+  namemcUrl: string;
+  model?: "classic" | "slim";
+  rank?: number;
+};
+
+export type NameMCSkinLibraryResult = {
+  category: NameMCSkinLibraryCategory;
+  tag?: string;
+  page: number;
+  fetchedAt: string;
+  source: "namemc" | "cache";
+  items: NameMCSkinLibraryItem[];
+};
+
+export type NameMCSkinSearchResult = {
+  query: string;
+  fetchedAt: string;
+  source: "namemc" | "cache";
+  profiles: SkinSearchResult[];
+  skins: NameMCSkinLibraryItem[];
 };
 
 export type LauncherSkin = {
@@ -307,6 +356,7 @@ export type LauncherSkin = {
   uuid?: string;
   skinUrl?: string;
   previewUrl?: string;
+  variant?: MinecraftSkinVariant;
   imageDataUrl?: string;
   createdAt: string;
   equippedAt?: string;
@@ -315,6 +365,25 @@ export type LauncherSkin = {
 export type SaveNicknameSkinInput = {
   nickname: string;
   name?: string;
+};
+
+export type SaveNameMCSkinInput = {
+  skinId?: string;
+  skinUrl?: string;
+  previewUrl?: string;
+  name?: string;
+  variant?: MinecraftSkinVariant;
+};
+
+export type NameMCSkinLibraryInput = {
+  category: NameMCSkinLibraryCategory;
+  tag?: string;
+  page?: number;
+  refresh?: boolean;
+};
+
+export type ApplyOfficialSkinInput = {
+  variant: MinecraftSkinVariant;
 };
 
 export type AppLanguage =

@@ -180,9 +180,10 @@ const MinecraftHead = ({
           src={skinUrl}
           alt=""
           onError={() => setFailedUrl(skinUrl)}
-          className="origin-top-left [image-rendering:pixelated]"
+          className="max-w-none origin-top-left [image-rendering:pixelated]"
           style={{
             width: 512,
+            maxWidth: "none",
             height: "auto",
             transform: "translate(-64px, -64px)",
           }}

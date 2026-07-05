@@ -153,6 +153,7 @@ export class LauncherDatabase {
         uuid TEXT,
         skin_url TEXT,
         preview_url TEXT,
+        skin_variant TEXT,
         local_path TEXT,
         created_at TEXT NOT NULL,
         equipped_at TEXT
@@ -225,6 +226,14 @@ export class LauncherDatabase {
 
     if (!installedContentColumns.includes("icon_url")) {
       database.run("ALTER TABLE installed_content ADD COLUMN icon_url TEXT");
+    }
+
+    const avatarSkinColumns = this.all<{ name: string }>("PRAGMA table_info(avatar_skins)").map(
+      (column) => column.name,
+    );
+
+    if (!avatarSkinColumns.includes("skin_variant")) {
+      database.run("ALTER TABLE avatar_skins ADD COLUMN skin_variant TEXT");
     }
   }
 

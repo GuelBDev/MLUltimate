@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  ApplyOfficialSkinInput,
   AuthSession,
   ContentProjectDetails,
   ContentProjectInput,
@@ -28,7 +29,13 @@ import type {
   MinecraftVersionSummary,
   OfflineLoginInput,
   LauncherSkin,
+  NameMCSkinLibraryInput,
+  NameMCSkinLibraryResult,
+  NameMCSkinSearchResult,
   SaveNicknameSkinInput,
+  SaveNameMCSkinInput,
+  ServerStatusLookupInput,
+  ServerStatusResult,
   SkinSearchResult,
   SystemMemoryInfo,
   UpdaterState,
@@ -162,6 +169,20 @@ const api = {
       ipcRenderer.invoke("avatar:search-nickname", nickname) as Promise<SkinSearchResult>,
     saveNicknameSkin: (input: SaveNicknameSkinInput) =>
       ipcRenderer.invoke("avatar:save-nickname-skin", input) as Promise<LauncherSkin>,
+    browseNameMcLibrary: (input: NameMCSkinLibraryInput) =>
+      ipcRenderer.invoke("avatar:browse-namemc-library", input) as Promise<NameMCSkinLibraryResult>,
+    searchNameMcLibrary: (query: string) =>
+      ipcRenderer.invoke("avatar:search-namemc-library", query) as Promise<NameMCSkinSearchResult>,
+    saveNameMcSkin: (input: SaveNameMCSkinInput) =>
+      ipcRenderer.invoke("avatar:save-namemc-skin", input) as Promise<LauncherSkin>,
+    refreshNameMcSkins: () =>
+      ipcRenderer.invoke("avatar:refresh-namemc-skins") as Promise<{
+        checked: number;
+        updated: number;
+        refreshedAt: string;
+      }>,
+    applyOfficialSkin: (input: ApplyOfficialSkinInput) =>
+      ipcRenderer.invoke("avatar:apply-official-skin", input) as Promise<AuthSession>,
     importCustomSkin: () =>
       ipcRenderer.invoke("avatar:import-custom-skin") as Promise<LauncherSkin | null>,
     listSkins: () => ipcRenderer.invoke("avatar:list-skins") as Promise<LauncherSkin[]>,
@@ -173,6 +194,10 @@ const api = {
   system: {
     getMemory: () =>
       ipcRenderer.invoke("system:get-memory") as Promise<SystemMemoryInfo>,
+  },
+  servers: {
+    status: (input: ServerStatusLookupInput) =>
+      ipcRenderer.invoke("servers:status", input) as Promise<ServerStatusResult[]>,
   },
   window: {
     minimize: () => ipcRenderer.invoke("window:minimize") as Promise<void>,

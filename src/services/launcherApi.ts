@@ -1,4 +1,5 @@
 import type {
+  ApplyOfficialSkinInput,
   AuthSession,
   ContentProjectInput,
   ContentSearchInput,
@@ -16,8 +17,13 @@ import type {
   LaunchCancelRequest,
   LaunchRequest,
   LauncherSettings,
+  NameMCSkinLibraryInput,
+  NameMCSkinSearchResult,
   OfflineLoginInput,
   SaveNicknameSkinInput,
+  SaveNameMCSkinInput,
+  ServerStatusLookupInput,
+  ServerStatusResult,
   UpdaterState,
   UpdateLauncherSettingsInput,
   UpdateInstanceInput,
@@ -323,6 +329,31 @@ export const launcherApi = {
     return window.mlultimate.avatar.saveNicknameSkin(input);
   },
 
+  browseNameMcLibrary: async (input: NameMCSkinLibraryInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.avatar.browseNameMcLibrary(input);
+  },
+
+  searchNameMcLibrary: async (query: string): Promise<NameMCSkinSearchResult> => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.avatar.searchNameMcLibrary(query);
+  },
+
+  saveNameMcSkin: async (input: SaveNameMCSkinInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.avatar.saveNameMcSkin(input);
+  },
+
+  refreshNameMcSkins: async () => {
+    if (!hasBridge()) return { checked: 0, updated: 0, refreshedAt: new Date().toISOString() };
+    return window.mlultimate.avatar.refreshNameMcSkins();
+  },
+
+  applyOfficialSkin: async (input: ApplyOfficialSkinInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.avatar.applyOfficialSkin(input);
+  },
+
   importCustomSkin: async () => {
     if (!hasBridge()) throw desktopOnly();
     return window.mlultimate.avatar.importCustomSkin();
@@ -346,6 +377,18 @@ export const launcherApi = {
   getSystemMemory: async () => {
     if (!hasBridge()) return defaultSystemMemory;
     return window.mlultimate.system.getMemory();
+  },
+
+  getServerStatuses: async (input: ServerStatusLookupInput): Promise<ServerStatusResult[]> => {
+    if (!hasBridge()) {
+      return input.hosts.map((host) => ({
+        host,
+        online: false,
+        error: "Status disponivel apenas no app desktop.",
+      }));
+    }
+
+    return window.mlultimate.servers.status(input);
   },
 
   setHudScale: async (scale: number) => {

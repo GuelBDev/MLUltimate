@@ -1,10 +1,11 @@
 import { BrowserWindow } from "electron";
 import { createServer } from "node:http";
 import { randomBytes, createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { URLSearchParams } from "node:url";
 import { z } from "zod";
 import { SecureTokenStore, type SecureMicrosoftSession } from "./secureTokenStore";
-import type { AuthSession, PublicAccount } from "../../src/types/launcher";
+import type { AuthSession, MinecraftSkinVariant, PublicAccount } from "../../src/types/launcher";
 
 const MICROSOFT_AUTH_URL = "https://login.live.com/oauth20_authorize.srf";
 const MICROSOFT_TOKEN_URL = "https://login.live.com/oauth20_token.srf";
@@ -162,6 +163,53 @@ export class MicrosoftAuthService {
     }
 
     return checkedSession;
+  }
+
+  async applyMinecraftSkin(localPath: string, variant: MinecraftSkinVariant): Promise<AuthSession> {
+    const secureSession = await this.requireLicensedSession();
+    const skinBytes = readFileSync(localPath);
+    const skinArrayBuffer = skinBytes.buffer.slice(
+      skinBytes.byteOffset,
+      skinBytes.byteOffset + skinBytes.byteLength,
+    ) as ArrayBuffer;
+    const form = new FormData();
+
+    form.append("variant", variant);
+    form.append("file", new Blob([skinArrayBuffer], { type: "image/png" }), "mlultimate-skin.png");
+
+    const response = await fetch(`${MINECRAFT_PROFILE_URL}/skins`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secureSession.minecraftAccessToken}`,
+      },
+      body: form,
+    });
+
+    if (!response.ok) {
+      throw new Error(await minecraftServicesError(response, "Aplicar skin oficial"));
+    }
+
+    const profile = await this.fetchMinecraftProfile(secureSession.minecraftAccessToken);
+    const skin = profile?.skins.find((candidate) => candidate.state === "ACTIVE") ??
+      profile?.skins.at(0);
+    const updatedSession = {
+      ...secureSession,
+      minecraftName: profile?.name ?? secureSession.minecraftName,
+      minecraftUuid: profile?.id ?? secureSession.minecraftUuid,
+      minecraftSkinUrl: skin?.url ?? secureSession.minecraftSkinUrl,
+      minecraftSkinDataUrl: skin?.url
+        ? await downloadImageDataUrl(skin.url).catch(() => secureSession.minecraftSkinDataUrl)
+        : secureSession.minecraftSkinDataUrl,
+      licenseCheckedAt: new Date().toISOString(),
+    };
+
+    this.tokenStore.saveSession(updatedSession);
+
+    return {
+      status: "signed-in",
+      account: this.toPublicAccount(updatedSession),
+      encryptionAvailable: this.tokenStore.isEncryptionAvailable(),
+    };
   }
 
   private async refreshIfNeeded(session: SecureMicrosoftSession) {
@@ -533,6 +581,31 @@ const parseJsonResponse = async (response: Response, context: string) => {
   }
 
   return json;
+};
+
+const minecraftServicesError = async (response: Response, context: string) => {
+  const text = await response.text();
+
+  try {
+    const json = JSON.parse(text) as {
+      error?: string;
+      errorMessage?: string;
+      path?: string;
+    };
+    const detail = json.errorMessage ?? json.error ?? text;
+
+    if (response.status === 401) {
+      return `${context} falhou: sessao Microsoft/Minecraft expirada. Entre com Microsoft novamente.`;
+    }
+
+    if (response.status === 403) {
+      return `${context} falhou: a conta Microsoft nao permitiu alterar a skin.`;
+    }
+
+    return `${context} falhou (${response.status}): ${detail}`;
+  } catch {
+    return `${context} falhou (${response.status}): ${text.slice(0, 300)}`;
+  }
 };
 
 const downloadImageDataUrl = async (url: string) => {

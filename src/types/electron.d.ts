@@ -1,4 +1,5 @@
 import type {
+  ApplyOfficialSkinInput,
   AuthSession,
   ContentProjectDetails,
   ContentProjectInput,
@@ -25,9 +26,15 @@ import type {
   LauncherSettings,
   LauncherInstance,
   MinecraftVersionSummary,
+  NameMCSkinLibraryInput,
+  NameMCSkinLibraryResult,
+  NameMCSkinSearchResult,
   OfflineLoginInput,
   LauncherSkin,
   SaveNicknameSkinInput,
+  SaveNameMCSkinInput,
+  ServerStatusLookupInput,
+  ServerStatusResult,
   SkinSearchResult,
   SystemMemoryInfo,
   UpdaterState,
@@ -106,6 +113,15 @@ declare global {
       avatar: {
         searchNickname: (nickname: string) => Promise<SkinSearchResult>;
         saveNicknameSkin: (input: SaveNicknameSkinInput) => Promise<LauncherSkin>;
+        browseNameMcLibrary: (input: NameMCSkinLibraryInput) => Promise<NameMCSkinLibraryResult>;
+        searchNameMcLibrary: (query: string) => Promise<NameMCSkinSearchResult>;
+        saveNameMcSkin: (input: SaveNameMCSkinInput) => Promise<LauncherSkin>;
+        refreshNameMcSkins: () => Promise<{
+          checked: number;
+          updated: number;
+          refreshedAt: string;
+        }>;
+        applyOfficialSkin: (input: ApplyOfficialSkinInput) => Promise<AuthSession>;
         importCustomSkin: () => Promise<LauncherSkin | null>;
         listSkins: () => Promise<LauncherSkin[]>;
         equipSkin: (skinId: string) => Promise<LauncherSkin>;
@@ -113,6 +129,9 @@ declare global {
       };
       system: {
         getMemory: () => Promise<SystemMemoryInfo>;
+      };
+      servers: {
+        status: (input: ServerStatusLookupInput) => Promise<ServerStatusResult[]>;
       };
       window: {
         minimize: () => Promise<void>;

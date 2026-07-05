@@ -1,5 +1,5 @@
 import { totalmem } from "node:os";
-import { BrowserWindow, ipcMain } from "electron";
+import { BrowserWindow, ipcMain, net } from "electron";
 import { z } from "zod";
 import { MicrosoftAuthService } from "../auth/microsoftAuthService";
 import { AvatarService } from "../avatar/avatarService";
@@ -12,6 +12,7 @@ import { LauncherService } from "../launcher/launcherService";
 import { MinecraftVersionService } from "../minecraft/minecraftVersionService";
 import { ApiKeyStore } from "../settings/apiKeyStore";
 import { UpdateService } from "../updater/updateService";
+import type { ServerStatusResult } from "../../src/types/launcher";
 
 const offlineLoginSchema = z.object({
   username: z.string(),
@@ -167,6 +168,29 @@ const saveNicknameSkinSchema = z.object({
   name: z.string().optional(),
 });
 
+const saveNameMcSkinSchema = z.object({
+  skinId: z.string().optional(),
+  skinUrl: z.string().url().optional(),
+  previewUrl: z.string().url().optional(),
+  name: z.string().optional(),
+  variant: z.enum(["classic", "slim"]).optional(),
+});
+
+const nameMcLibrarySchema = z.object({
+  category: z.enum(["trending", "new", "random", "tag"]),
+  tag: z.string().optional(),
+  page: z.number().int().min(1).max(20).optional(),
+  refresh: z.boolean().optional(),
+});
+
+const applyOfficialSkinSchema = z.object({
+  variant: z.enum(["classic", "slim"]),
+});
+
+const serverStatusSchema = z.object({
+  hosts: z.array(z.string().trim().min(1).max(255)).min(1).max(80),
+});
+
 type IpcDeps = {
   microsoftAuth: MicrosoftAuthService;
   offlineAuth: OfflineAuthService;
@@ -318,6 +342,26 @@ export const registerIpcHandlers = ({
   ipcMain.handle("avatar:save-nickname-skin", async (_, input: unknown) =>
     avatar.saveNicknameSkin(saveNicknameSkinSchema.parse(input)),
   );
+  ipcMain.handle("avatar:browse-namemc-library", async (_, input: unknown) =>
+    avatar.browseNameMcLibrary(nameMcLibrarySchema.parse(input)),
+  );
+  ipcMain.handle("avatar:search-namemc-library", async (_, query: unknown) =>
+    avatar.searchNameMcLibrary(z.string().parse(query)),
+  );
+  ipcMain.handle("avatar:save-namemc-skin", async (_, input: unknown) =>
+    avatar.saveNameMcSkin(saveNameMcSkinSchema.parse(input)),
+  );
+  ipcMain.handle("avatar:refresh-namemc-skins", async () => avatar.refreshNameMcSkins());
+  ipcMain.handle("avatar:apply-official-skin", async (_, input: unknown) => {
+    const parsed = applyOfficialSkinSchema.parse(input);
+    const skin = avatar.getEquippedSkinFile();
+
+    if (!skin) {
+      throw new Error("Equipe uma skin na aba Avatar antes de aplicar na conta Microsoft.");
+    }
+
+    return microsoftAuth.applyMinecraftSkin(skin.localPath, parsed.variant);
+  });
   ipcMain.handle("avatar:import-custom-skin", async () => avatar.importCustomSkin());
   ipcMain.handle("avatar:list-skins", async () => avatar.list());
   ipcMain.handle("avatar:equip-skin", async (_, skinId: unknown) =>
@@ -329,6 +373,11 @@ export const registerIpcHandlers = ({
   ipcMain.handle("system:get-memory", async () => ({
     totalMb: Math.max(1024, Math.floor(totalmem() / 1024 / 1024)),
   }));
+  ipcMain.handle("servers:status", async (_, input: unknown) => {
+    const parsed = serverStatusSchema.parse(input);
+    const hosts = Array.from(new Set(parsed.hosts.map((host) => host.toLowerCase())));
+    return Promise.all(hosts.map((host) => fetchJavaServerStatus(host)));
+  });
   ipcMain.handle("window:minimize", (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize();
   });
@@ -369,3 +418,164 @@ export const registerIpcHandlers = ({
     BrowserWindow.fromWebContents(event.sender)?.close();
   });
 };
+
+const fetchJavaServerStatus = async (host: string): Promise<ServerStatusResult> => {
+  const primary = await fetchMcStatusIo(host).catch((error: unknown): ServerStatusResult => ({
+    host,
+    online: false,
+    error: error instanceof Error ? error.message : "Nao foi possivel buscar status.",
+  }));
+
+  if (primary.online) {
+    return primary;
+  }
+
+  const fallback = await fetchMcsrvStat(host).catch(() => null);
+
+  if (!fallback) {
+    return primary;
+  }
+
+  return {
+    ...primary,
+    ...fallback,
+    host,
+    icon: primary.icon ?? fallback.icon,
+    motd: primary.motd ?? fallback.motd,
+    version: primary.version ?? fallback.version,
+    error: fallback.online ? undefined : primary.error ?? fallback.error,
+  };
+};
+
+const fetchMcStatusIo = async (host: string): Promise<ServerStatusResult> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+
+  try {
+    const response = await net.fetch(
+      `https://api.mcstatus.io/v2/status/java/${encodeURIComponent(host)}`,
+      {
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "MLUltimateLauncher/servers",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      return {
+        host,
+        online: false,
+        error: `Status retornou ${response.status}.`,
+      };
+    }
+
+    const payload = await response.json() as {
+      online?: boolean;
+      retrieved_at?: number;
+      players?: {
+        online?: number;
+        max?: number;
+      };
+      version?: {
+        name_clean?: string;
+        name_raw?: string;
+      };
+      motd?: {
+        clean?: string;
+      };
+      icon?: string;
+    };
+
+    return {
+      host,
+      online: Boolean(payload.online),
+      playersOnline: numberOrUndefined(payload.players?.online),
+      playersMax: numberOrUndefined(payload.players?.max),
+      version: payload.version?.name_clean ?? payload.version?.name_raw,
+      motd: payload.motd?.clean,
+      icon: payload.icon,
+      retrievedAt: payload.retrieved_at
+        ? new Date(payload.retrieved_at).toISOString()
+        : new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      host,
+      online: false,
+        error: error instanceof Error ? error.message : "Nao foi possivel buscar status.",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const fetchMcsrvStat = async (host: string): Promise<ServerStatusResult> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+
+  try {
+    const response = await net.fetch(
+      `https://api.mcsrvstat.us/3/${encodeURIComponent(host)}`,
+      {
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "MLUltimateLauncher/servers",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      return {
+        host,
+        online: false,
+        error: `Fallback retornou ${response.status}.`,
+      };
+    }
+
+    const payload = await response.json() as {
+      online?: boolean;
+      players?: {
+        online?: number;
+        max?: number;
+      };
+      version?: string;
+      motd?: {
+        clean?: string[] | string;
+      };
+      icon?: string;
+      debug?: {
+        cachetime?: number;
+      };
+    };
+    const motd = Array.isArray(payload.motd?.clean)
+      ? payload.motd?.clean.join("\n")
+      : payload.motd?.clean;
+
+    return {
+      host,
+      online: Boolean(payload.online),
+      playersOnline: numberOrUndefined(payload.players?.online),
+      playersMax: numberOrUndefined(payload.players?.max),
+      version: payload.version,
+      motd,
+      icon: payload.icon,
+      retrievedAt: payload.debug?.cachetime
+        ? new Date(payload.debug.cachetime * 1000).toISOString()
+        : new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      host,
+      online: false,
+      error: error instanceof Error ? error.message : "Nao foi possivel buscar status.",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const numberOrUndefined = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined;

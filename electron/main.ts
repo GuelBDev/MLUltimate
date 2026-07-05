@@ -154,6 +154,7 @@ const bootstrap = async () => {
     instances,
     javaRuntimes,
     minecraftVersions,
+    avatar,
     (event) => {
       mainWindow?.webContents.send("launcher:event", event);
 
