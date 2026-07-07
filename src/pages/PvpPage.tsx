@@ -34,7 +34,6 @@ import type {
   ContentProvider,
   ContentSearchResult,
   ContentType,
-  InstalledContent,
   InstanceContentEntry,
   LauncherInstance,
   LaunchEvent,
@@ -343,25 +342,34 @@ const curatedMods: CuratedPvpContent[] = [
     provider: "curseforge",
     projectId: "558935",
     type: "mod",
-    description: "Mostruário de teclas no estilo Lunar para treinar movimento.",
+    description: "Mostruario de teclas para treino de movimento.",
     tag: "Teclas",
     imageUrl: "https://media.forgecdn.net/avatars/1727/773/639099368200386239.png",
   },
   {
-    title: "Better Sprinting",
-    provider: "curseforge",
-    projectId: "227409",
+    title: "PolySprint",
+    provider: "modrinth",
+    projectId: "i9xRThb3",
     type: "mod",
-    description: "Controles de sprint estáveis para PvP clássico 1.8.9.",
+    description: "Toggle sprint leve para PvP 1.8.9, baixado pela Modrinth.",
     tag: "Sprint",
-    imageUrl: "https://media.forgecdn.net/avatars/208/988/636978682962295951.png",
+    imageUrl: "https://cdn.modrinth.com/data/i9xRThb3/icon.png",
+  },
+  {
+    title: "VanillaHUD",
+    provider: "curseforge",
+    projectId: "1147254",
+    type: "mod",
+    description: "HUD limpo para Forge 1.8.9 via CurseForge.",
+    tag: "HUD",
+    imageUrl: "https://media.forgecdn.net/avatars/1147/254/638706762970781068.png",
   },
   {
     title: "BetterFps",
     provider: "curseforge",
     projectId: "229876",
     type: "mod",
-    description: "Otimizações clássicas para deixar a 1.8.9 mais leve.",
+    description: "Otimizacoes classicas para deixar a 1.8.9 mais leve.",
     tag: "FPS",
     imageUrl: "https://media.forgecdn.net/avatars/16/988/635655885251312698.png",
   },
@@ -382,6 +390,33 @@ const curatedMods: CuratedPvpContent[] = [
     description: "Corrige vazamentos de memoria e ajuda com texturas pesadas.",
     tag: "Fix",
     imageUrl: "https://media.forgecdn.net/avatars/919/408/638381618061787810.png",
+  },
+  {
+    title: "BetterHurtCam",
+    provider: "modrinth",
+    projectId: "DQKdq5re",
+    type: "mod",
+    description: "Ajusta a camera de dano para PvP 1.8.9.",
+    tag: "Camera",
+    imageUrl: "https://cdn.modrinth.com/data/DQKdq5re/icon.png",
+  },
+  {
+    title: "TCPDelayMod",
+    provider: "modrinth",
+    projectId: "d9VOPfkU",
+    type: "mod",
+    description: "Ajuste leve de rede para Minecraft 1.8.9.",
+    tag: "Rede",
+    imageUrl: "https://cdn.modrinth.com/data/d9VOPfkU/icon.png",
+  },
+  {
+    title: "SimpleTimeChanger",
+    provider: "modrinth",
+    projectId: "uHERytn5",
+    type: "mod",
+    description: "Troca de horario do mundo para visual PvP mais limpo.",
+    tag: "Tempo",
+    imageUrl: "https://cdn.modrinth.com/data/uHERytn5/icon.png",
   },
   {
     title: "CustomSkinLoader",
@@ -442,12 +477,25 @@ const curatedTextures: CuratedPvpContent[] = [
   },
 ];
 
+type ProviderUnavailableItem = {
+  title: string;
+  reason: string;
+};
+
+const providerUnavailableItems: ProviderUnavailableItem[] = [
+  { title: "OptiFine", reason: "Nao possui distribuicao oficial por Modrinth/CurseForge." },
+  { title: "Patcher", reason: "Distribuido fora dos providers do launcher." },
+  { title: "The 5zig Mod", reason: "Nao possui build Forge 1.8.9 atual nesses providers." },
+  { title: "OverflowAnimations", reason: "Nao encontrado com download oficial em Modrinth/CurseForge." },
+  { title: "Block Overlay / Crosshair do video", reason: "As versoes exatas do video nao aparecem nos providers oficiais." },
+];
+
 const quickFeatures = [
   { icon: Keyboard, title: "Keystrokes", value: "WASD", text: "Teclas e cliques para treino de movimento." },
   { icon: Gauge, title: "CPS", value: "HUD", text: "Contador limpo para duels e bridging." },
-  { icon: Zap, title: "Otimizacao", value: "3 mods", text: "BetterFps, FoamFix e Memory Fix por padrao." },
+  { icon: Zap, title: "Otimizacao", value: "11 mods", text: "Downloads seguros por Modrinth e CurseForge." },
   { icon: Shirt, title: "Skin offline", value: "Avatar", text: "A skin equipada entra no Kit PvP via CustomSkinLoader." },
-  { icon: Palette, title: "Texturas", value: "5 packs", text: "Resource packs PvP ja ficam na instancia." },
+  { icon: Palette, title: "Texturas", value: "5 packs", text: "Resource packs baixados pelos providers do launcher." },
 ];
 
 const pvpSearchSuggestions = {
@@ -634,47 +682,29 @@ export const PvpPage = () => {
           name: PVP_INSTANCE_NAME,
           minecraftVersion: PVP_VERSION,
           loader: PVP_LOADER,
-          ramMb: 3072,
+          ramMb: 4096,
           contentManagementEnabled: true,
         }));
 
       await refreshPvpData(queryClient);
       const installed = await launcherApi.listInstalledContent(instance.id).catch(() => []);
-      const failures: string[] = [];
-      const legacyItems = installed.filter(isLegacyPvpContent);
-      const removedLegacy: string[] = [];
-
-      for (const legacy of legacyItems) {
-        try {
-          setSetupStatus(`Removendo mod antigo incompatível: ${legacy.name}...`);
-          await launcherApi.removeInstalledContent(legacy.id);
-          removedLegacy.push(legacy.name);
-        } catch (error) {
-          failures.push(
-            `Remover ${legacy.name}: ${error instanceof Error ? error.message : "falhou"}`,
-          );
-        }
-      }
-
       const installedKeys = new Set(
-        installed
-          .filter((item) => !isLegacyPvpContent(item))
-          .map((item) => `${item.provider}:${item.type}:${item.projectId}`),
+        installed.map((item) => `${item.provider}:${item.type}:${item.projectId}`),
       );
-      let done = 0;
       const items = [...curatedMods, ...curatedTextures];
+      const failures: string[] = [];
+      let done = 0;
 
       for (const item of items) {
         const key = `${item.provider}:${item.type}:${item.projectId}`;
-
-        if (installedKeys.has(key)) {
-          done += 1;
-          setSetupStatus(`Já instalado: ${item.title} (${done}/${items.length})`);
-          continue;
-        }
+        const alreadyInstalled = installedKeys.has(key);
 
         try {
-          setSetupStatus(`Baixando ${item.title} (${done + 1}/${items.length})...`);
+          setSetupStatus(
+            alreadyInstalled
+              ? `Verificando atualizacao via ${providerLabel[item.provider]}: ${item.title} (${done + 1}/${items.length})...`
+              : `Baixando via ${providerLabel[item.provider]}: ${item.title} (${done + 1}/${items.length})...`,
+          );
           await installSingleContent(instance.id, item);
           installedKeys.add(key);
         } catch (error) {
@@ -688,19 +718,15 @@ export const PvpPage = () => {
 
       if (failures.length > 0) {
         setSetupError(
-          `Perfil criado, mas ${failures.length} item(ns) não baixaram. Você pode tentar novamente. ${failures.slice(0, 2).join(" | ")}`,
+          `Kit criado, mas ${failures.length} item(ns) nao baixaram pelos providers. ${failures.slice(0, 2).join(" | ")}`,
         );
-        setSetupStatus("Kit PvP parcialmente pronto.");
+        setSetupStatus("Kit PvP parcialmente pronto com downloads oficiais.");
         return;
       }
 
-      setSetupStatus(
-        removedLegacy.length > 0
-          ? "Kit PvP reparado e pronto para jogar."
-          : "Kit PvP 1.8.9 pronto para jogar.",
-      );
+      setSetupStatus("Kit PvP pronto com mods e texturas baixados por Modrinth/CurseForge.");
     } catch (error) {
-      setSetupError(error instanceof Error ? error.message : "Não foi possível criar o kit PvP.");
+      setSetupError(error instanceof Error ? error.message : "Nao foi possivel criar o kit PvP.");
       setSetupStatus(null);
     }
   };
@@ -710,16 +736,16 @@ export const PvpPage = () => {
     const instance = pvpInstance;
 
     if (!instance) {
-      setSetupError("Instale o Kit PvP 1.8.9 antes de adicionar conteúdo.");
+      setSetupError("Instale o Kit PvP 1.8.9 antes de adicionar conteudo.");
       return;
     }
 
     try {
-      setSetupStatus(`Baixando ${item.title}...`);
+      setSetupStatus(`Baixando ou atualizando via ${providerLabel[item.provider]}: ${item.title}...`);
       await installSingleContent(instance.id, item);
-      setSetupStatus(`${item.title} instalado no Kit PvP.`);
+      setSetupStatus(`${item.title} instalado via ${providerLabel[item.provider]}.`);
     } catch (error) {
-      setSetupError(error instanceof Error ? error.message : "Não foi possível instalar.");
+      setSetupError(error instanceof Error ? error.message : "Nao foi possivel instalar.");
     }
   };
 
@@ -1020,12 +1046,12 @@ export const PvpPage = () => {
         </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+      <section className="grid gap-5 xl:grid-cols-[1fr_1fr]">
         <Card className="p-5">
           <SectionHeader
             icon={Package}
-            title="Mods do Kit PvP"
-            description="Conteúdo compatível com Forge 1.8.9 para HUD, CPS, teclas e FPS."
+            title="Mods oficiais do Kit PvP"
+            description="Downloads feitos direto por Modrinth e CurseForge, com versao Forge 1.8.9 filtrada pelo launcher."
           />
           <div className="mt-4 space-y-3">
             {curatedMods.map((item) => (
@@ -1042,8 +1068,8 @@ export const PvpPage = () => {
         <Card className="p-5">
           <SectionHeader
             icon={Palette}
-            title="Texturas PvP padrão"
-            description="Cinco resource packs famosos ficam prontos para ativar dentro do Minecraft."
+            title="Texturas por providers"
+            description="Resource packs baixados pelos mesmos providers seguros do launcher."
           />
           <div className="mt-4 space-y-3">
             {curatedTextures.map((item) => (
@@ -1057,6 +1083,19 @@ export const PvpPage = () => {
           </div>
         </Card>
       </section>
+
+      <Card className="p-5">
+        <SectionHeader
+          icon={ShieldCheck}
+          title="Fora do download automatico"
+          description="Itens do video que nao entram porque nao achei distribuicao oficial no Modrinth/CurseForge."
+        />
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {providerUnavailableItems.map((item) => (
+            <ProviderUnavailableRow key={item.title} item={item} />
+          ))}
+        </div>
+      </Card>
 
       <Card className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1636,6 +1675,7 @@ const CuratedContentRow = ({
       <div className="flex flex-wrap items-center gap-2">
         <p className="font-semibold text-white">{item.title}</p>
         <Badge tone="slate">{item.tag}</Badge>
+        <Badge tone="blue">{providerLabel[item.provider]}</Badge>
       </div>
       <p className="mt-1 text-sm leading-5 text-[#94A3B8]">{item.description}</p>
     </div>
@@ -1662,11 +1702,21 @@ const CuratedContentImage = ({ item }: { item: CuratedPvpContent }) => {
     <img
       src={item.imageUrl}
       alt=""
-      onError={() => setFailedSrc(item.imageUrl)}
       className="h-full w-full object-cover"
+      onError={() => setFailedSrc(item.imageUrl)}
     />
   );
 };
+
+const ProviderUnavailableRow = ({ item }: { item: ProviderUnavailableItem }) => (
+  <div className="rounded-2xl border border-amber-300/20 bg-amber-500/10 p-4">
+    <div className="flex items-center gap-2">
+      <Lock className="h-4 w-4 text-amber-200" />
+      <p className="font-semibold text-amber-50">{item.title}</p>
+    </div>
+    <p className="mt-2 text-sm leading-6 text-amber-100/80">{item.reason}</p>
+  </div>
+);
 
 const StatusLine = ({ tone, text }: { tone: "info" | "error"; text: string }) => (
   <div
@@ -1702,18 +1752,7 @@ const findPvpInstance = (instances: LauncherInstance[]) =>
       instance.name.toLowerCase().includes("pvp"),
   );
 
-const legacyPvpContentKeys = new Set([
-  "modrinth:mod:vqonj1T8",
-  "curseforge:mod:1147254",
-  "curseforge:mod:1147262",
-]);
-
-const legacyPvpFilePattern = /(basichud|vanillahud|polysprint|oneconfig)/i;
-
-const isLegacyPvpContent = (item: InstalledContent) =>
-  item.type === "mod" &&
-  (legacyPvpContentKeys.has(`${item.provider}:${item.type}:${item.projectId}`) ||
-    legacyPvpFilePattern.test(`${item.name} ${item.fileName}`));
+const legacyPvpFilePattern = /(basichud|oneconfig)/i;
 
 const filterServers = (servers: PvpServer[], query: string) => {
   const normalized = normalizeSearch(query);
@@ -1770,6 +1809,7 @@ const formatBytes = (bytes: number) => {
 
   return `${value >= 10 ? Math.round(value) : value.toFixed(1)} ${units[unitIndex]}`;
 };
+
 
 const filterPvpResults = (
   results: ContentSearchResult[],

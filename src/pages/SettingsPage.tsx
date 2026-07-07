@@ -599,6 +599,7 @@ export const SettingsPage = () => {
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
             {appearancePresets.map((preset) => {
               const active = (currentSettings?.appearancePreset ?? "night-dark") === preset.id;
+              const swatchColor = preset.id === "light-mode" ? "#FFFFFF" : preset.primaryColor;
 
               return (
                 <button
@@ -615,7 +616,7 @@ export const SettingsPage = () => {
                   <span className="flex items-center gap-2 text-sm font-semibold text-white">
                     <span
                       className="h-4 w-4 rounded-full border border-white/20"
-                      style={{ background: preset.primaryColor }}
+                      style={{ background: swatchColor }}
                     />
                     {preset.label}
                   </span>

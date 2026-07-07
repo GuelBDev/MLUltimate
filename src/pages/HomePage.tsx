@@ -30,48 +30,66 @@ type HomePageProps = {
 const carouselSlides = [
   {
     eyebrow: "MLUltimate Launcher",
-    title: "Seu Minecraft com visual premium",
+    title: "Jogue, ajuste e evolua seu Minecraft",
     description:
-      "Uma central moderna para criar perfis, instalar conteudo e acompanhar as novidades do launcher.",
+      "Crie instancias, instale conteudo e acompanhe novidades sem sair do launcher.",
     image: instanceDefaultImage,
     badge: "Destaque",
   },
   {
-    eyebrow: "Biblioteca",
-    title: "Mods, shaders e texturas em um so lugar",
+    eyebrow: "Kit PvP",
+    title: "PvP 1.8.9 pronto para treinar",
     description:
-      "A Biblioteca concentra Modrinth e CurseForge para baixar conteudo compativel com seus perfis.",
+      "Perfil Forge com servidores, mods, skins offline e configuracoes pensadas para combate.",
     image: heroImage,
-    badge: "Conteudo",
+    badge: "PvP",
   },
   {
-    eyebrow: "Atualizacoes",
-    title: "Launcher preparado para evoluir rapido",
+    eyebrow: "Campanhas",
+    title: "Espacos de anuncio sem poluir o app",
     description:
-      "A Home agora mostra changelog e campanhas, deixando o app pronto para anuncios oficiais e pagos.",
+      "A Home separa comunicados, banners patrocinados e novidades para manter o uso do app limpo.",
     image: instanceDefaultImage,
-    badge: "Novidade",
+    badge: "Ads",
   },
 ];
 
 const sponsoredSlots = [
   {
-    title: "Espaco premium",
-    label: "Anuncio pago",
-    description: "Area reservada para campanhas de servidores, comunidades ou modpacks parceiros.",
+    title: "Servidor em destaque",
+    label: "Patrocinado",
+    description: "Banner para servidor parceiro com arte, IP, player count e botao direto para entrar.",
     icon: BadgeDollarSign,
   },
   {
     title: "Campanha oficial",
     label: "MLUltimate",
-    description: "Destaques do launcher, novas funcoes, eventos e chamadas importantes do app.",
+    description: "Espaco para updates, eventos PvP, skins em alta e chamadas importantes do app.",
     icon: Megaphone,
   },
   {
-    title: "Vitrine visual",
-    label: "Midia",
-    description: "Slot preparado para banners com imagem, titulo, botao e periodo de exibicao.",
+    title: "Oferta com cupom",
+    label: "CPA",
+    description: "Formato para loja parceira com cupom rastreavel e periodo de exibicao limitado.",
     icon: Images,
+  },
+];
+
+const monetizationRules = [
+  {
+    title: "Poucos slots",
+    description: "No maximo um banner grande e dois cards menores por vez para nao cansar o usuario.",
+    icon: ShieldCheck,
+  },
+  {
+    title: "Sempre marcado",
+    description: "Todo conteudo pago aparece como Patrocinado, sem misturar com botoes principais.",
+    icon: BadgeDollarSign,
+  },
+  {
+    title: "Segmentado por contexto",
+    description: "Servidor PvP aparece na Home/PvP; textura, modpack ou skin aparece perto da Biblioteca.",
+    icon: Sparkles,
   },
 ];
 
@@ -99,6 +117,8 @@ const changelog = [
     tag: rawAppVersion,
     date: "Atual",
     changes: [
+      "Kit PvP agora baixa mods e texturas por Modrinth/CurseForge, sem MediaFire ou zip embutido.",
+      "Home redesenhada com vitrine, comunicados e espacos de campanha mais organizados.",
       "Forge 1.8.9 corrigido: instaladores legados agora são instalados manualmente pelo launcher.",
       "Bibliotecas antigas do Forge agora entram no classpath do Minecraft corretamente.",
       "Release agora valida criação real de instância Forge 1.8.9 antes de publicar.",
@@ -230,12 +250,12 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
               <Megaphone className="h-5 w-5" />
             </div>
             <p className="mt-5 text-xs font-semibold uppercase tracking-[0.22em] text-[#60A5FA]">
-              Painel de anuncios
+              Campanhas
             </p>
-            <h2 className="mt-2 text-2xl font-semibold text-white">Espacos prontos para campanhas</h2>
+            <h2 className="mt-2 text-2xl font-semibold text-white">Monetizacao sem atrapalhar</h2>
             <p className="mt-3 text-sm leading-6 text-[#94A3B8]">
-              A Home agora pode receber banners oficiais, comunicados do app e anuncios pagos sem
-              misturar isso com suas instancias.
+              A Home fica pronta para banners pagos, comunicados oficiais e cupons sem esconder
+              suas instancias ou transformar o launcher em uma tela de propaganda.
             </p>
           </div>
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
@@ -244,7 +264,7 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
               <div>
                 <p className="text-sm font-semibold text-white">Conteudo separado do launcher</p>
                 <p className="mt-1 text-xs leading-5 text-[#94A3B8]">
-                  Os anuncios ficam na Home; jogos e perfis continuam em Minhas Instancias.
+                  Campanhas ficam na Home; jogar, editar e baixar continuam nas abas certas.
                 </p>
               </div>
             </div>
@@ -267,6 +287,27 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
               <h3 className="mt-5 text-lg font-semibold text-white">{slot.title}</h3>
               <p className="mt-2 text-sm leading-6 text-[#94A3B8]">{slot.description}</p>
             </Card>
+          );
+        })}
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-3">
+        {monetizationRules.map((rule) => {
+          const Icon = rule.icon;
+
+          return (
+            <div
+              key={rule.title}
+              className="rounded-2xl border border-white/10 bg-[#0D1117]/70 p-5"
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#22C55E]/12 text-[#4ADE80]">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <h3 className="font-semibold text-white">{rule.title}</h3>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[#94A3B8]">{rule.description}</p>
+            </div>
           );
         })}
       </section>

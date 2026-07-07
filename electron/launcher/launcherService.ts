@@ -1,7 +1,7 @@
 import AdmZip from "adm-zip";
 import { createHash } from "node:crypto";
 import { app } from "electron";
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { AvatarService } from "../avatar/avatarService";
@@ -269,7 +269,8 @@ export class LauncherService {
       ...lightweightJvmArgs,
       ...loaderProfileJvmArgs,
     ]);
-    const jvmArgs = [...buildMemoryJvmArgs(instance.ramMb), ...loaderJvmArgs];
+    const customJvmArgs = readInstanceJvmArgs(instance.gameDir);
+    const jvmArgs = [...buildMemoryJvmArgs(instance.ramMb), ...customJvmArgs, ...loaderJvmArgs];
     const vanillaGameArgs = versionJson.arguments?.game
       ? resolveArguments(versionJson.arguments.game, replacements)
       : splitMinecraftArguments(versionJson.minecraftArguments ?? "").map((argument) =>
@@ -742,10 +743,28 @@ const buildMemoryJvmArgs = (ramMb: number) => {
   return [`-Xms${initialMemory}M`, `-Xmx${maxMemory}M`];
 };
 
+const readInstanceJvmArgs = (gameDir: string) => {
+  const argsPath = path.join(gameDir, "config", "mlultimate-jvm.args");
+
+  if (!existsSync(argsPath)) {
+    return [];
+  }
+
+  try {
+    return readFileSync(argsPath, "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"))
+      .filter((line) => !/^-Xm[sx]/i.test(line));
+  } catch {
+    return [];
+  }
+};
+
 const isFabricBasedLoader = (loader: string) =>
   loader === "fabric" || loader === "iris" || loader === "iris-sodium";
 
-const legacyPvpModPattern = /(basichud|vanillahud|polysprint|oneconfig).*\.jar$/i;
+const legacyPvpModPattern = /(basichud|oneconfig).*\.jar$/i;
 const legacyPvpFolders = ["OneConfig", ".mixin.out"];
 
 const cleanupLegacyPvpKitArtifacts = (instance: LauncherInstance) => {
