@@ -2,7 +2,7 @@ import AdmZip from "adm-zip";
 import { app, dialog, net, shell } from "electron";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -33,6 +33,7 @@ const MODRINTH_API = "https://api.modrinth.com/v2";
 const IRIS_PROJECT_ID = "YL57xq9U";
 const SODIUM_PROJECT_ID = "AANobbMI";
 const MODPACK_LOCK_FILE = "mlultimate-modpack-lock.json";
+const DELETED_INSTANCES_DIR = ".mlultimate-trash";
 
 type InstalledContentRow = {
   provider: ContentProvider;
@@ -93,6 +94,7 @@ const modrinthIndexSchema = z.object({
         path: z.string(),
         downloads: z.array(z.string().url()).default([]),
         hashes: z.object({ sha1: z.string().optional() }).optional(),
+        fileSize: z.number().optional(),
       }),
     )
     .default([]),
@@ -132,6 +134,7 @@ const curseForgeFileSchema = z.object({
     id: z.number(),
     displayName: z.string().optional(),
     fileName: z.string(),
+    fileLength: z.number().optional(),
     downloadUrl: z.string().nullable().optional(),
     isAvailable: z.boolean().optional().default(true),
     hashes: z
@@ -234,12 +237,7 @@ export class InstanceService {
     const parsed = createInstanceSchema.parse(input);
     const id = randomUUID();
     const now = new Date().toISOString();
-    const safeName = parsed.name
-      .normalize("NFKD")
-      .replace(/[^\w.-]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .toLowerCase();
-    const gameDir = path.join(this.instancesRoot, `${safeName || "instance"}-${id.slice(0, 8)}`);
+    const gameDir = await this.nextInstanceGameDir(parsed.name);
 
     await Promise.all([
       mkdir(path.join(gameDir, "mods"), { recursive: true }),
@@ -293,6 +291,8 @@ export class InstanceService {
   }
 
   async list(): Promise<LauncherInstance[]> {
+    await this.cleanupDeletedInstances();
+
     const rows = this.database.all<InstanceRow>(
       "SELECT * FROM instances ORDER BY updated_at DESC",
     );
@@ -312,27 +312,99 @@ export class InstanceService {
 
   async remove(id: string) {
     const instance = await this.getById(id);
-    const resolvedGameDir = path.resolve(instance.gameDir);
-    const resolvedRoot = path.resolve(this.instancesRoot);
+    const deletedPath = await this.moveInstanceToDeletedArea(instance);
 
-    const relativePath = path.relative(resolvedRoot, resolvedGameDir);
-    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-      throw new Error("Caminho da instância fora da pasta segura do launcher.");
-    }
-
-    await rm(resolvedGameDir, {
-      recursive: true,
-      force: true,
-      maxRetries: 5,
-      retryDelay: 250,
-    }).catch((error) => {
-      throw new Error(
-        "Não foi possível excluir a pasta da instância. Feche o Minecraft e qualquer pasta aberta dessa instância e tente novamente.",
-        { cause: error },
-      );
-    });
     this.database.run("DELETE FROM installed_content WHERE instance_id = ?", [id]);
     this.database.run("DELETE FROM instances WHERE id = ?", [id]);
+
+    if (deletedPath) {
+      await this.deletePathWithRetries(deletedPath).catch(() => undefined);
+    }
+
+    await this.cleanupDeletedInstances();
+  }
+
+  private async nextInstanceGameDir(name: string) {
+    await mkdir(this.instancesRoot, { recursive: true });
+    const baseName = sanitizeInstanceFolderName(name);
+
+    for (let index = 1; index < 1000; index += 1) {
+      const folderName = index === 1 ? baseName : `${baseName}-${index}`;
+      const candidate = path.join(this.instancesRoot, folderName);
+
+      if (!existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    throw new Error("Nao foi possivel encontrar um nome livre para a pasta da instancia.");
+  }
+
+  private async moveInstanceToDeletedArea(instance: LauncherInstance) {
+    const resolvedGameDir = this.resolveInstancePathInsideRoot(instance.gameDir);
+
+    if (!existsSync(resolvedGameDir)) {
+      return null;
+    }
+
+    const trashRoot = path.join(this.instancesRoot, DELETED_INSTANCES_DIR);
+    await mkdir(trashRoot, { recursive: true });
+    const deletedPath = path.join(
+      trashRoot,
+      `${new Date().toISOString().replace(/[:.]/g, "-")}-${instance.id}`,
+    );
+
+    try {
+      await rename(resolvedGameDir, deletedPath);
+      return deletedPath;
+    } catch (error) {
+      await this.deletePathWithRetries(resolvedGameDir).catch((deleteError) => {
+        throw new Error(
+          "Nao foi possivel excluir a pasta da instancia. Feche o Minecraft e qualquer pasta aberta dessa instancia e tente novamente.",
+          { cause: deleteError instanceof Error ? deleteError : error },
+        );
+      });
+      return null;
+    }
+  }
+
+  private resolveInstancePathInsideRoot(targetPath: string) {
+    const resolvedTarget = path.resolve(targetPath);
+    const resolvedRoot = path.resolve(this.instancesRoot);
+    const relativePath = path.relative(resolvedRoot, resolvedTarget);
+
+    if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+      throw new Error("Caminho da instancia fora da pasta segura do launcher.");
+    }
+
+    if (relativePath.split(path.sep).includes(DELETED_INSTANCES_DIR)) {
+      throw new Error("Caminho da instancia aponta para a lixeira interna do launcher.");
+    }
+
+    return resolvedTarget;
+  }
+
+  private async deletePathWithRetries(targetPath: string) {
+    await rm(targetPath, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 500,
+    });
+  }
+
+  private async cleanupDeletedInstances() {
+    const trashRoot = path.join(this.instancesRoot, DELETED_INSTANCES_DIR);
+
+    if (!existsSync(trashRoot)) {
+      return;
+    }
+
+    const entries = await readdir(trashRoot, { withFileTypes: true }).catch(() => []);
+
+    for (const entry of entries) {
+      await this.deletePathWithRetries(path.join(trashRoot, entry.name)).catch(() => undefined);
+    }
   }
 
   async update(input: UpdateInstanceInput): Promise<LauncherInstance> {
@@ -447,6 +519,86 @@ export class InstanceService {
       [recommendedRam, new Date().toISOString(), id],
     );
     return this.getById(id);
+  }
+
+  async repairLockedModpackFiles(instance: LauncherInstance) {
+    const lock = await this.readModpackLock(instance.gameDir);
+
+    if (!lock) {
+      return [];
+    }
+
+    const repaired: string[] = [];
+
+    for (const file of lock.files.filter((lockedFile) => lockedFile.required !== false)) {
+      const targetPath = resolveLockedRelativePath(instance.gameDir, file.relativePath);
+      const userDisabledPath = `${targetPath}.disabled`;
+      const targetExists = existsSync(targetPath) && statSync(targetPath).size > 0;
+      const userDisabledExists =
+        existsSync(userDisabledPath) && statSync(userDisabledPath).size > 0;
+
+      if (targetExists || userDisabledExists) {
+        continue;
+      }
+
+      if (existsSync(targetPath)) {
+        await rm(targetPath, { force: true });
+      }
+
+      const restoredPath = await restoreDisabledLockedFile(instance.gameDir, targetPath);
+
+      if (restoredPath) {
+        repaired.push(`Restaurei ${file.fileName} do reparo anterior.`);
+        continue;
+      }
+
+      if (file.provider !== "curseforge") {
+        throw new Error(
+          `Arquivo obrigatorio ausente no modpack ${lock.name}: ${file.fileName}. Reimporte o modpack para recuperar esse arquivo.`,
+        );
+      }
+
+      const projectId = Number(file.projectId);
+      const versionId = Number(file.versionId);
+
+      if (!Number.isInteger(projectId) || !Number.isInteger(versionId)) {
+        throw new Error(
+          `Arquivo obrigatorio sem referencia valida no CurseForge: ${file.fileName}.`,
+        );
+      }
+
+      const curseForgeFile = await this.getCurseForgeFile(projectId, versionId);
+      const downloadUrl =
+        curseForgeFile.downloadUrl ??
+        (await this.getCurseForgeDownloadUrl(projectId, versionId).catch(() =>
+          curseForgeCdnDownloadUrl(curseForgeFile),
+        ));
+
+      await this.downloads.download({
+        label: `Reparando ${file.fileName}`,
+        url: downloadUrl,
+        destination: targetPath,
+        sha1: curseForgeSha1(curseForgeFile),
+        visible: false,
+      });
+
+      if (file.type !== "datapack") {
+        this.recordImportedContent({
+          instanceId: instance.id,
+          provider: "curseforge",
+          type: file.type,
+          projectId: file.projectId,
+          versionId: file.versionId,
+          name: file.name,
+          fileName: file.fileName,
+          filePath: targetPath,
+        });
+      }
+
+      repaired.push(`Baixei novamente ${file.fileName}.`);
+    }
+
+    return repaired;
   }
 
   async selectIcon(): Promise<InstanceIconSelection | null> {
@@ -959,6 +1111,8 @@ export class InstanceService {
       "curseforge://manifest",
     );
     let completed = 0;
+    let aggregateBytesReceived = 0;
+    let aggregateTotalBytes = 0;
     const lockedFiles: z.infer<typeof modpackLockSchema>["files"] = [];
 
     try {
@@ -980,6 +1134,11 @@ export class InstanceService {
           sanitizeFileName(file.fileName),
         );
         const relativePath = path.posix.join(folder, sanitizeFileName(file.fileName));
+        let fileTotalBytes = file.fileLength ?? 0;
+        aggregateTotalBytes += fileTotalBytes;
+        this.downloads.updateTask(taskId, {
+          totalBytes: aggregateTotalBytes || undefined,
+        });
 
         this.downloads.throwIfCancelled(taskId);
         await this.downloads.download({
@@ -988,6 +1147,17 @@ export class InstanceService {
           destination,
           sha1: curseForgeSha1(file),
           visible: false,
+          onProgress: ({ deltaBytes, totalBytes }) => {
+            if (!fileTotalBytes && totalBytes) {
+              fileTotalBytes = totalBytes;
+              aggregateTotalBytes += totalBytes;
+            }
+            aggregateBytesReceived += deltaBytes;
+            this.downloads.updateTask(taskId, {
+              bytesReceived: aggregateBytesReceived,
+              totalBytes: aggregateTotalBytes || undefined,
+            });
+          },
         });
         if (importedType !== "datapack") {
           this.recordImportedContent({
@@ -1055,7 +1225,13 @@ export class InstanceService {
       "modrinth://manifest",
     );
     let completed = 0;
+    let aggregateBytesReceived = 0;
+    let aggregateTotalBytes = files.reduce((total, file) => total + (file.fileSize ?? 0), 0);
     const lockedFiles: z.infer<typeof modpackLockSchema>["files"] = [];
+
+    this.downloads.updateTask(taskId, {
+      totalBytes: aggregateTotalBytes || undefined,
+    });
 
     try {
       await runPool(files, 8, async (file) => {
@@ -1069,12 +1245,25 @@ export class InstanceService {
         const destination = path.join(instance.gameDir, file.path);
         const importedType = importedContentTypeFromPath(file.path);
 
+        let fileTotalBytes = file.fileSize ?? 0;
+
         await this.downloads.download({
           label: `Modrinth ${path.basename(file.path)}`,
           url: downloadUrl,
           destination,
           sha1: file.hashes?.sha1,
           visible: false,
+          onProgress: ({ deltaBytes, totalBytes }) => {
+            if (!fileTotalBytes && totalBytes) {
+              fileTotalBytes = totalBytes;
+              aggregateTotalBytes += totalBytes;
+            }
+            aggregateBytesReceived += deltaBytes;
+            this.downloads.updateTask(taskId, {
+              bytesReceived: aggregateBytesReceived,
+              totalBytes: aggregateTotalBytes || undefined,
+            });
+          },
         });
 
         if (importedType) {
@@ -1371,6 +1560,20 @@ const countDirectories = async (directory: string) => {
 
 const countWorlds = (gameDir: string) => countDirectories(path.join(gameDir, "saves"));
 
+const sanitizeInstanceFolderName = (name: string) => {
+  const safeName = name
+    .normalize("NFKD")
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+
+  if (!safeName || safeName === "." || safeName === ".." || safeName === DELETED_INSTANCES_DIR) {
+    return "instance";
+  }
+
+  return safeName;
+};
+
 const countDataPacks = async (gameDir: string) => {
   const rootCount = await countContentEntries(
     path.join(gameDir, "datapacks"),
@@ -1611,6 +1814,71 @@ const assertCompleteModpackDownload = (
       `O modpack ${modpackName} ficou incompleto: ${files.length}/${expectedFiles} arquivos registrados e ${missing.length} ausente(s).`,
     );
   }
+};
+
+const resolveLockedRelativePath = (gameDir: string, relativePath: string) => {
+  if (!relativePath || path.isAbsolute(relativePath)) {
+    throw new Error(`Caminho invalido no lock do modpack: ${relativePath}`);
+  }
+
+  const root = path.resolve(gameDir);
+  const target = path.resolve(root, relativePath);
+  const safeRelative = path.relative(root, target);
+
+  if (!safeRelative || safeRelative.startsWith("..") || path.isAbsolute(safeRelative)) {
+    throw new Error(`Caminho fora da instancia no lock do modpack: ${relativePath}`);
+  }
+
+  return target;
+};
+
+const restoreDisabledLockedFile = async (gameDir: string, targetPath: string) => {
+  const targetName = path.basename(targetPath);
+  const disabledDirs = getDisabledFileDirectories(gameDir, targetPath);
+
+  for (const disabledDir of disabledDirs) {
+    if (!existsSync(disabledDir)) {
+      continue;
+    }
+
+    const entries = await readdir(disabledDir, { withFileTypes: true }).catch(() => []);
+    const disabledEntry = entries.find((entry) => {
+      if (!entry.isFile()) {
+        return false;
+      }
+
+      const restoredName = entry.name
+        .replace(/-\d+(?=\.disabled-by-mlultimate$)/i, "")
+        .replace(/\.disabled-by-mlultimate$/i, "");
+
+      return restoredName === targetName;
+    });
+
+    if (!disabledEntry) {
+      continue;
+    }
+
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    const disabledPath = path.join(disabledDir, disabledEntry.name);
+    await rename(disabledPath, targetPath);
+    return targetPath;
+  }
+
+  return null;
+};
+
+const getDisabledFileDirectories = (gameDir: string, targetPath: string) => {
+  const root = path.resolve(gameDir);
+  const relativeDirectory = path.relative(root, path.dirname(targetPath));
+  const directories = [path.join(path.dirname(targetPath), ".mlultimate-disabled")];
+
+  if (relativeDirectory && !relativeDirectory.startsWith("..") && !path.isAbsolute(relativeDirectory)) {
+    directories.unshift(
+      path.join(gameDir, "modpacks", ".mlultimate-disabled", relativeDirectory),
+    );
+  }
+
+  return directories;
 };
 
 const runPool = async <T>(

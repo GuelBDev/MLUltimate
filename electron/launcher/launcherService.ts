@@ -1,7 +1,7 @@
 import AdmZip from "adm-zip";
 import { createHash } from "node:crypto";
 import { app } from "electron";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { AvatarService } from "../avatar/avatarService";
@@ -10,6 +10,7 @@ import { OfflineAuthService } from "../auth/offlineAuthService";
 import { InstanceService } from "../instances/instanceService";
 import { JavaRuntimeService } from "../java/javaRuntimeService";
 import { MinecraftVersionService } from "../minecraft/minecraftVersionService";
+import { repairLaunchCompatibility } from "./launchCompatibility";
 import type { LauncherInstance, LaunchEvent, LaunchRequest } from "../../src/types/launcher";
 
 type EmitLaunchEvent = (event: LaunchEvent) => void;
@@ -68,6 +69,18 @@ export class LauncherService {
           type: "step",
           message: `Reparando Kit PvP: removendo ${removedPvpArtifacts.join(", ")}...`,
           progress: 12,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      const lockedFileRepairs = await this.instances.repairLockedModpackFiles(instance);
+
+      if (lockedFileRepairs.length > 0) {
+        this.emit({
+          id: request.instanceId,
+          type: "step",
+          message: `Arquivos do modpack reparados:\n${lockedFileRepairs.slice(0, 6).join("\n")}`,
+          progress: 14,
           createdAt: new Date().toISOString(),
         });
       }
@@ -139,6 +152,39 @@ export class LauncherService {
       const versionJson = await this.minecraftVersions.readInstalledVersionJson(
         instance.minecraftVersion,
       );
+
+      this.emit({
+        id: request.instanceId,
+        type: "step",
+        message: "Baixando bibliotecas...",
+        progress: 42,
+        createdAt: new Date().toISOString(),
+      });
+      await this.minecraftVersions.verifyLibrariesForLaunch({
+        minecraftVersion: instance.minecraftVersion,
+        loader: instance.loader,
+        loaderVersion: instance.loaderVersion,
+      });
+      this.assertLaunchNotCancelled(request.instanceId, launchState);
+
+      this.emit({
+        id: request.instanceId,
+        type: "step",
+        message: "Verificando assets do jogo...",
+        progress: 56,
+        createdAt: new Date().toISOString(),
+      });
+      await this.minecraftVersions.verifyAssetsForLaunch(instance.minecraftVersion);
+      this.assertLaunchNotCancelled(request.instanceId, launchState);
+
+      this.emit({
+        id: request.instanceId,
+        type: "step",
+        message: "Preparando loader...",
+        progress: 68,
+        createdAt: new Date().toISOString(),
+      });
+
       if (isFabricBasedLoader(instance.loader)) {
         await this.minecraftVersions.installFabricLoader(
           instance.minecraftVersion,
@@ -199,6 +245,21 @@ export class LauncherService {
             instance.loaderVersion,
           )
         : null;
+    const runtimeRepairs = repairLaunchCompatibility({
+      instance,
+      loaderVersion: instance.loaderVersion ?? forgeProfile?.id ?? neoForgeProfile?.id,
+    });
+
+    if (runtimeRepairs.length > 0) {
+      this.emit({
+        id: request.instanceId,
+        type: "step",
+        message: `Compatibilidade reparada antes do Play:\n${runtimeRepairs.slice(0, 6).join("\n")}`,
+        progress: 55,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
     const vanillaLibraries = versionJson.libraries
         .filter((library) => rulesAllow(library.rules))
         .map((library) => library.downloads?.artifact?.path)
@@ -227,8 +288,10 @@ export class LauncherService {
       installedAfterDownload.jar_path,
     ]).join(path.delimiter);
 
-    const selectedVersionName =
-      loaderProfile?.id ?? lightweightProfile?.id ?? versionJson.id ?? instance.minecraftVersion;
+    const selectedVersionName = getLaunchVersionName(
+      instance,
+      loaderProfile?.id ?? lightweightProfile?.id ?? versionJson.id ?? instance.minecraftVersion,
+    );
     const libraryDirectory = path.join(minecraftRoot, "libraries");
     const replacements = {
       auth_player_name: session.name,
@@ -261,7 +324,7 @@ export class LauncherService {
     const loaderProfileJvmArgs = loaderProfile?.arguments?.jvm
       ? ensureMinecraftJarIsIgnored(
           resolveArguments(loaderProfile.arguments.jvm, replacements),
-          path.basename(installedAfterDownload.jar_path),
+          [selectedVersionName, `${selectedVersionName}.jar`, path.basename(installedAfterDownload.jar_path)],
         )
       : [];
     const loaderJvmArgs = stripMemoryJvmArgs([
@@ -301,7 +364,7 @@ export class LauncherService {
     this.emit({
       id: request.instanceId,
       type: "step",
-      message: "Verificando Java...",
+      message: `Validando Java ${versionJson.javaVersion?.majorVersion ?? 8}...`,
       progress: 72,
       createdAt: new Date().toISOString(),
     });
@@ -311,8 +374,17 @@ export class LauncherService {
       component: versionJson.javaVersion?.component,
       majorVersion: versionJson.javaVersion?.majorVersion,
     });
+    this.emit({
+      id: request.instanceId,
+      type: "step",
+      message: `Java selecionado: ${javaBin}`,
+      progress: 74,
+      createdAt: new Date().toISOString(),
+    });
     const mainClass =
       loaderProfile?.mainClass ?? lightweightProfile?.mainClass ?? versionJson.mainClass;
+    const launchArgs = [...jvmArgs, mainClass, ...gameArgs];
+    writeLaunchDiagnostics(instance.gameDir, javaBin, launchArgs);
 
     this.emit({
       id: request.instanceId,
@@ -327,7 +399,8 @@ export class LauncherService {
     await new Promise<void>((resolve, reject) => {
       let handedOff = false;
       let settled = false;
-      const child = spawn(javaBin, [...jvmArgs, mainClass, ...gameArgs], {
+      const launchProcessStartedAt = Date.now();
+      const child = spawn(javaBin, launchArgs, {
         cwd: instance.gameDir,
         detached: true,
         stdio: ["ignore", "pipe", "pipe"],
@@ -345,6 +418,10 @@ export class LauncherService {
         output.push(text);
         if (output.length > 80) {
           output.shift();
+        }
+
+        if (!handedOff && isMinecraftStartupComplete(output)) {
+          handoffLaunch("Minecraft carregado.");
         }
 
         if (!handedOff) {
@@ -377,6 +454,38 @@ export class LauncherService {
       };
 
       let handoffTimer: ReturnType<typeof setTimeout> | null = null;
+      const handoffLaunch = (message: string) => {
+        if (handedOff || settled) {
+          return;
+        }
+
+        if (handoffTimer) {
+          clearTimeout(handoffTimer);
+          handoffTimer = null;
+        }
+
+        handedOff = true;
+        launchState.running = true;
+        launchState.playStartedAt = Date.now();
+        launchState.playRecordedAt = launchState.playStartedAt;
+        void this.instances.markLaunchStarted(
+          request.instanceId,
+          new Date(launchState.playStartedAt).toISOString(),
+        );
+        launchState.playTimer = setInterval(
+          () => this.flushPlayTime(request.instanceId, launchState),
+          60_000,
+        );
+        child.unref();
+        this.emit({
+          id: request.instanceId,
+          type: "running",
+          message,
+          progress: 100,
+          createdAt: new Date().toISOString(),
+        });
+        finishLaunch();
+      };
 
       child.once("error", (error) => {
         if (handoffTimer) {
@@ -400,7 +509,7 @@ export class LauncherService {
         this.flushPlayTime(request.instanceId, launchState);
         this.activeLaunches.delete(request.instanceId);
         if (handedOff) {
-          const details = summarizeLaunchFailure(output);
+          const details = summarizeLaunchFailure(output, instance.gameDir, launchProcessStartedAt);
           this.emit({
             id: request.instanceId,
             type: code === 0 ? "closed" : "error",
@@ -422,7 +531,7 @@ export class LauncherService {
         }
 
         if (code !== null && code !== 0) {
-          const details = output.slice(-8).join("\n").slice(-2200);
+          const details = summarizeLaunchFailure(output, instance.gameDir, launchProcessStartedAt);
           failLaunch(
             new Error(
               details
@@ -433,31 +542,18 @@ export class LauncherService {
           return;
         }
 
-        finishLaunch();
+        const details = summarizeLaunchFailure(output, instance.gameDir, launchProcessStartedAt);
+        failLaunch(
+          new Error(
+            details
+              ? `Minecraft fechou antes de confirmar que abriu.\n${details}`
+              : "Minecraft fechou antes de confirmar que abriu.",
+          ),
+        );
       });
       handoffTimer = setTimeout(() => {
-        handedOff = true;
-        launchState.running = true;
-        launchState.playStartedAt = Date.now();
-        launchState.playRecordedAt = launchState.playStartedAt;
-        void this.instances.markLaunchStarted(
-          request.instanceId,
-          new Date(launchState.playStartedAt).toISOString(),
-        );
-        launchState.playTimer = setInterval(
-          () => this.flushPlayTime(request.instanceId, launchState),
-          60_000,
-        );
-        child.unref();
-        this.emit({
-          id: request.instanceId,
-          type: "running",
-          message: "Minecraft aberto.",
-          progress: 100,
-          createdAt: new Date().toISOString(),
-        });
-        finishLaunch();
-      }, 12_000);
+        handoffLaunch("Minecraft ainda carregando em segundo plano.");
+      }, 180_000);
     });
 
     this.emit({
@@ -704,21 +800,91 @@ const uniquePaths = (paths: string[]) => {
   });
 };
 
-const summarizeLaunchFailure = (output: string[]) => {
-  const lines = output.flatMap((entry) => entry.split(/\r?\n/));
+const summarizeLaunchFailure = (output: string[], gameDir?: string, startedAt?: number) => {
+  const lines = [
+    ...output.flatMap((entry) => entry.split(/\r?\n/)),
+    ...(gameDir ? readInstanceLaunchLogLines(gameDir, startedAt) : []),
+  ].filter(Boolean);
   const rootCause = lines.find((line) =>
     /exception in thread|caused by:|\[(?:fatal|error)\]|java\.[\w.]+(?:exception|error):/i.test(
       line,
     ),
   );
-  const tail = lines.slice(-18);
+  const tail = lines.slice(-28);
   const selected = rootCause && !tail.includes(rootCause) ? [rootCause, ...tail] : tail;
+  const silentForgeExit = !rootCause && looksLikeSilentForgeBootstrapExit(tail);
+
+  if (silentForgeExit) {
+    selected.unshift(
+      "Forge fechou durante o bootstrap sem registrar uma causa clara. O launcher anexou o fim do debug.log para identificar o ultimo ponto antes da queda.",
+    );
+  }
 
   return selected.join("\n").slice(-3000);
 };
 
-const ensureMinecraftJarIsIgnored = (args: string[], minecraftJarName: string) =>
-  args.map((argument) => {
+const readInstanceLaunchLogLines = (gameDir: string, startedAt?: number) => {
+  const logsDir = path.join(gameDir, "logs");
+  const candidates = ["debug.log", "latest.log"]
+    .map((name) => path.join(logsDir, name))
+    .filter((filePath) => existsSync(filePath))
+    .filter((filePath) => {
+      if (!startedAt) {
+        return true;
+      }
+
+      try {
+        return statSync(filePath).mtimeMs >= startedAt - 5_000;
+      } catch {
+        return false;
+      }
+    });
+
+  return uniqueLineList(
+    candidates.flatMap((filePath) => {
+      try {
+        return readFileSync(filePath, "utf8").split(/\r?\n/).slice(-80);
+      } catch {
+        return [];
+      }
+    }),
+  );
+};
+
+const uniqueLineList = (lines: string[]) => Array.from(new Set(lines.filter(Boolean)));
+
+const isMinecraftStartupComplete = (output: string[]) => {
+  const text = output.join("\n");
+
+  return /Game took \d+(?:\.\d+)? seconds to start/i.test(text) ||
+    /Created: .+textures\/atlas\/.+-atlas/i.test(text) ||
+    /Loaded \d+ shader sources/i.test(text) ||
+    /Connecting to .+, \d+/i.test(text) ||
+    /Sound engine started/i.test(text) ||
+    /OpenAL initialized/i.test(text);
+};
+
+const looksLikeSilentForgeBootstrapExit = (lines: string[]) => {
+  if (lines.length === 0) {
+    return false;
+  }
+
+  const joined = lines.join("\n");
+  const lastMeaningful = [...lines].reverse().find((line) => line.trim());
+
+  return Boolean(
+    lastMeaningful &&
+      /moddiscovery|ModFileParser|ModFileInfo|EARLYDISPLAY|MODLAUNCHER/i.test(joined) &&
+      !/loading complete|minecraft client initialized|Stopping!/i.test(joined),
+  );
+};
+
+const ensureMinecraftJarIsIgnored = (args: string[], ignoredNames: string | string[]) => {
+  const requiredIgnored = (Array.isArray(ignoredNames) ? ignoredNames : [ignoredNames])
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  return args.map((argument) => {
     if (!argument.startsWith("-DignoreList=")) {
       return argument;
     }
@@ -729,18 +895,33 @@ const ensureMinecraftJarIsIgnored = (args: string[], minecraftJarName: string) =
       .map((entry) => entry.trim())
       .filter(Boolean);
 
-    if (!ignored.some((entry) => entry.toLowerCase() === minecraftJarName.toLowerCase())) {
-      ignored.push(minecraftJarName);
+    for (const required of requiredIgnored) {
+      if (!ignored.some((entry) => entry.toLowerCase() === required.toLowerCase())) {
+        ignored.push(required);
+      }
     }
 
     return `-DignoreList=${ignored.join(",")}`;
   });
+};
 
 const buildMemoryJvmArgs = (ramMb: number) => {
   const maxMemory = Math.min(65536, Math.max(1024, Math.round(ramMb)));
   const initialMemory = Math.min(512, maxMemory);
 
   return [`-Xms${initialMemory}M`, `-Xmx${maxMemory}M`];
+};
+
+const getLaunchVersionName = (instance: LauncherInstance, fallback: string) => {
+  if (instance.loader === "forge" && instance.loaderVersion) {
+    return `forge-${instance.loaderVersion}`;
+  }
+
+  if (instance.loader === "neoforge" && instance.loaderVersion) {
+    return `neoforge-${instance.loaderVersion}`;
+  }
+
+  return fallback;
 };
 
 const readInstanceJvmArgs = (gameDir: string) => {
@@ -764,7 +945,7 @@ const readInstanceJvmArgs = (gameDir: string) => {
 const isFabricBasedLoader = (loader: string) =>
   loader === "fabric" || loader === "iris" || loader === "iris-sodium";
 
-const legacyPvpModPattern = /(basichud|oneconfig).*\.jar$/i;
+const legacyPvpModPattern = /(basichud|oneconfig|togglesneak).*\.jar$/i;
 const legacyPvpFolders = ["OneConfig", ".mixin.out"];
 
 const cleanupLegacyPvpKitArtifacts = (instance: LauncherInstance) => {
@@ -901,5 +1082,39 @@ const safeMavenPath = (coordinate: string) => {
     return mavenPath(coordinate);
   } catch {
     return null;
+  }
+};
+
+const writeLaunchDiagnostics = (gameDir: string, javaBin: string, args: string[]) => {
+  try {
+    const logsDir = path.join(gameDir, "logs");
+    mkdirSync(logsDir, { recursive: true });
+    const redactedArgs = args.map((argument, index) => {
+      const previous = args[index - 1];
+
+      if (previous === "--accessToken" || previous === "--clientId" || previous === "--xuid") {
+        return "********";
+      }
+
+      return argument;
+    });
+
+    writeFileSync(
+      path.join(logsDir, "mlultimate-launch-command.json"),
+      JSON.stringify(
+        {
+          createdAt: new Date().toISOString(),
+          cwd: gameDir,
+          javaBin,
+          args: redactedArgs,
+          commandLine: [javaBin, ...redactedArgs].join(" "),
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+  } catch {
+    // Diagnostics should never block the game launch.
   }
 };

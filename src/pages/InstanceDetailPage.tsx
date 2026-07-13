@@ -22,6 +22,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import instanceDefaultImage from "../assets/instance-default.png";
+import { LaunchErrorNotice } from "../components/launcher/LaunchErrorNotice";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -31,6 +32,7 @@ import { useDownloads } from "../hooks/useDownloads";
 import { useInstances } from "../hooks/useInstances";
 import { useRunningInstances } from "../hooks/useRunningInstances";
 import { launcherApi } from "../services/launcherApi";
+import { formatDownloadEta, formatDownloadSize, formatDownloadSpeed } from "../utils/downloadFormat";
 import type {
   ContentType,
   DownloadItem,
@@ -138,7 +140,7 @@ export const InstanceDetailPage = ({
   const [query, setQuery] = useState("");
   const [selectedLog, setSelectedLog] = useState<string>();
   const [logQuery, setLogQuery] = useState("");
-  const [launchError, setLaunchError] = useState<string | null>(null);
+  const [launchErrorLog, setLaunchErrorLog] = useState<string | null>(null);
   const [launchEvent, setLaunchEvent] = useState<LaunchEvent | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [exportFolders, setExportFolders] =
@@ -291,7 +293,7 @@ export const InstanceDetailPage = ({
   );
 
   const play = async () => {
-    setLaunchError(null);
+    setLaunchErrorLog(null);
 
     try {
       await launcherApi.launch({ instanceId: current.id });
@@ -315,7 +317,7 @@ export const InstanceDetailPage = ({
         return;
       }
 
-      setLaunchError(message);
+      setLaunchErrorLog(message);
     }
   };
 
@@ -421,6 +423,16 @@ export const InstanceDetailPage = ({
                     <X className="h-4 w-4" />
                   </button>
                 </div>
+                {activeDownload ? (
+                  <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs text-[#94A3B8]">
+                    <span>
+                      {formatDownloadSpeed(activeDownload.speedBytesPerSecond)}
+                      {" · "}
+                      {formatDownloadEta(activeDownload)}
+                    </span>
+                    <span>{formatDownloadSize(activeDownload)}</span>
+                  </div>
+                ) : null}
                 <Progress value={activityProgress} className="h-1.5" />
               </div>
             ) : null}
@@ -458,11 +470,7 @@ export const InstanceDetailPage = ({
         </div>
       </section>
 
-      {launchError ? (
-        <div className="rounded-sm border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-          {launchError}
-        </div>
-      ) : null}
+      {launchErrorLog ? <LaunchErrorNotice log={launchErrorLog} /> : null}
 
       {shareOpen ? (
         <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/75 p-4 backdrop-blur-sm">

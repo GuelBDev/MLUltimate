@@ -5,6 +5,7 @@ import { Card } from "../components/ui/card";
 import { Progress } from "../components/ui/progress";
 import { useDownloads } from "../hooks/useDownloads";
 import { launcherApi } from "../services/launcherApi";
+import { formatDownloadEta, formatDownloadSize, formatDownloadSpeed } from "../utils/downloadFormat";
 
 export const DownloadsPage = () => {
   const downloads = useDownloads();
@@ -57,12 +58,12 @@ export const DownloadsPage = () => {
             </div>
           </div>
           <div className="mt-4">
-            <div className="mb-2 flex justify-between text-sm text-[#94A3B8]">
-              <span>{formatBytes(item.speedBytesPerSecond)}/s</span>
+            <div className="mb-2 flex flex-wrap justify-between gap-3 text-sm text-[#94A3B8]">
               <span>
-                {formatBytes(item.bytesReceived)}
-                {item.totalBytes ? ` / ${formatBytes(item.totalBytes)}` : ""}
+                {formatDownloadSpeed(item.speedBytesPerSecond)}
+                {item.status === "running" ? ` · ${formatDownloadEta(item)}` : ""}
               </span>
+              <span>{formatDownloadSize(item)}</span>
             </div>
             <Progress value={item.progress} />
           </div>
@@ -79,14 +80,4 @@ export const DownloadsPage = () => {
       ) : null}
     </div>
   );
-};
-
-const formatBytes = (bytes: number) => {
-  if (!Number.isFinite(bytes) || bytes <= 0) {
-    return "0 B";
-  }
-
-  const units = ["B", "KB", "MB", "GB"];
-  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 };

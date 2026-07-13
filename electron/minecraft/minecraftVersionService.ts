@@ -9,7 +9,7 @@ import { LauncherDatabase } from "../database/sqliteDatabase";
 import { DownloadManager } from "../downloads/downloadManager";
 import { JavaRuntimeService } from "../java/javaRuntimeService";
 import { getLauncherDataSubpath } from "../utils/launcherPaths";
-import type { MinecraftVersionSummary } from "../../src/types/launcher";
+import type { LoaderType, MinecraftVersionSummary } from "../../src/types/launcher";
 
 const VERSION_MANIFEST_URL =
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
@@ -354,6 +354,100 @@ export class MinecraftVersionService {
       component: versionJson.javaVersion?.component,
       majorVersion: versionJson.javaVersion?.majorVersion,
     });
+  }
+
+  async verifyLibrariesForLaunch(input: {
+    minecraftVersion: string;
+    loader: LoaderType;
+    loaderVersion?: string;
+  }) {
+    await this.installVersion(input.minecraftVersion);
+    const taskId = this.downloads.createTask(
+      `Minecraft ${input.minecraftVersion} - bibliotecas`,
+      path.join(this.rootDir, "libraries"),
+      "minecraft://libraries",
+    );
+
+    try {
+      const versionJson = await this.readInstalledVersionJson(input.minecraftVersion);
+
+      await this.verifyClientJar(versionJson, taskId);
+      await this.installLibraries(versionJson, taskId);
+
+      if (input.loader === "fabric" || input.loader === "iris" || input.loader === "iris-sodium") {
+        await this.installFabricLoader(input.minecraftVersion, input.loaderVersion);
+        const profile = await this.readInstalledFabricProfile(
+          input.minecraftVersion,
+          input.loaderVersion,
+        );
+        await this.installLightweightLoaderLibraries(
+          profile,
+          "Fabric",
+          input.minecraftVersion,
+          taskId,
+        );
+      }
+
+      if (input.loader === "quilt") {
+        await this.installQuiltLoader(input.minecraftVersion, input.loaderVersion);
+        const profile = await this.readInstalledQuiltProfile(
+          input.minecraftVersion,
+          input.loaderVersion,
+        );
+        await this.installLightweightLoaderLibraries(
+          profile,
+          "Quilt",
+          input.minecraftVersion,
+          taskId,
+        );
+      }
+
+      if (input.loader === "forge") {
+        await this.installForgeLoader(input.minecraftVersion, input.loaderVersion);
+        const profile = await this.readInstalledForgeProfile(
+          input.minecraftVersion,
+          input.loaderVersion,
+        );
+        await this.installLoaderProfileLibraries(profile, "Forge", input.minecraftVersion, taskId);
+      }
+
+      if (input.loader === "neoforge") {
+        await this.installNeoForgeLoader(input.minecraftVersion, input.loaderVersion);
+        const profile = await this.readInstalledNeoForgeProfile(
+          input.minecraftVersion,
+          input.loaderVersion,
+        );
+        await this.installLoaderProfileLibraries(
+          profile,
+          "NeoForge",
+          input.minecraftVersion,
+          taskId,
+        );
+      }
+
+      this.downloads.completeTask(taskId);
+    } catch (error) {
+      this.downloads.failTask(taskId, error);
+      throw error;
+    }
+  }
+
+  async verifyAssetsForLaunch(minecraftVersion: string) {
+    await this.installVersion(minecraftVersion);
+    const taskId = this.downloads.createTask(
+      `Minecraft ${minecraftVersion} - assets`,
+      path.join(this.rootDir, "assets"),
+      "minecraft://assets",
+    );
+
+    try {
+      const versionJson = await this.readInstalledVersionJson(minecraftVersion);
+      await this.installAssets(versionJson, taskId);
+      this.downloads.completeTask(taskId);
+    } catch (error) {
+      this.downloads.failTask(taskId, error);
+      throw error;
+    }
   }
 
   async installFabricLoader(minecraftVersion: string, requestedLoaderVersion?: string) {
@@ -824,7 +918,7 @@ export class MinecraftVersionService {
     try {
       const profile = loaderProfileSchema.parse(JSON.parse(await readFile(profilePath, "utf8")));
 
-      return profile.libraries.every((library) => {
+      const profileLibrariesComplete = profile.libraries.every((library) => {
         if (library.clientreq === false) {
           return true;
         }
@@ -838,9 +932,89 @@ export class MinecraftVersionService {
         const legacyPath = safeMavenPath(library.name);
         return legacyPath ? existsSync(path.join(this.rootDir, "libraries", legacyPath)) : true;
       });
+
+      return profileLibrariesComplete && this.isForgeRuntimeComplete(profile);
     } catch {
       return false;
     }
+  }
+
+  private isForgeRuntimeComplete(profile: z.infer<typeof loaderProfileSchema>) {
+    const runtime = getForgeRuntimeInfo(profile);
+
+    if (!runtime) {
+      return true;
+    }
+
+    const { forgeCoordinates, minecraftClientCoordinates } = runtime;
+    const librariesRoot = path.join(this.rootDir, "libraries");
+    const required = [
+      path.join(
+        "net",
+        "minecraftforge",
+        "fmlcore",
+        forgeCoordinates,
+        `fmlcore-${forgeCoordinates}.jar`,
+      ),
+      path.join(
+        "net",
+        "minecraftforge",
+        "javafmllanguage",
+        forgeCoordinates,
+        `javafmllanguage-${forgeCoordinates}.jar`,
+      ),
+      path.join(
+        "net",
+        "minecraftforge",
+        "lowcodelanguage",
+        forgeCoordinates,
+        `lowcodelanguage-${forgeCoordinates}.jar`,
+      ),
+      path.join(
+        "net",
+        "minecraftforge",
+        "mclanguage",
+        forgeCoordinates,
+        `mclanguage-${forgeCoordinates}.jar`,
+      ),
+      path.join(
+        "net",
+        "minecraftforge",
+        "forge",
+        forgeCoordinates,
+        `forge-${forgeCoordinates}-client.jar`,
+      ),
+      path.join(
+        "net",
+        "minecraftforge",
+        "forge",
+        forgeCoordinates,
+        `forge-${forgeCoordinates}-universal.jar`,
+      ),
+      path.join(
+        "net",
+        "minecraft",
+        "client",
+        minecraftClientCoordinates,
+        `client-${minecraftClientCoordinates}-srg.jar`,
+      ),
+      path.join(
+        "net",
+        "minecraft",
+        "client",
+        minecraftClientCoordinates,
+        `client-${minecraftClientCoordinates}-extra.jar`,
+      ),
+      path.join(
+        "net",
+        "minecraft",
+        "client",
+        minecraftClientCoordinates,
+        `client-${minecraftClientCoordinates}-slim.jar`,
+      ),
+    ];
+
+    return required.every((relativePath) => existsSync(path.join(librariesRoot, relativePath)));
   }
 
   private async installLegacyForgeClient(
@@ -936,6 +1110,26 @@ export class MinecraftVersionService {
     );
   }
 
+  private async verifyClientJar(versionJson: z.infer<typeof versionJsonSchema>, taskId: string) {
+    const installed = this.getInstalledVersion(versionJson.id);
+
+    if (!installed) {
+      throw new Error(`Minecraft ${versionJson.id} nao esta registrado como instalado.`);
+    }
+
+    this.downloads.updateTask(taskId, {
+      label: `Minecraft ${versionJson.id} - client.jar`,
+      progress: 6,
+    });
+    await this.downloads.download({
+      label: `Minecraft ${versionJson.id} client.jar`,
+      url: versionJson.downloads.client.url,
+      destination: installed.jar_path,
+      sha1: versionJson.downloads.client.sha1,
+      visible: false,
+    });
+  }
+
   private async installLibraries(versionJson: z.infer<typeof versionJsonSchema>, taskId: string) {
     const artifacts = versionJson.libraries
       .filter((library) => rulesAllow(library.rules))
@@ -972,6 +1166,89 @@ export class MinecraftVersionService {
       this.downloads.updateTask(taskId, {
         label: `Minecraft ${versionJson.id} - bibliotecas ${completed}/${artifacts.length}`,
         progress: 15 + Math.round((completed / Math.max(1, artifacts.length)) * 25),
+      });
+    });
+  }
+
+  private async installLightweightLoaderLibraries(
+    profile: z.infer<typeof fabricProfileSchema>,
+    loaderName: string,
+    minecraftVersion: string,
+    taskId: string,
+  ) {
+    let completed = 0;
+
+    await runPool(profile.libraries, 6, async (library) => {
+      this.downloads.throwIfCancelled(taskId);
+      const libraryPath = mavenPath(library.name);
+      await this.downloads.download({
+        label: `${loaderName} ${library.name}`,
+        url: new URL(libraryPath.replaceAll("\\", "/"), library.url).toString(),
+        destination: path.join(this.rootDir, "libraries", libraryPath),
+        sha1: library.sha1,
+        visible: false,
+      });
+      completed += 1;
+      this.downloads.throwIfCancelled(taskId);
+      this.downloads.updateTask(taskId, {
+        label: `${loaderName} ${minecraftVersion} - bibliotecas ${completed}/${profile.libraries.length}`,
+        progress: 42 + Math.round((completed / Math.max(1, profile.libraries.length)) * 18),
+      });
+    });
+  }
+
+  private async installLoaderProfileLibraries(
+    profile: z.infer<typeof loaderProfileSchema>,
+    loaderName: string,
+    minecraftVersion: string,
+    taskId: string,
+  ) {
+    const libraries = profile.libraries.filter(
+      (library) => rulesAllow(library.rules) && library.clientreq !== false,
+    );
+    let completed = 0;
+
+    await runPool(libraries, 6, async (library) => {
+      this.downloads.throwIfCancelled(taskId);
+      const artifact = library.downloads?.artifact;
+      const libraryPath = artifact?.path ?? safeMavenPath(library.name);
+
+      if (!libraryPath) {
+        completed += 1;
+        return;
+      }
+
+      const destination = path.join(this.rootDir, "libraries", libraryPath);
+      const url =
+        artifact?.url ??
+        (library.url
+          ? new URL(
+              libraryPath.replaceAll("\\", "/"),
+              library.url.endsWith("/") ? library.url : `${library.url}/`,
+            ).toString()
+          : null);
+
+      if (!url) {
+        if (!existsSync(destination)) {
+          throw new Error(`${loaderName} nao informa URL para biblioteca ${library.name}.`);
+        }
+
+        completed += 1;
+        return;
+      }
+
+      await this.downloads.download({
+        label: `${loaderName} ${library.name}`,
+        url,
+        destination,
+        sha1: artifact?.sha1,
+        visible: false,
+      });
+      completed += 1;
+      this.downloads.throwIfCancelled(taskId);
+      this.downloads.updateTask(taskId, {
+        label: `${loaderName} ${minecraftVersion} - bibliotecas ${completed}/${libraries.length}`,
+        progress: 60 + Math.round((completed / Math.max(1, libraries.length)) * 28),
       });
     });
   }
@@ -1039,7 +1316,7 @@ export class MinecraftVersionService {
     sha1?: string,
     visible = true,
   ) {
-    if (existsSync(destination)) {
+    if (existsSync(destination) && !sha1) {
       return;
     }
 
@@ -1122,6 +1399,54 @@ const profileMatchesRequestedLoader = async (
   } catch {
     return false;
   }
+};
+
+const getForgeRuntimeInfo = (profile: z.infer<typeof loaderProfileSchema>) => {
+  const gameArgs = flattenProfileArguments(profile.arguments?.game);
+  const forgeVersion =
+    argumentValueAfter(gameArgs, "--fml.forgeVersion") ??
+    profile.id.match(/(?:^|-)forge-(\d+\.\d+\.\d+)$/i)?.[1];
+  const minecraftVersion = argumentValueAfter(gameArgs, "--fml.mcVersion") ?? profile.inheritsFrom;
+  const mcpVersion = argumentValueAfter(gameArgs, "--fml.mcpVersion");
+
+  if (!forgeVersion || !minecraftVersion || !mcpVersion) {
+    return null;
+  }
+
+  return {
+    forgeCoordinates: `${minecraftVersion}-${forgeVersion}`,
+    minecraftClientCoordinates: `${minecraftVersion}-${mcpVersion}`,
+  };
+};
+
+const flattenProfileArguments = (args?: unknown[]) =>
+  (args ?? []).flatMap((argument): string[] => {
+    if (typeof argument === "string") {
+      return [argument];
+    }
+
+    if (!argument || typeof argument !== "object") {
+      return [];
+    }
+
+    const value = (argument as { value?: unknown }).value;
+
+    if (typeof value === "string") {
+      return [value];
+    }
+
+    if (Array.isArray(value)) {
+      return value.filter((entry): entry is string => typeof entry === "string");
+    }
+
+    return [];
+  });
+
+const argumentValueAfter = (args: string[], key: string) => {
+  const index = args.indexOf(key);
+  const value = index >= 0 ? args[index + 1] : null;
+
+  return value || null;
 };
 
 const runPool = async <T>(

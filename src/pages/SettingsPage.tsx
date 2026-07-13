@@ -1,4 +1,5 @@
 import {
+  ChevronDown,
   CheckCircle2,
   DownloadCloud,
   Eye,
@@ -301,6 +302,7 @@ export const SettingsPage = () => {
   const [checkCooldown, setCheckCooldown] = useState(0);
   const [checkingProgress, setCheckingProgress] = useState(0);
   const [installingUpdate, setInstallingUpdate] = useState(false);
+  const [advancedAppearanceOpen, setAdvancedAppearanceOpen] = useState(false);
   const settings = useQuery({
     queryKey: settingsKey,
     queryFn: launcherApi.getSettings,
@@ -591,11 +593,6 @@ export const SettingsPage = () => {
             </Badge>
           </div>
 
-          <AppearancePreview
-            backgroundImageDataUrl={currentSettings?.backgroundImageDataUrl}
-            sidebarImageDataUrl={currentSettings?.sidebarImageDataUrl}
-          />
-
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
             {appearancePresets.map((preset) => {
               const active = (currentSettings?.appearancePreset ?? "night-dark") === preset.id;
@@ -628,91 +625,121 @@ export const SettingsPage = () => {
             })}
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-[#0D1117]/70 p-4">
-            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
-              <PaintBucket className="h-4 w-4 text-[#60A5FA]" />
-              Cores por parte do app
-            </div>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {appearanceColorControls.map((item) => {
-                const Icon = item.icon;
-
-                return (
-                  <ColorControl
-                    key={item.key}
-                    label={item.label}
-                    description={item.description}
-                    icon={Icon}
-                    value={readAppearanceColor(item.key)}
-                    disabled={settings.isLoading || updateSettings.isPending}
-                    onChange={(value) => updateAppearanceColor(item.key, value)}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-[#0D1117]/70 p-4">
-            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
-              <SlidersHorizontal className="h-4 w-4 text-[#60A5FA]" />
-              Transparencias por parte
-            </div>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {appearanceOpacityControls.map((item) => (
-                <RangeControl
-                  key={item.key}
-                  label={item.label}
-                  value={readAppearanceOpacity(item.key)}
-                  min={item.min}
-                  max={1}
-                  disabled={settings.isLoading || updateSettings.isPending}
-                  onChange={(value) => updateAppearanceOpacity(item.key, value)}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-[#0D1117]/70 p-4">
-            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
-              <ImagePlus className="h-4 w-4 text-[#60A5FA]" />
-              Imagens customizadas com preview
-            </div>
-            <div className="grid gap-4 xl:grid-cols-2">
-              <ImageControl
-                label="Fundo total do app"
-                sizeHint="Recomendado: 1920x1080 ou 2560x1440, ate 5 MB."
-                fileName={currentSettings?.backgroundImageName}
-                previewUrl={currentSettings?.backgroundImageDataUrl}
-                opacity={currentSettings?.backgroundImageOpacity ?? 0.28}
-                disabled={settings.isLoading || updateSettings.isPending}
-                onFile={(event) => void handleAppearanceImage(event, "background")}
-                onClear={() => clearAppearanceImage("background")}
-                onOpacity={(backgroundImageOpacity) => updateAppearance({ backgroundImageOpacity })}
-              />
-              <ImageControl
-                label="Imagem da barra lateral"
-                sizeHint="Recomendado: 512x1440, ate 5 MB."
-                fileName={currentSettings?.sidebarImageName}
-                previewUrl={currentSettings?.sidebarImageDataUrl}
-                opacity={currentSettings?.sidebarImageOpacity ?? 0.22}
-                disabled={settings.isLoading || updateSettings.isPending}
-                onFile={(event) => void handleAppearanceImage(event, "sidebar")}
-                onClear={() => clearAppearanceImage("sidebar")}
-                onOpacity={(sidebarImageOpacity) => updateAppearance({ sidebarImageOpacity })}
-              />
-            </div>
-          </div>
-
-          <Button
+          <button
             type="button"
-            variant="secondary"
-            className="w-full sm:w-fit"
-            disabled={settings.isLoading || updateSettings.isPending}
-            onClick={() => applyAppearancePreset(appearancePresets[0])}
+            className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-[#0D1117]/70 px-4 py-3 text-left transition hover:border-white/20"
+            aria-expanded={advancedAppearanceOpen}
+            onClick={() => setAdvancedAppearanceOpen((current) => !current)}
           >
-            <RotateCcw className="h-4 w-4" />
-            Restaurar visual padrao
-          </Button>
+            <span>
+              <span className="block text-sm font-semibold text-white">Customização avançada</span>
+              <span className="mt-1 block text-xs leading-5 text-[#94A3B8]">
+                Cores por área, transparências, imagens e preview completo.
+              </span>
+            </span>
+            <ChevronDown
+              className={`h-5 w-5 shrink-0 text-[#60A5FA] transition ${
+                advancedAppearanceOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+
+          {advancedAppearanceOpen ? (
+            <div className="grid gap-5">
+              <AppearancePreview
+                backgroundImageDataUrl={currentSettings?.backgroundImageDataUrl}
+                sidebarImageDataUrl={currentSettings?.sidebarImageDataUrl}
+              />
+
+              <div className="rounded-2xl border border-white/10 bg-[#0D1117]/70 p-4">
+                <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
+                  <PaintBucket className="h-4 w-4 text-[#60A5FA]" />
+                  Cores por parte do app
+                </div>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {appearanceColorControls.map((item) => {
+                    const Icon = item.icon;
+
+                    return (
+                      <ColorControl
+                        key={item.key}
+                        label={item.label}
+                        description={item.description}
+                        icon={Icon}
+                        value={readAppearanceColor(item.key)}
+                        disabled={settings.isLoading || updateSettings.isPending}
+                        onChange={(value) => updateAppearanceColor(item.key, value)}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-[#0D1117]/70 p-4">
+                <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
+                  <SlidersHorizontal className="h-4 w-4 text-[#60A5FA]" />
+                  Transparencias por parte
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {appearanceOpacityControls.map((item) => (
+                    <RangeControl
+                      key={item.key}
+                      label={item.label}
+                      value={readAppearanceOpacity(item.key)}
+                      min={item.min}
+                      max={1}
+                      disabled={settings.isLoading || updateSettings.isPending}
+                      onChange={(value) => updateAppearanceOpacity(item.key, value)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-[#0D1117]/70 p-4">
+                <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
+                  <ImagePlus className="h-4 w-4 text-[#60A5FA]" />
+                  Imagens customizadas com preview
+                </div>
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <ImageControl
+                    label="Fundo total do app"
+                    sizeHint="Recomendado: 1920x1080 ou 2560x1440, ate 5 MB."
+                    fileName={currentSettings?.backgroundImageName}
+                    previewUrl={currentSettings?.backgroundImageDataUrl}
+                    opacity={currentSettings?.backgroundImageOpacity ?? 0.28}
+                    disabled={settings.isLoading || updateSettings.isPending}
+                    onFile={(event) => void handleAppearanceImage(event, "background")}
+                    onClear={() => clearAppearanceImage("background")}
+                    onOpacity={(backgroundImageOpacity) =>
+                      updateAppearance({ backgroundImageOpacity })
+                    }
+                  />
+                  <ImageControl
+                    label="Imagem da barra lateral"
+                    sizeHint="Recomendado: 512x1440, ate 5 MB."
+                    fileName={currentSettings?.sidebarImageName}
+                    previewUrl={currentSettings?.sidebarImageDataUrl}
+                    opacity={currentSettings?.sidebarImageOpacity ?? 0.22}
+                    disabled={settings.isLoading || updateSettings.isPending}
+                    onFile={(event) => void handleAppearanceImage(event, "sidebar")}
+                    onClear={() => clearAppearanceImage("sidebar")}
+                    onOpacity={(sidebarImageOpacity) => updateAppearance({ sidebarImageOpacity })}
+                  />
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full sm:w-fit"
+                disabled={settings.isLoading || updateSettings.isPending}
+                onClick={() => applyAppearancePreset(appearancePresets[0])}
+              >
+                <RotateCcw className="h-4 w-4" />
+                Restaurar visual padrao
+              </Button>
+            </div>
+          ) : null}
         </div>
       </Card>
 

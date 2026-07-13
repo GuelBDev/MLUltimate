@@ -11,6 +11,7 @@ type DownloadOptions = {
   destination: string;
   sha1?: string;
   visible?: boolean;
+  onProgress?: (progress: { deltaBytes: number; bytesReceived: number; totalBytes?: number }) => void;
 };
 
 type EmitDownloads = (items: DownloadItem[]) => void;
@@ -28,7 +29,7 @@ export class DownloadManager {
     );
   }
 
-  async download({ label, url, destination, sha1, visible = true }: DownloadOptions) {
+  async download({ label, url, destination, sha1, visible = true, onProgress }: DownloadOptions) {
     const normalizedDestination = path.resolve(destination).toLowerCase();
     const running = this.inFlightByDestination.get(normalizedDestination);
 
@@ -42,6 +43,7 @@ export class DownloadManager {
       destination,
       sha1,
       visible,
+      onProgress,
     }).finally(() => {
       this.inFlightByDestination.delete(normalizedDestination);
     });
@@ -70,7 +72,7 @@ export class DownloadManager {
     }
   }
 
-  private async downloadOnce({ label, url, destination, sha1, visible = true }: DownloadOptions) {
+  private async downloadOnce({ label, url, destination, sha1, visible = true, onProgress }: DownloadOptions) {
     if (existsSync(destination) && sha1) {
       const currentSha1 = await hashFile(destination);
 
@@ -144,6 +146,11 @@ export class DownloadManager {
           : 0;
         item.speedBytesPerSecond =
           item.bytesReceived / Math.max(1, (Date.now() - startTime) / 1000);
+        onProgress?.({
+          deltaBytes: chunk.byteLength,
+          bytesReceived: item.bytesReceived,
+          totalBytes,
+        });
 
         if (!file.write(chunk)) {
           await new Promise<void>((resolve) => file.once("drain", resolve));
@@ -227,6 +234,10 @@ export class DownloadManager {
     }
 
     Object.assign(item, patch);
+    if (typeof patch.bytesReceived === "number" && typeof patch.speedBytesPerSecond !== "number") {
+      const elapsedSeconds = Math.max(1, (Date.now() - Date.parse(item.startedAt)) / 1000);
+      item.speedBytesPerSecond = item.bytesReceived / elapsedSeconds;
+    }
     this.flush();
   }
 

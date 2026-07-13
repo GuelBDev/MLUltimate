@@ -39,14 +39,14 @@ export class JavaRuntimeService {
   async resolveJava({ javaPath, component, majorVersion }: ResolveJavaInput) {
     const requiredMajor = normalizeMajorVersion(majorVersion);
 
-    if (javaPath && existsSync(javaPath)) {
+    if (javaPath && existsSync(javaPath) && (await detectJavaMajor(javaPath)) === requiredMajor) {
       return javaPath;
     }
 
-    const cached = await this.findCachedRuntime(requiredMajor);
+    const curseForgeRuntime = await this.findCurseForgeRuntime(component, requiredMajor);
 
-    if (cached) {
-      return cached;
+    if (curseForgeRuntime) {
+      return curseForgeRuntime;
     }
 
     const officialLauncherRuntime = await this.findOfficialLauncherRuntime(
@@ -56,6 +56,12 @@ export class JavaRuntimeService {
 
     if (officialLauncherRuntime) {
       return officialLauncherRuntime;
+    }
+
+    const cached = await this.findCachedRuntime(requiredMajor);
+
+    if (cached) {
+      return cached;
     }
 
     const systemJava = await this.findCompatibleSystemJava(requiredMajor);
@@ -102,6 +108,56 @@ export class JavaRuntimeService {
 
     const major = await detectJavaMajor(javaPath);
     return major === requiredMajor ? javaPath : null;
+  }
+
+  private async findCurseForgeRuntime(component: string | undefined, requiredMajor: number) {
+    if (process.platform !== "win32") {
+      return null;
+    }
+
+    const appData = process.env.APPDATA;
+
+    if (!appData) {
+      return null;
+    }
+
+    const storagePath = path.join(appData, "CurseForge", "storage.json");
+
+    if (!existsSync(storagePath)) {
+      return null;
+    }
+
+    try {
+      const storage = JSON.parse(await readFile(storagePath, "utf8")) as {
+        "minecraft-settings"?: string;
+      };
+      const minecraftSettings = storage["minecraft-settings"]
+        ? (JSON.parse(storage["minecraft-settings"]) as { minecraftRoot?: string })
+        : null;
+      const minecraftRoot = minecraftSettings?.minecraftRoot;
+
+      if (!minecraftRoot) {
+        return null;
+      }
+
+      const javaRoot = path.join(minecraftRoot, "Install", "java");
+      const candidates = [
+        component ? path.join(javaRoot, component, "bin", "java.exe") : null,
+        path.join(javaRoot, "java-runtime-gamma", "bin", "java.exe"),
+        path.join(javaRoot, "java-runtime-delta", "bin", "java.exe"),
+        path.join(javaRoot, "java-runtime-epsilon", "bin", "java.exe"),
+      ].filter((candidate): candidate is string => Boolean(candidate));
+
+      for (const candidate of candidates) {
+        if (existsSync(candidate) && (await detectJavaMajor(candidate)) === requiredMajor) {
+          return candidate;
+        }
+      }
+
+      return this.findJavaInDirectory(javaRoot, requiredMajor);
+    } catch {
+      return null;
+    }
   }
 
   private async findCompatibleSystemJava(requiredMajor: number) {
@@ -179,7 +235,10 @@ export class JavaRuntimeService {
     return java;
   }
 
-  private async findJavaInDirectory(directory: string): Promise<string | null> {
+  private async findJavaInDirectory(
+    directory: string,
+    requiredMajor?: number,
+  ): Promise<string | null> {
     if (!existsSync(directory)) {
       return null;
     }
@@ -202,6 +261,10 @@ export class JavaRuntimeService {
         if (entry.isDirectory()) {
           queue.push(entryPath);
         } else if (entry.name.toLowerCase() === fileName) {
+          if (requiredMajor && (await detectJavaMajor(entryPath)) !== requiredMajor) {
+            continue;
+          }
+
           return entryPath;
         }
       }

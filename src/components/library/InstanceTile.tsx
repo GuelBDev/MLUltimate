@@ -5,6 +5,7 @@ import type { DownloadItem, LaunchEvent, LauncherInstance } from "../../types/la
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import { cn } from "../../utils/cn";
+import { formatDownloadEta, formatDownloadSize, formatDownloadSpeed } from "../../utils/downloadFormat";
 
 type InstanceTileProps = {
   instance: LauncherInstance;
@@ -110,6 +111,16 @@ export const InstanceTile = ({
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
+              {activeDownload ? (
+                <div className="mb-2 flex flex-wrap justify-between gap-1 text-[11px] text-[#94A3B8]">
+                  <span>
+                    {formatDownloadSpeed(activeDownload.speedBytesPerSecond)}
+                    {" · "}
+                    {formatDownloadEta(activeDownload)}
+                  </span>
+                  <span>{formatDownloadSize(activeDownload)}</span>
+                </div>
+              ) : null}
               <Progress value={activityProgress} className="h-1.5" />
             </div>
           ) : null}

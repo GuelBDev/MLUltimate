@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ImagePlus, Plus, Upload, X } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import instanceDefaultImage from "../assets/instance-default.png";
+import { LaunchErrorNotice } from "../components/launcher/LaunchErrorNotice";
 import { InstanceTile } from "../components/library/InstanceTile";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -41,19 +42,11 @@ const mapDownloadsToInstances = (
 
   for (const instance of instances) {
     const gameDir = normalizePath(instance.gameDir);
-    const versionNeedles = [
-      `minecraft ${instance.minecraftVersion}`,
-      `${instance.loader} ${instance.minecraftVersion}`,
-    ];
 
     const match = activeDownloads.find((download) => {
       const destination = normalizePath(download.destination);
-      const label = download.label.toLowerCase();
 
-      return (
-        destination.startsWith(gameDir) ||
-        versionNeedles.some((needle) => label.includes(needle.toLowerCase()))
-      );
+      return isSameOrInsidePath(destination, gameDir);
     });
 
     if (match) {
@@ -64,7 +57,10 @@ const mapDownloadsToInstances = (
   return mapped;
 };
 
-const normalizePath = (value: string) => value.replaceAll("\\", "/").toLowerCase();
+const normalizePath = (value: string) =>
+  value.replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase();
+const isSameOrInsidePath = (childPath: string, parentPath: string) =>
+  childPath === parentPath || childPath.startsWith(`${parentPath}/`);
 const DEFAULT_RAM_MB = 4096;
 const MIN_RAM_MB = 1024;
 const FALLBACK_MAX_RAM_MB = 16384;
@@ -118,7 +114,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   const [contentManagementEnabled, setContentManagementEnabled] = useState(true);
   const [selectedIconPath, setSelectedIconPath] = useState("");
   const [selectedIconPreview, setSelectedIconPreview] = useState("");
-  const [launchError, setLaunchError] = useState<string | null>(null);
+  const [launchErrorLog, setLaunchErrorLog] = useState<string | null>(null);
   const [launchEvents, setLaunchEvents] = useState<Record<string, LaunchEvent>>({});
 
   const releaseVersions = useMemo(
@@ -246,7 +242,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   );
 
   const play = async (instance: LauncherInstance) => {
-    setLaunchError(null);
+    setLaunchErrorLog(null);
 
     try {
       await launcherApi.launch({ instanceId: instance.id });
@@ -272,7 +268,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
         return;
       }
 
-      setLaunchError(message);
+      setLaunchErrorLog(message);
     }
   };
 
@@ -379,11 +375,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
         </button>
       </div>
 
-      {launchError ? (
-        <div className="rounded-sm border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-          {launchError}
-        </div>
-      ) : null}
+      {launchErrorLog ? <LaunchErrorNotice log={launchErrorLog} /> : null}
 
       {!modalOpen && error ? (
         <div className="rounded-sm border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">

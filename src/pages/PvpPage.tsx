@@ -22,6 +22,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { LaunchErrorNotice } from "../components/launcher/LaunchErrorNotice";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -40,6 +41,7 @@ import type {
   ServerStatusResult,
 } from "../types/launcher";
 import { cn } from "../utils/cn";
+import { formatDownloadEta, formatDownloadSize, formatDownloadSpeed } from "../utils/downloadFormat";
 
 const PVP_VERSION = "1.8.9";
 const PVP_LOADER = "forge";
@@ -517,6 +519,7 @@ export const PvpPage = () => {
   const [setupStatus, setSetupStatus] = useState<string | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [launchErrorLog, setLaunchErrorLog] = useState<string | null>(null);
   const [launchEvent, setLaunchEvent] = useState<LaunchEvent | null>(null);
   const [activeContentType, setActiveContentType] =
     useState<Extract<ContentType, "mod" | "resourcepack">>("mod");
@@ -769,6 +772,7 @@ export const PvpPage = () => {
 
   const launchKit = async () => {
     setLaunchError(null);
+    setLaunchErrorLog(null);
 
     if (!pvpInstance) {
       setLaunchError("Baixe o Kit PvP 1.8.9 antes de iniciar.");
@@ -786,12 +790,14 @@ export const PvpPage = () => {
         return;
       }
 
-      setLaunchError(message);
+      setLaunchError(null);
+      setLaunchErrorLog(message);
     }
   };
 
   const launchServer = async (serverInfo: PvpServer) => {
     setLaunchError(null);
+    setLaunchErrorLog(null);
 
     if (!pvpInstance) {
       setLaunchError("Instale o Kit PvP 1.8.9 antes de entrar em servidores.");
@@ -831,7 +837,8 @@ export const PvpPage = () => {
         return;
       }
 
-      setLaunchError(message);
+      setLaunchError(null);
+      setLaunchErrorLog(message);
     }
   };
 
@@ -943,11 +950,12 @@ export const PvpPage = () => {
               ) : null}
             </div>
 
-            {setupStatus || setupError || launchError || launchEvent ? (
+            {setupStatus || setupError || launchError || launchErrorLog || launchEvent ? (
               <div className="space-y-2">
                 {setupStatus ? <StatusLine tone="info" text={setupStatus} /> : null}
                 {setupError ? <StatusLine tone="error" text={setupError} /> : null}
                 {launchError ? <StatusLine tone="error" text={launchError} /> : null}
+                {launchErrorLog ? <LaunchErrorNotice log={launchErrorLog} /> : null}
                 {launchEvent ? <StatusLine tone="info" text={launchEvent.message} /> : null}
               </div>
             ) : null}
@@ -1214,6 +1222,15 @@ export const PvpPage = () => {
               <p className="text-sm text-[#94A3B8]">
                 {activeDownloads[0]?.label} — {Math.round(activeDownloads[0]?.progress ?? 0)}%
               </p>
+              {activeDownloads[0] ? (
+                <p className="mt-1 text-xs text-[#94A3B8]">
+                  {formatDownloadSpeed(activeDownloads[0].speedBytesPerSecond)}
+                  {" ? "}
+                  {formatDownloadEta(activeDownloads[0])}
+                  {" ? "}
+                  {formatDownloadSize(activeDownloads[0])}
+                </p>
+              ) : null}
             </div>
           </div>
         </Card>
@@ -1752,7 +1769,7 @@ const findPvpInstance = (instances: LauncherInstance[]) =>
       instance.name.toLowerCase().includes("pvp"),
   );
 
-const legacyPvpFilePattern = /(basichud|oneconfig)/i;
+const legacyPvpFilePattern = /(basichud|oneconfig|togglesneak)/i;
 
 const filterServers = (servers: PvpServer[], query: string) => {
   const normalized = normalizeSearch(query);

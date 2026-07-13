@@ -12,6 +12,7 @@ import { InstanceService } from "./instances/instanceService";
 import { InstanceInspectionService } from "./instances/instanceInspectionService";
 import { JavaRuntimeService } from "./java/javaRuntimeService";
 import { MinecraftVersionService } from "./minecraft/minecraftVersionService";
+import { repairLaunchCompatibility } from "./launcher/launchCompatibility";
 import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
 import { getLauncherDataPath, launcherAppName } from "./utils/launcherPaths";
 import { ApiKeyStore } from "./settings/apiKeyStore";
@@ -23,7 +24,8 @@ app.setName(launcherAppName);
 app.setPath("userData", getLauncherDataPath());
 Menu.setApplicationMenu(null);
 
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+const gotSingleInstanceLock =
+  process.env.MLULTIMATE_QA_ALLOW_SECOND_INSTANCE === "1" || app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
   app.quit();
@@ -198,6 +200,27 @@ const bootstrap = async () => {
   if (process.env.MLULTIMATE_QA_IMPORT_ARCHIVE) {
     const instance = await instances.importArchiveFile(process.env.MLULTIMATE_QA_IMPORT_ARCHIVE);
     console.log(`MLULTIMATE_QA_IMPORT_ARCHIVE_OK ${instance.id} ${instance.name}`);
+    app.quit();
+    return;
+  }
+
+  if (process.env.MLULTIMATE_QA_REMOVE_INSTANCE_ID) {
+    await instances.remove(process.env.MLULTIMATE_QA_REMOVE_INSTANCE_ID);
+    console.log(`MLULTIMATE_QA_REMOVE_INSTANCE_OK ${process.env.MLULTIMATE_QA_REMOVE_INSTANCE_ID}`);
+    app.quit();
+    return;
+  }
+
+  if (process.env.MLULTIMATE_QA_REPAIR_INSTANCE_ID) {
+    const instance = await instances.getById(process.env.MLULTIMATE_QA_REPAIR_INSTANCE_ID);
+    const repairs = repairLaunchCompatibility({
+      instance,
+      loaderVersion: instance.loaderVersion,
+    });
+    console.log(`MLULTIMATE_QA_REPAIR_INSTANCE_OK ${repairs.length}`);
+    for (const repair of repairs) {
+      console.log(repair);
+    }
     app.quit();
     return;
   }
