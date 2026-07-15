@@ -150,7 +150,7 @@ export function AvatarPage() {
   const saveOfflineSkin = useMutation({
     mutationFn: async () => {
       if (!offlineSearchResult) {
-        throw new Error("Busque um nick antes de salvar a skin offline.");
+        throw new Error("Busque um nick antes de salvar a skin manual.");
       }
 
       const saved = await launcherApi.saveNicknameSkin({
@@ -360,9 +360,9 @@ export function AvatarPage() {
                 <Shirt className="h-5 w-5 text-[#60A5FA]" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-white">Modo offline / pirata</h2>
+                <h2 className="text-lg font-semibold text-white">Skin manual</h2>
                 <p className="mt-1 text-sm text-[#94A3B8]">
-                  Use o fluxo local para o Kit PvP e contas offline do launcher.
+                  Busque por nick ou importe uma PNG para equipar no launcher.
                 </p>
               </div>
             </div>
@@ -469,7 +469,7 @@ export function AvatarPage() {
         <StatusMessage text={`Skin ${importSkin.data.skin.name} importada e equipada${importSkin.data.session ? " no Minecraft original" : ""}.`} />
       ) : null}
       {saveOfflineSkin.isSuccess ? (
-        <StatusMessage text={`Skin ${saveOfflineSkin.data.name} pronta para o modo offline.`} />
+        <StatusMessage text={`Skin ${saveOfflineSkin.data.name} pronta para uso manual.`} />
       ) : null}
       {refreshNameMcSkins.data ? (
         <p className="text-xs text-[#94A3B8]">

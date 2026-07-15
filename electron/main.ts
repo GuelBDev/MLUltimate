@@ -5,6 +5,7 @@ import { AvatarService } from "./avatar/avatarService";
 import { SecureTokenStore } from "./auth/secureTokenStore";
 import { MicrosoftAuthService } from "./auth/microsoftAuthService";
 import { OfflineAuthService } from "./auth/offlineAuthService";
+import { AuthAccountStore } from "./auth/authAccountStore";
 import { ContentService } from "./content/contentService";
 import { LauncherService } from "./launcher/launcherService";
 import { DownloadManager } from "./downloads/downloadManager";
@@ -131,10 +132,11 @@ const bootstrap = async () => {
   await database.initialize();
 
   const tokenStore = new SecureTokenStore(database);
+  const authAccounts = new AuthAccountStore(database);
   const avatar = new AvatarService(database);
   const apiKeys = new ApiKeyStore(database);
-  const microsoftAuth = new MicrosoftAuthService(tokenStore);
-  const offlineAuth = new OfflineAuthService(database);
+  const microsoftAuth = new MicrosoftAuthService(tokenStore, authAccounts);
+  const offlineAuth = new OfflineAuthService(database, authAccounts);
   const downloads = new DownloadManager((items) => {
     mainWindow?.webContents.send("downloads:changed", items);
   });

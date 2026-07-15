@@ -20,6 +20,7 @@ import type {
   NameMCSkinLibraryInput,
   NameMCSkinSearchResult,
   OfflineLoginInput,
+  SavedAuthAccount,
   SaveNicknameSkinInput,
   SaveNameMCSkinInput,
   ServerStatusLookupInput,
@@ -28,6 +29,7 @@ import type {
   UpdateLauncherSettingsInput,
   UpdateInstanceInput,
   SystemMemoryInfo,
+  SwitchAccountInput,
 } from "../types/launcher";
 
 const desktopOnly = () =>
@@ -113,6 +115,11 @@ export const launcherApi = {
     return signedOut;
   },
 
+  listAccounts: async (): Promise<SavedAuthAccount[]> => {
+    if (!hasBridge()) return [];
+    return window.mlultimate.auth.listAccounts();
+  },
+
   loginMicrosoft: async () => {
     if (!hasBridge()) throw desktopOnly();
     return window.mlultimate.auth.loginMicrosoft();
@@ -121,6 +128,11 @@ export const launcherApi = {
   loginOffline: async (input: OfflineLoginInput) => {
     if (!hasBridge()) throw desktopOnly();
     return window.mlultimate.auth.loginOffline(input);
+  },
+
+  switchAccount: async (input: SwitchAccountInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.auth.switchAccount(input);
   },
 
   logout: async () => {

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { LauncherDatabase } from "../database/sqliteDatabase";
 import type { AuthSession, OfflineLoginInput, PublicAccount } from "../../src/types/launcher";
+import { AuthAccountStore } from "./authAccountStore";
 
 const offlineLoginSchema = z.object({
   username: z.string().trim().min(3).max(16).regex(/^[A-Za-z0-9_]+$/),
@@ -13,7 +14,10 @@ type OfflineProfileRow = {
 };
 
 export class OfflineAuthService {
-  constructor(private readonly database: LauncherDatabase) {}
+  constructor(
+    private readonly database: LauncherDatabase,
+    private readonly accountStore: AuthAccountStore,
+  ) {}
 
   async login(input: OfflineLoginInput): Promise<AuthSession> {
     const parsed = offlineLoginSchema.parse(input);
@@ -31,6 +35,7 @@ export class OfflineAuthService {
       `,
       [id, parsed.username, now, now],
     );
+    this.accountStore.setActiveAccount("offline", id);
 
     return {
       status: "signed-in",
@@ -40,9 +45,17 @@ export class OfflineAuthService {
   }
 
   getLastOfflineSession(): AuthSession | null {
-    const row = this.database.get<OfflineProfileRow>(
-      "SELECT id, username FROM offline_profiles ORDER BY last_used_at DESC LIMIT 1",
-    );
+    const active = this.accountStore.getActiveAccount();
+    const row = active?.provider === "offline"
+      ? this.database.get<OfflineProfileRow>(
+          "SELECT id, username FROM offline_profiles WHERE id = ?",
+          [active.id],
+        )
+      : active
+        ? null
+        : this.database.get<OfflineProfileRow>(
+            "SELECT id, username FROM offline_profiles ORDER BY last_used_at DESC LIMIT 1",
+          );
 
     if (!row) {
       return null;
@@ -57,6 +70,44 @@ export class OfflineAuthService {
 
   clear() {
     this.database.run("DELETE FROM offline_profiles");
+  }
+
+  listAccounts() {
+    return this.database
+      .all<OfflineProfileRow>("SELECT id, username FROM offline_profiles ORDER BY last_used_at DESC")
+      .map((row) => this.toPublicAccount(row));
+  }
+
+  countAccounts() {
+    return this.database.get<{ total: number }>("SELECT COUNT(*) AS total FROM offline_profiles")?.total ?? 0;
+  }
+
+  switchAccount(id: string): AuthSession {
+    const row = this.database.get<OfflineProfileRow>(
+      "SELECT id, username FROM offline_profiles WHERE id = ?",
+      [id],
+    );
+
+    if (!row) {
+      throw new Error("Conta offline nao encontrada.");
+    }
+
+    this.database.run("UPDATE offline_profiles SET last_used_at = ? WHERE id = ?", [
+      new Date().toISOString(),
+      id,
+    ]);
+    this.accountStore.setActiveAccount("offline", id);
+
+    return {
+      status: "signed-in",
+      account: this.toPublicAccount(row),
+      encryptionAvailable: true,
+    };
+  }
+
+  removeAccount(id: string) {
+    this.database.run("DELETE FROM offline_profiles WHERE id = ?", [id]);
+    this.accountStore.clearActiveAccountIfMatches("offline", id);
   }
 
   private toPublicAccount(profile: OfflineProfileRow): PublicAccount {

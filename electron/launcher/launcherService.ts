@@ -116,6 +116,7 @@ export class LauncherService {
           `${request.server.name ?? request.server.host} exige uma conta Microsoft licenciada. Entre com Microsoft para acessar servidores premium como Hypixel.`,
         );
       }
+      normalizeMinecraftWindowOptions(instance.gameDir);
       const installed = this.minecraftVersions.getInstalledVersion(instance.minecraftVersion);
 
       this.assertLaunchNotCancelled(request.instanceId, launchState);
@@ -406,6 +407,7 @@ export class LauncherService {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: false,
       });
+      keepMinecraftWindowResizable(child.pid);
       launchState.child = child;
       const output: string[] = [];
       const rememberOutput = (chunk: Buffer) => {
@@ -939,6 +941,247 @@ const readInstanceJvmArgs = (gameDir: string) => {
       .filter((line) => !/^-Xm[sx]/i.test(line));
   } catch {
     return [];
+  }
+};
+
+const normalizeMinecraftWindowOptions = (gameDir: string) => {
+  const optionsPath = path.join(gameDir, "options.txt");
+
+  try {
+    const lines = existsSync(optionsPath)
+      ? readFileSync(optionsPath, "utf8").split(/\r?\n/)
+      : [];
+    let wroteFullscreen = false;
+    const nextLines = lines
+      .filter((line, index) => line || index < lines.length - 1)
+      .map((line) => {
+        if (/^fullscreen:/i.test(line)) {
+          wroteFullscreen = true;
+          return "fullscreen:false";
+        }
+
+        return line;
+      });
+
+    if (!wroteFullscreen) {
+      nextLines.push("fullscreen:false");
+    }
+
+    writeFileSync(optionsPath, `${nextLines.join("\n")}\n`, "utf8");
+  } catch {
+    // Window state repair is best-effort; launch should continue if options.txt is locked.
+  }
+};
+
+const keepMinecraftWindowResizable = (pid?: number) => {
+  if (process.platform !== "win32" || !pid) {
+    return;
+  }
+
+  const helperDir = path.join(app.getPath("userData"), "helpers");
+  const helperPath = path.join(helperDir, "minecraft-window-repair.ps1");
+  const script = `
+param([int]$TargetPid)
+$code = @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Collections.Generic;
+
+public static class NativeWindow {
+  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+  [DllImport("user32.dll")]
+  public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+  [DllImport("user32.dll")]
+  public static extern bool IsWindowVisible(IntPtr hWnd);
+
+  [DllImport("user32.dll")]
+  public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+  [DllImport("user32.dll")]
+  public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+  [DllImport("user32.dll")]
+  public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+  [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr", SetLastError = true)]
+  public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
+  [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
+  public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern IntPtr GetSystemMenu(IntPtr hWnd, bool bRevert);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern bool EnableMenuItem(IntPtr hMenu, uint uIDEnableItem, uint uEnable);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern bool DrawMenuBar(IntPtr hWnd);
+
+  public static IntPtr[] FindMinecraftWindows() {
+    var windows = new List<IntPtr>();
+    EnumWindows((hWnd, lParam) => {
+      if (!IsWindowVisible(hWnd)) return true;
+      var titleBuilder = new StringBuilder(512);
+      var classBuilder = new StringBuilder(256);
+      GetWindowText(hWnd, titleBuilder, titleBuilder.Capacity);
+      GetClassName(hWnd, classBuilder, classBuilder.Capacity);
+      var title = titleBuilder.ToString();
+      var className = classBuilder.ToString();
+      if (
+        title.IndexOf("Minecraft", StringComparison.OrdinalIgnoreCase) >= 0 ||
+        className.IndexOf("LWJGL", StringComparison.OrdinalIgnoreCase) >= 0
+      ) {
+        windows.Add(hWnd);
+      }
+      return true;
+    }, IntPtr.Zero);
+    return windows.ToArray();
+  }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct RECT {
+  public int Left;
+  public int Top;
+  public int Right;
+  public int Bottom;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct MONITORINFO {
+  public int cbSize;
+  public RECT rcMonitor;
+  public RECT rcWork;
+  public uint dwFlags;
+}
+'@
+try { Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue } catch {}
+$GWL_STYLE = -16
+$WS_POPUP = 0x80000000L
+$WS_CAPTION = 0x00C00000
+$WS_SYSMENU = 0x00080000
+$WS_THICKFRAME = 0x00040000
+$WS_MINIMIZEBOX = 0x00020000
+$WS_MAXIMIZEBOX = 0x00010000
+$WS_OVERLAPPEDWINDOW = $WS_CAPTION -bor $WS_SYSMENU -bor $WS_THICKFRAME -bor $WS_MINIMIZEBOX -bor $WS_MAXIMIZEBOX
+$MONITOR_DEFAULTTONEAREST = 0x00000002
+$MF_BYCOMMAND = 0x00000000
+$MF_ENABLED = 0x00000000
+$SC_SIZE = 0xF000
+$SC_MOVE = 0xF010
+$SC_MAXIMIZE = 0xF030
+$SWP_NOSIZE = 0x0001
+$SWP_NOMOVE = 0x0002
+$SWP_NOZORDER = 0x0004
+$SWP_FRAMECHANGED = 0x0020
+$SWP_NOOWNERZORDER = 0x0200
+$flags = $SWP_NOSIZE -bor $SWP_NOMOVE -bor $SWP_NOZORDER -bor $SWP_FRAMECHANGED -bor $SWP_NOOWNERZORDER
+$emptyTicks = 0
+
+while ($true) {
+  $minecraftWindows = @()
+
+  try {
+    $minecraftWindows = @([NativeWindow]::FindMinecraftWindows())
+  } catch {}
+
+  foreach ($handle in $minecraftWindows) {
+    if ($handle -ne [IntPtr]::Zero) {
+      $style = [NativeWindow]::GetWindowLongPtr($handle, $GWL_STYLE).ToInt64()
+      $menu = [NativeWindow]::GetSystemMenu($handle, $false)
+      if ($menu -ne [IntPtr]::Zero) {
+        [void][NativeWindow]::EnableMenuItem($menu, $SC_SIZE, $MF_BYCOMMAND -bor $MF_ENABLED)
+        [void][NativeWindow]::EnableMenuItem($menu, $SC_MOVE, $MF_BYCOMMAND -bor $MF_ENABLED)
+        [void][NativeWindow]::EnableMenuItem($menu, $SC_MAXIMIZE, $MF_BYCOMMAND -bor $MF_ENABLED)
+      }
+      $windowRect = New-Object RECT
+      $monitorInfo = New-Object MONITORINFO
+      $monitorInfo.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([MONITORINFO])
+      $monitor = [NativeWindow]::MonitorFromWindow($handle, $MONITOR_DEFAULTTONEAREST)
+      $isFullscreen = $false
+
+      if ([NativeWindow]::GetWindowRect($handle, [ref]$windowRect) -and
+          $monitor -ne [IntPtr]::Zero -and
+          [NativeWindow]::GetMonitorInfo($monitor, [ref]$monitorInfo)) {
+        $tolerance = 3
+        $isFullscreen =
+          [Math]::Abs($windowRect.Left - $monitorInfo.rcMonitor.Left) -le $tolerance -and
+          [Math]::Abs($windowRect.Top - $monitorInfo.rcMonitor.Top) -le $tolerance -and
+          [Math]::Abs($windowRect.Right - $monitorInfo.rcMonitor.Right) -le $tolerance -and
+          [Math]::Abs($windowRect.Bottom - $monitorInfo.rcMonitor.Bottom) -le $tolerance
+      }
+
+      $nextStyle = $style -bor $WS_OVERLAPPEDWINDOW
+      if (-not $isFullscreen) {
+        $nextStyle = $nextStyle -band (-bnot $WS_POPUP)
+      }
+
+      if ($nextStyle -ne $style) {
+        [void][NativeWindow]::SetWindowLongPtr($handle, $GWL_STYLE, [IntPtr]::new($nextStyle))
+        [void][NativeWindow]::SetWindowPos($handle, [IntPtr]::Zero, 0, 0, 0, 0, $flags)
+      }
+      [void][NativeWindow]::DrawMenuBar($handle)
+    }
+  }
+
+  try {
+    [void](Get-Process -Id $TargetPid -ErrorAction Stop)
+    $emptyTicks = 0
+  } catch {
+    if ($minecraftWindows.Count -eq 0) {
+      $emptyTicks += 1
+      if ($emptyTicks -ge 8) {
+        break
+      }
+    } else {
+      $emptyTicks = 0
+    }
+  }
+
+  Start-Sleep -Milliseconds 250
+}
+`;
+
+  try {
+    mkdirSync(helperDir, { recursive: true });
+    writeFileSync(helperPath, script, "utf8");
+    const helper = spawn(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-WindowStyle",
+        "Hidden",
+        "-File",
+        helperPath,
+        String(pid),
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      },
+    );
+    helper.unref();
+  } catch {
+    // The Minecraft process can still launch normally if the native window helper is unavailable.
   }
 };
 

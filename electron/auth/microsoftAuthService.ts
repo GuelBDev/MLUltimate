@@ -6,6 +6,7 @@ import { URLSearchParams } from "node:url";
 import { z } from "zod";
 import { SecureTokenStore, type SecureMicrosoftSession } from "./secureTokenStore";
 import type { AuthSession, MinecraftSkinVariant, PublicAccount } from "../../src/types/launcher";
+import { AuthAccountStore } from "./authAccountStore";
 
 const MICROSOFT_AUTH_URL = "https://login.live.com/oauth20_authorize.srf";
 const MICROSOFT_TOKEN_URL = "https://login.live.com/oauth20_token.srf";
@@ -67,10 +68,20 @@ export class MicrosoftAuthService {
     process.env.MLULTIMATE_MICROSOFT_CLIENT_ID ?? DEFAULT_MICROSOFT_CLIENT_ID;
   private cancelPendingOAuth: ((error?: Error) => void) | null = null;
 
-  constructor(private readonly tokenStore: SecureTokenStore) {}
+  constructor(
+    private readonly tokenStore: SecureTokenStore,
+    private readonly accountStore: AuthAccountStore,
+  ) {}
 
-  async getSession(): Promise<AuthSession> {
-    const secureSession = this.tokenStore.loadSession();
+  async getSession(accountId?: string): Promise<AuthSession> {
+    const active = this.accountStore.getActiveAccount();
+    const secureSession = accountId
+      ? this.tokenStore.loadSession(accountId)
+      : active?.provider === "microsoft"
+        ? this.tokenStore.loadSession(active.id)
+        : active
+          ? null
+          : this.tokenStore.loadSession();
 
     if (!secureSession) {
       return { status: "signed-out", encryptionAvailable: this.tokenStore.isEncryptionAvailable() };
@@ -87,7 +98,7 @@ export class MicrosoftAuthService {
     };
   }
 
-  async login(): Promise<AuthSession> {
+  async login(otherAccountCount = 0): Promise<AuthSession> {
     this.assertConfigured();
 
     const pkce = createPkcePair();
@@ -119,8 +130,15 @@ export class MicrosoftAuthService {
       pkce.verifier,
     );
     const hydrated = await this.hydrateMicrosoftSession(microsoftTokens);
+    const savedAccounts = this.tokenStore.listSessions();
+    const replacingExisting = savedAccounts.some((session) => session.accountId === hydrated.accountId);
+
+    if (!replacingExisting && savedAccounts.length + otherAccountCount >= 3) {
+      throw new Error("Limite de 3 perfis atingido. Remova uma conta antes de adicionar outra.");
+    }
 
     this.tokenStore.saveSession(hydrated);
+    this.accountStore.setActiveAccount("microsoft", hydrated.accountId);
 
     return {
       status: "signed-in",
@@ -130,12 +148,44 @@ export class MicrosoftAuthService {
   }
 
   async logout(): Promise<AuthSession> {
-    this.tokenStore.clearSession();
+    const active = this.accountStore.getActiveAccount();
+
+    if (active?.provider === "microsoft") {
+      this.tokenStore.clearSession(active.id);
+      this.accountStore.clearActiveAccountIfMatches("microsoft", active.id);
+    } else {
+      this.tokenStore.clearSession();
+      this.accountStore.clearActiveAccount();
+    }
+
     return { status: "signed-out", encryptionAvailable: this.tokenStore.isEncryptionAvailable() };
   }
 
+  listAccounts() {
+    return this.tokenStore.listSessions().map((session) => this.toPublicAccount(session));
+  }
+
+  async switchAccount(id: string): Promise<AuthSession> {
+    const session = this.tokenStore.loadSession(id);
+
+    if (!session) {
+      throw new Error("Conta Microsoft nao encontrada.");
+    }
+
+    this.accountStore.setActiveAccount("microsoft", id);
+    return this.getSession(id);
+  }
+
+  removeAccount(id: string) {
+    this.tokenStore.clearSession(id);
+    this.accountStore.clearActiveAccountIfMatches("microsoft", id);
+  }
+
   async requireLicensedSession() {
-    const secureSession = this.tokenStore.loadSession();
+    const active = this.accountStore.getActiveAccount();
+    const secureSession = active?.provider === "microsoft"
+      ? this.tokenStore.loadSession(active.id)
+      : this.tokenStore.loadSession();
 
     if (!secureSession) {
       throw new Error("Entre com uma conta Microsoft antes de iniciar esta instância.");

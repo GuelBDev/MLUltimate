@@ -181,6 +181,14 @@ body {
   color: var(--app-secondary);
 }
 
+.app-nav-item:hover .app-nav-icon,
+.app-nav-icon-active {
+  background: rgb(var(--app-secondary-rgb) / 0.14);
+  box-shadow:
+    0 0 0 1px rgb(var(--app-secondary-rgb) / 0.22),
+    0 0 18px rgb(var(--app-secondary-rgb) / 0.22);
+}
+
 .text-white,
 .text-\[\#D8DEE9\] {
   color: var(--app-text-primary) !important;

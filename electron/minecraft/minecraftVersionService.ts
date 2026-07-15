@@ -366,6 +366,7 @@ export class MinecraftVersionService {
       `Minecraft ${input.minecraftVersion} - bibliotecas`,
       path.join(this.rootDir, "libraries"),
       "minecraft://libraries",
+      false,
     );
 
     try {
@@ -438,6 +439,7 @@ export class MinecraftVersionService {
       `Minecraft ${minecraftVersion} - assets`,
       path.join(this.rootDir, "assets"),
       "minecraft://assets",
+      false,
     );
 
     try {

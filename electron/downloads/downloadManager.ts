@@ -18,15 +18,16 @@ type EmitDownloads = (items: DownloadItem[]) => void;
 
 export class DownloadManager {
   private downloads = new Map<string, DownloadItem>();
+  private hiddenTasks = new Set<string>();
   private inFlightByDestination = new Map<string, Promise<string>>();
   private controllers = new Map<string, AbortController>();
 
   constructor(private readonly emit: EmitDownloads) {}
 
   list() {
-    return [...this.downloads.values()].sort(
-      (a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt),
-    );
+    return [...this.downloads.values()]
+      .filter((item) => !this.hiddenTasks.has(item.id) && !isInternalMinecraftTask(item))
+      .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
   }
 
   async download({ label, url, destination, sha1, visible = true, onProgress }: DownloadOptions) {
@@ -207,7 +208,7 @@ export class DownloadManager {
     }
   }
 
-  createTask(label: string, destination: string, sourceUrl = "internal://task") {
+  createTask(label: string, destination: string, sourceUrl = "internal://task", visible = true) {
     const id = randomUUID();
     const item: DownloadItem = {
       id,
@@ -222,7 +223,10 @@ export class DownloadManager {
     };
 
     this.downloads.set(id, item);
-    this.flush();
+    if (!visible) {
+      this.hiddenTasks.add(id);
+    }
+    if (visible) this.flush();
     return id;
   }
 
@@ -238,7 +242,7 @@ export class DownloadManager {
       const elapsedSeconds = Math.max(1, (Date.now() - Date.parse(item.startedAt)) / 1000);
       item.speedBytesPerSecond = item.bytesReceived / elapsedSeconds;
     }
-    this.flush();
+    if (!this.hiddenTasks.has(id)) this.flush();
   }
 
   completeTask(id: string) {
@@ -252,7 +256,7 @@ export class DownloadManager {
     item.progress = 100;
     item.speedBytesPerSecond = 0;
     item.completedAt = new Date().toISOString();
-    this.flush();
+    if (!this.hiddenTasks.has(id)) this.flush();
   }
 
   failTask(id: string, error: unknown) {
@@ -265,13 +269,25 @@ export class DownloadManager {
     item.status = "failed";
     item.error = error instanceof Error ? error.message : "Download falhou.";
     item.completedAt = new Date().toISOString();
-    this.flush();
+    if (!this.hiddenTasks.has(id)) this.flush();
   }
 
   private flush() {
     this.emit(this.list());
   }
 }
+
+const isInternalMinecraftTask = (item: DownloadItem) => {
+  const destination = path.normalize(item.destination);
+
+  return (
+    item.sourceUrl.startsWith("minecraft://") ||
+    (/^Minecraft .+ - assets(?:\s|$)/i.test(item.label) &&
+      /[\\/]Minecraft[\\/]assets$/i.test(destination)) ||
+    (/^(Minecraft|Forge|NeoForge|Fabric|Quilt) .+ - bibliotecas(?:\s|$)/i.test(item.label) &&
+      /[\\/]Minecraft[\\/]libraries$/i.test(destination))
+  );
+};
 
 const hashFile = async (filePath: string) => {
   const { createReadStream } = await import("node:fs");

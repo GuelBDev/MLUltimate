@@ -403,15 +403,6 @@ const curatedMods: CuratedPvpContent[] = [
     imageUrl: "https://cdn.modrinth.com/data/DQKdq5re/icon.png",
   },
   {
-    title: "TCPDelayMod",
-    provider: "modrinth",
-    projectId: "d9VOPfkU",
-    type: "mod",
-    description: "Ajuste leve de rede para Minecraft 1.8.9.",
-    tag: "Rede",
-    imageUrl: "https://cdn.modrinth.com/data/d9VOPfkU/icon.png",
-  },
-  {
     title: "SimpleTimeChanger",
     provider: "modrinth",
     projectId: "uHERytn5",
@@ -509,6 +500,18 @@ const providerLabel: Record<ContentProvider, string> = {
   modrinth: "Modrinth",
   curseforge: "CurseForge",
 };
+
+const incompatiblePvpContent = [
+  {
+    provider: "modrinth",
+    projectId: "d9VOPfkU",
+    fileNamePattern: /tcpdelaymod/i,
+  },
+] satisfies Array<{
+  provider: ContentProvider;
+  projectId: string;
+  fileNamePattern: RegExp;
+}>;
 
 export const PvpPage = () => {
   const queryClient = useQueryClient();
@@ -673,6 +676,28 @@ export const PvpPage = () => {
     setSetupStatus("Skin offline pronta para o Kit PvP.");
   };
 
+  const removeIncompatiblePvpContent = async (instance: LauncherInstance) => {
+    const installed = await launcherApi.listInstalledContent(instance.id).catch(() => []);
+    const incompatible = installed.filter((item) =>
+      incompatiblePvpContent.some(
+        (blocked) =>
+          item.provider === blocked.provider &&
+          (item.projectId === blocked.projectId || blocked.fileNamePattern.test(item.fileName)),
+      ),
+    );
+
+    for (const item of incompatible) {
+      await launcherApi.removeInstalledContent(item.id).catch(async () => {
+        if (item.fileName) {
+          await launcherApi.removeInstanceFile({
+            instanceId: instance.id,
+            relativePath: `mods/${item.fileName}`,
+          }).catch(() => undefined);
+        }
+      });
+    }
+  };
+
   const installKit = async () => {
     setSetupError(null);
     setLaunchError(null);
@@ -690,6 +715,7 @@ export const PvpPage = () => {
         }));
 
       await refreshPvpData(queryClient);
+      await removeIncompatiblePvpContent(instance);
       const installed = await launcherApi.listInstalledContent(instance.id).catch(() => []);
       const installedKeys = new Set(
         installed.map((item) => `${item.provider}:${item.type}:${item.projectId}`),
@@ -781,6 +807,7 @@ export const PvpPage = () => {
 
     try {
       await ensureSkinLoaderInstalled(pvpInstance);
+      await removeIncompatiblePvpContent(pvpInstance);
       await launcherApi.launch({ instanceId: pvpInstance.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Não foi possível abrir o Kit PvP.";
@@ -811,6 +838,7 @@ export const PvpPage = () => {
 
     try {
       await ensureSkinLoaderInstalled(pvpInstance);
+      await removeIncompatiblePvpContent(pvpInstance);
       await launcherApi.launch({
         instanceId: pvpInstance.id,
         server: {
@@ -824,6 +852,7 @@ export const PvpPage = () => {
       const message = error instanceof Error ? error.message : "Não foi possível abrir o servidor.";
 
       if (message.startsWith("INSTANCE_ALREADY_RUNNING")) {
+        await removeIncompatiblePvpContent(pvpInstance);
         await launcherApi.launch({
           instanceId: pvpInstance.id,
           force: true,

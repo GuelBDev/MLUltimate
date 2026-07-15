@@ -28,8 +28,17 @@ export type AuthSession =
       encryptionAvailable: boolean;
     };
 
+export type SavedAuthAccount = PublicAccount & {
+  active: boolean;
+};
+
 export type OfflineLoginInput = {
   username: string;
+};
+
+export type SwitchAccountInput = {
+  provider: AuthProvider;
+  id: string;
 };
 
 export type LaunchRequest = {

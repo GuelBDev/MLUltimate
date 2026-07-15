@@ -25,11 +25,14 @@ const secureSessionSchema = z.object({
 export type SecureMicrosoftSession = z.infer<typeof secureSessionSchema>;
 
 type SecureRecord = {
+  key?: string;
   value: Uint8Array;
+  updated_at?: string;
 };
 
 export class SecureTokenStore {
-  private static sessionKey = "auth.microsoft.session";
+  private static legacySessionKey = "auth.microsoft.session";
+  private static sessionKeyPrefix = "auth.microsoft.session.";
 
   constructor(private readonly database: LauncherDatabase) {}
 
@@ -43,31 +46,83 @@ export class SecureTokenStore {
       VALUES (?, ?, ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
       `,
-      [SecureTokenStore.sessionKey, encrypted, new Date().toISOString()],
+      [this.sessionKey(session.accountId), encrypted, new Date().toISOString()],
     );
   }
 
-  loadSession() {
+  loadSession(accountId?: string) {
     if (!safeStorage.isEncryptionAvailable()) {
       return null;
     }
 
+    if (!accountId) {
+      return this.listSessions().at(0) ?? null;
+    }
+
     const record = this.database.get<SecureRecord>(
       "SELECT value FROM secure_records WHERE key = ?",
-      [SecureTokenStore.sessionKey],
+      [this.sessionKey(accountId)],
     );
 
     if (!record) {
       return null;
     }
 
-    const decrypted = safeStorage.decryptString(Buffer.from(record.value));
-    return secureSessionSchema.parse(JSON.parse(decrypted));
+    return this.decryptSession(record);
   }
 
-  clearSession() {
+  listSessions() {
+    if (!safeStorage.isEncryptionAvailable()) {
+      return [];
+    }
+
+    const rows = this.database.all<SecureRecord>(
+      `
+      SELECT key, value, updated_at FROM secure_records
+      WHERE key = ? OR key LIKE ?
+      ORDER BY updated_at DESC
+      `,
+      [SecureTokenStore.legacySessionKey, `${SecureTokenStore.sessionKeyPrefix}%`],
+    );
+
+    const sessions = rows.flatMap((row) => {
+      try {
+        const session = this.decryptSession(row);
+
+        if (row.key === SecureTokenStore.legacySessionKey) {
+          this.saveSession(session);
+        }
+
+        return [session];
+      } catch {
+        return [];
+      }
+    });
+    const seen = new Set<string>();
+
+    return sessions.filter((session) => {
+      if (seen.has(session.accountId)) {
+        return false;
+      }
+
+      seen.add(session.accountId);
+      return true;
+    });
+  }
+
+  clearSession(accountId?: string) {
+    if (accountId) {
+      this.database.run("DELETE FROM secure_records WHERE key = ?", [
+        this.sessionKey(accountId),
+      ]);
+      return;
+    }
+
     this.database.run("DELETE FROM secure_records WHERE key = ?", [
-      SecureTokenStore.sessionKey,
+      SecureTokenStore.legacySessionKey,
+    ]);
+    this.database.run("DELETE FROM secure_records WHERE key LIKE ?", [
+      `${SecureTokenStore.sessionKeyPrefix}%`,
     ]);
   }
 
@@ -81,5 +136,14 @@ export class SecureTokenStore {
         "Criptografia do sistema indisponível. Tokens não serão salvos sem proteção.",
       );
     }
+  }
+
+  private sessionKey(accountId: string) {
+    return `${SecureTokenStore.sessionKeyPrefix}${accountId}`;
+  }
+
+  private decryptSession(record: SecureRecord) {
+    const decrypted = safeStorage.decryptString(Buffer.from(record.value));
+    return secureSessionSchema.parse(JSON.parse(decrypted));
   }
 }

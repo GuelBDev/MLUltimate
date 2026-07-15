@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  BadgeDollarSign,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Download,
-  Images,
+  Compass,
   Megaphone,
-  Newspaper,
   PackageOpen,
   Rocket,
-  ShieldCheck,
-  Sparkles,
+  Server,
+  Tag,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import heroImage from "../assets/launcher-hero.png";
 import instanceDefaultImage from "../assets/instance-default.png";
 import { Badge } from "../components/ui/badge";
@@ -31,121 +30,83 @@ const carouselSlides = [
   {
     eyebrow: "MLUltimate Launcher",
     title: "Jogue, ajuste e evolua seu Minecraft",
-    description:
-      "Crie instancias, instale conteudo e acompanhe novidades sem sair do launcher.",
+    description: "Crie instancias, instale conteudo e acompanhe tudo pelo launcher.",
     image: instanceDefaultImage,
     badge: "Destaque",
   },
   {
     eyebrow: "Kit PvP",
     title: "PvP 1.8.9 pronto para treinar",
-    description:
-      "Perfil Forge com servidores, mods, skins offline e configuracoes pensadas para combate.",
+    description: "Perfil Forge com servidores, mods, skins offline e configuracoes para combate.",
     image: heroImage,
     badge: "PvP",
   },
-  {
-    eyebrow: "Campanhas",
-    title: "Espacos de anuncio sem poluir o app",
-    description:
-      "A Home separa comunicados, banners patrocinados e novidades para manter o uso do app limpo.",
-    image: instanceDefaultImage,
-    badge: "Ads",
-  },
 ];
 
-const sponsoredSlots = [
+const adSlots: Array<{
+  title: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}> = [
   {
-    title: "Servidor em destaque",
-    label: "Patrocinado",
-    description: "Banner para servidor parceiro com arte, IP, player count e botao direto para entrar.",
-    icon: BadgeDollarSign,
+    title: "Servidor parceiro",
+    label: "Banner",
+    description: "Arte, IP e botao de entrada.",
+    icon: Server,
   },
   {
     title: "Campanha oficial",
     label: "MLUltimate",
-    description: "Espaco para updates, eventos PvP, skins em alta e chamadas importantes do app.",
+    description: "Eventos, skins e chamadas da comunidade.",
     icon: Megaphone,
   },
   {
-    title: "Oferta com cupom",
-    label: "CPA",
-    description: "Formato para loja parceira com cupom rastreavel e periodo de exibicao limitado.",
-    icon: Images,
-  },
-];
-
-const monetizationRules = [
-  {
-    title: "Poucos slots",
-    description: "No maximo um banner grande e dois cards menores por vez para nao cansar o usuario.",
-    icon: ShieldCheck,
+    title: "Cupom ativo",
+    label: "Oferta",
+    description: "Loja, codigo e periodo da campanha.",
+    icon: Tag,
   },
   {
-    title: "Sempre marcado",
-    description: "Todo conteudo pago aparece como Patrocinado, sem misturar com botoes principais.",
-    icon: BadgeDollarSign,
-  },
-  {
-    title: "Segmentado por contexto",
-    description: "Servidor PvP aparece na Home/PvP; textura, modpack ou skin aparece perto da Biblioteca.",
-    icon: Sparkles,
-  },
-];
-
-const appAnnouncements = [
-  {
-    title: "Nova Home",
-    description: "Tela inicial redesenhada para anuncios, novidades e comunicados oficiais.",
-    icon: Newspaper,
-  },
-  {
-    title: "Perfis com conteudo",
-    description: "Continue criando instâncias e instalando mods pela aba Minhas Instâncias.",
+    title: "Modpack destaque",
+    label: "Vitrine",
+    description: "Pacote recomendado para baixar.",
     icon: PackageOpen,
   },
   {
-    title: "Instalador revisado",
-    description: "Fluxo do instalador online ajustado para PCs novos e conexoes mais lentas.",
-    icon: Download,
+    title: "Torneio PvP",
+    label: "Evento",
+    description: "Data, servidor e premio da rodada.",
+    icon: Megaphone,
+  },
+  {
+    title: "Textura patrocinada",
+    label: "Pack",
+    description: "Imagem, versao e link de instalacao.",
+    icon: Compass,
   },
 ];
 
-const changelog = [
+const updateLog = [
   {
     version: appDisplayVersion,
     tag: rawAppVersion,
     date: "Atual",
     changes: [
-      "Kit PvP agora baixa mods e texturas por Modrinth/CurseForge, sem MediaFire ou zip embutido.",
-      "Home redesenhada com vitrine, comunicados e espacos de campanha mais organizados.",
-      "Forge 1.8.9 corrigido: instaladores legados agora são instalados manualmente pelo launcher.",
-      "Bibliotecas antigas do Forge agora entram no classpath do Minecraft corretamente.",
-      "Release agora valida criação real de instância Forge 1.8.9 antes de publicar.",
-      "Nova aba PVP abaixo do Avatar com logo de espadas cruzadas.",
-      "Central de servidores com Hypixel, MushMC, Minemen Club, PvP Legacy e BlocksMC.",
-      "Servidores premium agora ficam bloqueados quando a conta ativa não é Microsoft licenciada.",
-      "Kit PvP Forge 1.8.9 com HUD, CPS, keystrokes, sprint, otimização e texturas PvP.",
-      "Busca dedicada mostra apenas mods e texturas compatíveis com PvP 1.8.9.",
-      "Instalador Linux corrigido e validado abrindo o launcher após a instalação.",
-      "Compatibilidade verificada em sistemas baseados no Ubuntu 22.04 e 24.04.",
-      "Dependência de armazenamento seguro adicionada para contas Microsoft no Linux.",
-      "Novo instalador DEB compatível com Lubuntu, Ubuntu e derivados.",
-      "AppImage portátil disponível como alternativa ao instalador.",
-      "Java automático e bibliotecas do Minecraft agora respeitam corretamente o Linux.",
-      "Interface completa traduzida para 14 idiomas principais.",
-      "Seletor de idioma ampliado no primeiro acesso e nas Configurações.",
-      "Textos corrompidos e problemas de acentuação foram corrigidos em todo o app.",
+      "Perfis Microsoft e offline salvos com alternancia entre contas.",
+      "Kit PvP corrigido para remover mod incompativel e abrir servidores.",
+      "Biblioteca marca modpacks baixados e permite baixar uma nova copia.",
+      "Downloads mostra apenas downloads reais, sem verificacoes internas.",
     ],
   },
   {
-    version: "2.7.0",
-    tag: "alpha 2",
+    version: "3.2.0",
+    tag: "stable",
     date: "Anterior",
     changes: [
-      "Texturas e shaders passaram a exibir fotos do projeto ou do pacote.",
-      "Shaders passaram a exigir um motor grafico reconhecido na instancia.",
-      "Iris, OptiFine, Oculus, Angelica e ShadersMod passaram a ser detectados automaticamente.",
+      "Kit PvP Forge 1.8.9 com mods, texturas e servidores.",
+      "Aplicacao de skins offline pela aba Avatar.",
+      "Melhorias no instalador e no fluxo de atualizacao.",
     ],
   },
 ];
@@ -170,198 +131,122 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="relative min-h-[370px] overflow-hidden rounded-2xl border border-white/10 bg-[#161B22] shadow-2xl shadow-black/35">
-          <img
-            src={slide.image}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover transition duration-700"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#0D1117]/98 via-[#0D1117]/78 to-[#0D1117]/35" />
-          <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#0D1117] to-transparent" />
+      <section className="relative min-h-[410px] overflow-hidden rounded-2xl border border-white/10 bg-[#161B22] shadow-2xl shadow-black/35">
+        <img
+          src={slide.image}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover transition duration-700"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0D1117]/98 via-[#0D1117]/78 to-[#0D1117]/35" />
+        <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#0D1117] to-transparent" />
 
-          <div className="relative flex min-h-[370px] flex-col justify-between p-7">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Badge tone="blue">{slide.badge}</Badge>
-                <Badge tone="slate">Versao {currentVersionLabel}</Badge>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/35 text-white transition hover:border-[#60A5FA]/60 hover:bg-[#3B82F6]/25"
-                  onClick={previousSlide}
-                  aria-label="Slide anterior"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/35 text-white transition hover:border-[#60A5FA]/60 hover:bg-[#3B82F6]/25"
-                  onClick={nextSlide}
-                  aria-label="Proximo slide"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
+        <div className="relative flex min-h-[410px] flex-col justify-between p-7">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Badge tone="blue">{slide.badge}</Badge>
+              <Badge tone="slate">Versao {currentVersionLabel}</Badge>
             </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/35 text-white transition hover:border-[#60A5FA]/60 hover:bg-[#3B82F6]/25"
+                onClick={previousSlide}
+                aria-label="Slide anterior"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/35 text-white transition hover:border-[#60A5FA]/60 hover:bg-[#3B82F6]/25"
+                onClick={nextSlide}
+                aria-label="Proximo slide"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
 
-            <div className="max-w-2xl">
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[#60A5FA]">
-                {slide.eyebrow}
-              </p>
-              <h1 className="mt-3 max-w-xl text-4xl font-semibold leading-tight text-white md:text-5xl">
-                {slide.title}
-              </h1>
-              <p className="mt-4 max-w-xl text-sm leading-6 text-[#C7D2FE]">
-                {slide.description}
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Button type="button" onClick={() => onNavigate?.("explore")}>
-                  <Sparkles className="h-4 w-4" />
-                  Biblioteca
-                </Button>
-                <Button type="button" variant="secondary" onClick={() => onNavigate?.("library")}>
-                  <PackageOpen className="h-4 w-4" />
-                  Minhas Instancias
-                </Button>
-              </div>
+          <div className="max-w-2xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[#60A5FA]">
+              {slide.eyebrow}
+            </p>
+            <h1 className="mt-3 max-w-xl text-4xl font-semibold leading-tight text-white md:text-5xl">
+              {slide.title}
+            </h1>
+            <p className="mt-4 max-w-xl text-sm leading-6 text-[#C7D2FE]">
+              {slide.description}
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Button type="button" onClick={() => onNavigate?.("explore")}>
+                <Compass className="h-4 w-4" />
+                Biblioteca
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => onNavigate?.("library")}>
+                <PackageOpen className="h-4 w-4" />
+                Minhas Instancias
+              </Button>
             </div>
+          </div>
 
-            <div className="flex gap-2">
-              {carouselSlides.map((item, index) => (
-                <button
-                  key={item.title}
-                  type="button"
-                  className={`h-1.5 rounded-full transition ${
-                    activeSlide === index ? "w-10 bg-[#3B82F6]" : "w-5 bg-white/25 hover:bg-white/45"
-                  }`}
-                  onClick={() => setActiveSlide(index)}
-                  aria-label={`Abrir slide ${index + 1}`}
-                />
-              ))}
-            </div>
+          <div className="flex gap-2">
+            {carouselSlides.map((item, index) => (
+              <button
+                key={item.title}
+                type="button"
+                className={`h-1.5 rounded-full transition ${
+                  activeSlide === index ? "w-10 bg-[#3B82F6]" : "w-5 bg-white/25 hover:bg-white/45"
+                }`}
+                onClick={() => setActiveSlide(index)}
+                aria-label={`Abrir slide ${index + 1}`}
+              />
+            ))}
           </div>
         </div>
-
-        <Card className="flex min-h-[370px] flex-col justify-between overflow-hidden p-6">
-          <div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#60A5FA]/25 bg-[#3B82F6]/15 text-[#93C5FD]">
-              <Megaphone className="h-5 w-5" />
-            </div>
-            <p className="mt-5 text-xs font-semibold uppercase tracking-[0.22em] text-[#60A5FA]">
-              Campanhas
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold text-white">Monetizacao sem atrapalhar</h2>
-            <p className="mt-3 text-sm leading-6 text-[#94A3B8]">
-              A Home fica pronta para banners pagos, comunicados oficiais e cupons sem esconder
-              suas instancias ou transformar o launcher em uma tela de propaganda.
-            </p>
-          </div>
-          <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-            <div className="flex items-center gap-3">
-              <ShieldCheck className="h-5 w-5 text-[#22C55E]" />
-              <div>
-                <p className="text-sm font-semibold text-white">Conteudo separado do launcher</p>
-                <p className="mt-1 text-xs leading-5 text-[#94A3B8]">
-                  Campanhas ficam na Home; jogar, editar e baixar continuam nas abas certas.
-                </p>
-              </div>
-            </div>
-          </div>
-        </Card>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        {sponsoredSlots.map((slot) => {
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {adSlots.map((slot) => {
           const Icon = slot.icon;
 
           return (
-            <Card key={slot.title} className="overflow-hidden p-5">
+            <Card key={slot.title} className="min-h-36 overflow-hidden p-5">
               <div className="flex items-start justify-between gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/7 text-[#60A5FA]">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/7 text-[#60A5FA]">
                   <Icon className="h-5 w-5" />
-                </div>
+                </span>
                 <Badge tone="slate">{slot.label}</Badge>
               </div>
-              <h3 className="mt-5 text-lg font-semibold text-white">{slot.title}</h3>
+              <h3 className="mt-5 text-base font-semibold text-white">{slot.title}</h3>
               <p className="mt-2 text-sm leading-6 text-[#94A3B8]">{slot.description}</p>
             </Card>
           );
         })}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        {monetizationRules.map((rule) => {
-          const Icon = rule.icon;
-
-          return (
-            <div
-              key={rule.title}
-              className="rounded-2xl border border-white/10 bg-[#0D1117]/70 p-5"
-            >
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#22C55E]/12 text-[#4ADE80]">
-                  <Icon className="h-4 w-4" />
-                </span>
-                <h3 className="font-semibold text-white">{rule.title}</h3>
-              </div>
-              <p className="mt-3 text-sm leading-6 text-[#94A3B8]">{rule.description}</p>
-            </div>
-          );
-        })}
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
-        <Card className="p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#60A5FA]">
-            Comunicados
-          </p>
-          <h2 className="mt-2 text-2xl font-semibold text-white">Novidades do app</h2>
-          <div className="mt-5 space-y-3">
-            {appAnnouncements.map((announcement) => {
-              const Icon = announcement.icon;
-
-              return (
-                <div
-                  key={announcement.title}
-                  className="flex gap-3 rounded-2xl border border-white/10 bg-[#0D1117]/70 p-4"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#3B82F6]/15 text-[#60A5FA]">
-                    <Icon className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-white">{announcement.title}</p>
-                    <p className="mt-1 text-xs leading-5 text-[#94A3B8]">
-                      {announcement.description}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-
+      <section>
         <Card className="overflow-hidden p-0">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 p-6">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#60A5FA]">
                 Update log
               </p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">Log de atualizacao</h2>
+              <h2 className="mt-2 text-2xl font-semibold text-white">Registro de atualizacao</h2>
             </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/7 text-[#60A5FA]">
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-white/7 text-[#60A5FA]">
               <Rocket className="h-5 w-5" />
-            </div>
+            </span>
           </div>
 
           <div className="divide-y divide-white/10">
-            {changelog.map((release) => (
+            {updateLog.map((release) => (
               <article key={`${release.version}-${release.tag}`} className="grid gap-5 p-6 md:grid-cols-[150px_1fr]">
                 <div>
                   <Badge tone={release.date === "Atual" ? "green" : "slate"}>{release.date}</Badge>
                   <p className="mt-3 text-xl font-semibold text-white">{release.version}</p>
-                  <p className="mt-1 text-xs text-[#94A3B8]">{release.tag}</p>
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-[#94A3B8]">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {release.tag}
+                  </p>
                 </div>
                 <ul className="space-y-3">
                   {release.changes.map((change) => (

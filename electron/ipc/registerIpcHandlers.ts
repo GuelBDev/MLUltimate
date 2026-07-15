@@ -1,4 +1,5 @@
 import { totalmem } from "node:os";
+import { createHash } from "node:crypto";
 import { BrowserWindow, ipcMain, net } from "electron";
 import { z } from "zod";
 import { MicrosoftAuthService } from "../auth/microsoftAuthService";
@@ -16,6 +17,11 @@ import type { ServerStatusResult } from "../../src/types/launcher";
 
 const offlineLoginSchema = z.object({
   username: z.string(),
+});
+
+const switchAccountSchema = z.object({
+  provider: z.enum(["microsoft", "offline"]),
+  id: z.string().min(1),
 });
 
 const launchRequestSchema = z.object({
@@ -259,14 +265,88 @@ export const registerIpcHandlers = ({
 
     return offlineAuth.getLastOfflineSession() ?? microsoftSession;
   });
-  ipcMain.handle("auth:login-microsoft", async () => microsoftAuth.login());
-  ipcMain.handle("auth:login-offline", async (_, input: unknown) =>
-    offlineAuth.login(offlineLoginSchema.parse(input)),
+  ipcMain.handle("auth:list-accounts", async () => {
+    const activeSession = await microsoftAuth.getSession();
+    const activeOfflineSession = activeSession.status === "signed-in"
+      ? null
+      : offlineAuth.getLastOfflineSession();
+    const activeAccount = activeSession.status === "signed-in"
+      ? activeSession.account
+      : activeOfflineSession?.status === "signed-in"
+        ? activeOfflineSession.account
+        : null;
+    const accounts = [
+      ...microsoftAuth.listAccounts(),
+      ...offlineAuth.listAccounts(),
+    ];
+    const mergedAccounts = activeAccount
+      ? [
+          activeAccount,
+          ...accounts.filter(
+            (account) =>
+              account.provider !== activeAccount.provider || account.id !== activeAccount.id,
+          ),
+        ]
+      : accounts;
+
+    return mergedAccounts.map((account) => ({
+      ...account,
+      active: account.provider === activeAccount?.provider && account.id === activeAccount?.id,
+    }));
+  });
+  ipcMain.handle("auth:login-microsoft", async () =>
+    microsoftAuth.login(offlineAuth.countAccounts()),
   );
+  ipcMain.handle("auth:login-offline", async (_, input: unknown) => {
+    const parsed = offlineLoginSchema.parse(input);
+    const existingAccounts = [
+      ...microsoftAuth.listAccounts(),
+      ...offlineAuth.listAccounts(),
+    ];
+    const offlineId = `offline-${createHash("sha256")
+      .update(parsed.username.trim().toLowerCase())
+      .digest("hex")
+      .slice(0, 24)}`;
+    const replacingExisting = existingAccounts.some(
+      (account) => account.provider === "offline" && account.id === offlineId,
+    );
+
+    if (!replacingExisting && existingAccounts.length >= 3) {
+      throw new Error("Limite de 3 perfis atingido. Remova uma conta antes de adicionar outra.");
+    }
+
+    return offlineAuth.login(parsed);
+  });
+  ipcMain.handle("auth:switch-account", async (_, input: unknown) => {
+    const parsed = switchAccountSchema.parse(input);
+
+    if (parsed.provider === "microsoft") {
+      return microsoftAuth.switchAccount(parsed.id);
+    }
+
+    return offlineAuth.switchAccount(parsed.id);
+  });
   ipcMain.handle("auth:logout", async () => {
-    const session = await microsoftAuth.logout();
-    offlineAuth.clear();
-    return session;
+    const session = await microsoftAuth.getSession();
+    const activeSession = session.status === "signed-in"
+      ? session
+      : offlineAuth.getLastOfflineSession();
+
+    if (activeSession?.status === "signed-in") {
+      if (activeSession.account.provider === "microsoft") {
+        microsoftAuth.removeAccount(activeSession.account.id);
+      } else {
+        offlineAuth.removeAccount(activeSession.account.id);
+      }
+    }
+
+    return microsoftAuth.getSession().then((nextMicrosoftSession) => {
+      if (nextMicrosoftSession.status === "signed-in") {
+        return nextMicrosoftSession;
+      }
+
+      return offlineAuth.getLastOfflineSession() ?? nextMicrosoftSession;
+    });
   });
   ipcMain.handle("launcher:launch", async (_, input: unknown) =>
     launcher.launch(launchRequestSchema.parse(input)),

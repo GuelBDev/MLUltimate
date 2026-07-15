@@ -84,12 +84,19 @@ export const Sidebar = ({ activePage, onPageChange }: SidebarProps) => {
               )}
               data-active={active ? "true" : undefined}
             >
-              <Icon
+              <span
                 className={cn(
-                  "h-5 w-5 text-[#94A3B8] transition group-hover:text-[#60A5FA]",
-                  active && "text-[#60A5FA]",
+                  "app-nav-icon grid h-8 w-8 shrink-0 place-items-center rounded-xl transition duration-200",
+                  active && "app-nav-icon-active",
                 )}
-              />
+              >
+                <Icon
+                  className={cn(
+                    "h-5 w-5 text-[#94A3B8] transition duration-200 group-hover:scale-110 group-hover:text-[#60A5FA]",
+                    active && "text-[#60A5FA]",
+                  )}
+                />
+              </span>
               <span className="hidden truncate xl:inline">{item.label}</span>
               {showDownloadCount ? (
                 <span className="absolute right-1.5 top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-[#EF4444] px-1 text-[10px] font-bold leading-none text-white shadow-lg shadow-red-500/25 xl:static xl:ml-auto">

@@ -28,6 +28,8 @@ import type {
   LauncherInstance,
   MinecraftVersionSummary,
   OfflineLoginInput,
+  SavedAuthAccount,
+  SwitchAccountInput,
   LauncherSkin,
   NameMCSkinLibraryInput,
   NameMCSkinLibraryResult,
@@ -46,10 +48,14 @@ import type {
 const api = {
   auth: {
     getSession: () => ipcRenderer.invoke("auth:get-session") as Promise<AuthSession>,
+    listAccounts: () =>
+      ipcRenderer.invoke("auth:list-accounts") as Promise<SavedAuthAccount[]>,
     loginMicrosoft: () =>
       ipcRenderer.invoke("auth:login-microsoft") as Promise<AuthSession>,
     loginOffline: (input: OfflineLoginInput) =>
       ipcRenderer.invoke("auth:login-offline", input) as Promise<AuthSession>,
+    switchAccount: (input: SwitchAccountInput) =>
+      ipcRenderer.invoke("auth:switch-account", input) as Promise<AuthSession>,
     logout: () => ipcRenderer.invoke("auth:logout") as Promise<AuthSession>,
   },
   launcher: {

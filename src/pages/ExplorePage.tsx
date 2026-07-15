@@ -47,7 +47,7 @@ type InstallTarget = {
   version?: ContentVersion;
 };
 
-type InstallDisplayStatus = "available" | "installed" | "update";
+type InstallDisplayStatus = "available" | "installed" | "downloaded" | "update";
 
 const typeLabels: Record<ContentType, string> = {
   mod: "Mods",
@@ -378,6 +378,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
           instances={instances.data ?? []}
           targetInstance={targetInstance}
           installedContent={installedContent.data ?? []}
+          installedInstances={instances.data ?? []}
           updateMap={updateMap}
           activeOperations={activeOperations}
           onUpdateInstalled={startUpdateInstalled}
@@ -525,9 +526,11 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
             project,
             installedContent.data ?? [],
             updateMap,
+            undefined,
+            instances.data ?? [],
           );
           const busy = isProjectOperationActive(project, activeOperations);
-          const blocked = installState.status === "installed";
+          const blocked = installState.status === "installed" || installState.status === "downloaded";
 
           return (
           <Card
@@ -552,8 +555,10 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
                 <div className="flex items-center gap-2">
                   <h3 className="truncate text-base font-semibold text-white">{project.title}</h3>
                   <Badge tone="slate">{typeLabels[project.type]}</Badge>
-                  {installState.status === "installed" ? (
-                    <Badge tone="green">Ja instalado</Badge>
+                  {installState.status === "installed" || installState.status === "downloaded" ? (
+                    <Badge tone="green">
+                      {installState.status === "downloaded" ? "Ja baixado" : "Ja instalado"}
+                    </Badge>
                   ) : installState.status === "update" ? (
                     <Badge tone="blue">Atualizacao</Badge>
                   ) : null}
@@ -667,6 +672,7 @@ type ProjectDetailsProps = {
   instances: LauncherInstance[];
   targetInstance?: LauncherInstance;
   installedContent: InstalledContent[];
+  installedInstances: LauncherInstance[];
   updateMap: Map<string, InstalledContentUpdateInfo>;
   activeOperations: string[];
   onUpdateInstalled: (item: InstalledContent) => void;
@@ -687,6 +693,7 @@ const ProjectDetails = ({
   instances,
   targetInstance,
   installedContent,
+  installedInstances,
   updateMap,
   activeOperations,
   onUpdateInstalled,
@@ -727,7 +734,13 @@ const ProjectDetails = ({
     () => detailTabs.filter((tab) => tab !== "content" || current.type === "modpack"),
     [current.type],
   );
-  const projectInstallState = getProjectInstallState(current, installedContent, updateMap);
+  const projectInstallState = getProjectInstallState(
+    current,
+    installedContent,
+    updateMap,
+    undefined,
+    installedInstances,
+  );
   const projectBusy = isProjectOperationActive(current, activeOperations);
 
   useEffect(() => {
@@ -788,13 +801,19 @@ const ProjectDetails = ({
 
               onInstall(latestVersion);
             }}
-            disabled={installing || projectBusy || projectInstallState.status === "installed"}
+            disabled={
+              installing ||
+              projectBusy ||
+              projectInstallState.status === "installed"
+            }
             title="Escolher instância"
           >
             {projectBusy ? (
               <RefreshCw className="h-4 w-4 animate-spin" />
             ) : projectInstallState.status === "installed" ? (
               <CheckCircle2 className="h-4 w-4" />
+            ) : projectInstallState.status === "downloaded" ? (
+              <Download className="h-4 w-4" />
             ) : (
               <Download className="h-4 w-4" />
             )}
@@ -871,6 +890,7 @@ const ProjectDetails = ({
                 installedContent,
                 updateMap,
                 version,
+                installedInstances,
               );
               const versionBusy = activeOperations.includes(
                 operationKey(current, version.id, targetInstance?.id ?? "new-instance"),
@@ -1040,10 +1060,18 @@ const VersionRow = ({
         <RefreshCw className="h-4 w-4 animate-spin" />
       ) : status === "installed" ? (
         <CheckCircle2 className="h-4 w-4" />
+      ) : status === "downloaded" ? (
+        <Download className="h-4 w-4" />
       ) : (
         <Download className="h-4 w-4" />
       )}
-      {status === "installed" ? "Ja instalado" : status === "update" ? "Atualizar" : "Baixar"}
+      {status === "installed"
+        ? "Ja instalado"
+        : status === "downloaded"
+          ? "Baixar novamente"
+          : status === "update"
+            ? "Atualizar"
+            : "Baixar"}
     </Button>
   </div>
 );
@@ -1177,7 +1205,20 @@ const getProjectInstallState = (
   installedContent: InstalledContent[],
   updateMap: Map<string, InstalledContentUpdateInfo>,
   version?: ContentVersion,
-): { status: InstallDisplayStatus; installed?: InstalledContent } => {
+  installedInstances: LauncherInstance[] = [],
+): {
+  status: InstallDisplayStatus;
+  installed?: InstalledContent;
+  installedInstance?: LauncherInstance;
+} => {
+  if (project.type === "modpack") {
+    const installedInstance = findInstalledInstanceForProject(project, installedInstances);
+
+    if (installedInstance) {
+      return { status: "downloaded", installedInstance };
+    }
+  }
+
   const installed = findInstalledContentForProject(project, installedContent);
 
   if (!installed) {
@@ -1206,6 +1247,21 @@ const findInstalledContentForProject = (
   return installedContent.find((item) =>
     item.type === project.type &&
     refs.some((ref) => item.provider === ref.provider && item.projectId === ref.projectId),
+  );
+};
+
+const findInstalledInstanceForProject = (
+  project: ContentSearchResult | ContentProjectDetails,
+  instances: LauncherInstance[],
+) => {
+  const refs = getProjectProviderRefs(project);
+
+  return instances.find((instance) =>
+    refs.some(
+      (ref) =>
+        instance.sourceProvider === ref.provider &&
+        instance.sourceProjectId === ref.projectId,
+    ),
   );
 };
 
@@ -1241,6 +1297,7 @@ const projectActionLabel = (
 ) => {
   if (busy) return "Adicionando...";
   if (status === "installed") return "Ja instalado";
+  if (status === "downloaded") return project.type === "modpack" ? "Baixar novamente" : "Ja baixado";
   if (status === "update") return "Atualizar";
   if (project.type === "modpack") return "Criar instancia";
   return hasTargetInstance ? "Adicionar" : "Instalar";

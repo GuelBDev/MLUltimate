@@ -30,12 +30,14 @@ import type {
   NameMCSkinLibraryResult,
   NameMCSkinSearchResult,
   OfflineLoginInput,
+  SavedAuthAccount,
   LauncherSkin,
   SaveNicknameSkinInput,
   SaveNameMCSkinInput,
   ServerStatusLookupInput,
   ServerStatusResult,
   SkinSearchResult,
+  SwitchAccountInput,
   SystemMemoryInfo,
   UpdaterState,
   UpdateLauncherSettingsInput,
@@ -47,8 +49,10 @@ declare global {
     mlultimate: {
       auth: {
         getSession: () => Promise<AuthSession>;
+        listAccounts: () => Promise<SavedAuthAccount[]>;
         loginMicrosoft: () => Promise<AuthSession>;
         loginOffline: (input: OfflineLoginInput) => Promise<AuthSession>;
+        switchAccount: (input: SwitchAccountInput) => Promise<AuthSession>;
         logout: () => Promise<AuthSession>;
       };
       launcher: {
