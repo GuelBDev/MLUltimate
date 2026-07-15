@@ -29,6 +29,21 @@ const locales = [
 ];
 
 const translatedAttributes = new Set(["placeholder", "title", "aria-label"]);
+const ignoredJsxAttributes = new Set([
+  "accept",
+  "alt",
+  "className",
+  "data-i18n-skip",
+  "href",
+  "id",
+  "key",
+  "rel",
+  "src",
+  "style",
+  "target",
+  "type",
+  "value",
+]);
 const visiblePropertyNames = new Set([
   "badge",
   "cancelLabel",
@@ -61,10 +76,24 @@ const normalizeText = (value) =>
     .replace(/\s+([,.;:!?])/g, "$1")
     .trim();
 
+const isUtilityClassText = (text) => {
+  const tokens = text.split(/\s+/);
+  if (tokens.length === 0) return false;
+
+  const utilityToken =
+    /^(?:!?|-?)(?:m[trblxy]?|p[trblxy]?|h|w|min|max|text|font|bg|border|rounded|flex|grid|items|justify|content|place|self|gap|space|truncate|shrink|grow|basis|object|overflow|transition|duration|ease|hover|focus|active|disabled|sm|md|lg|xl|left|right|top|bottom|inset|absolute|relative|fixed|sticky|z|opacity|shadow|block|hidden|inline|select|cursor|aspect|ring|outline|accent|sr-only|break|leading|tracking|backdrop|animate)(?:-|:|$|\[)/i;
+
+  return (
+    tokens.every((token) => /^[a-z0-9:_[\]#()./%!-]+$/i.test(token)) &&
+    tokens.some((token) => utilityToken.test(token))
+  );
+};
+
 const isHumanText = (value) => {
   const text = normalizeText(value);
 
   if (text.length < 2 || text.length > 420 || !/\p{L}/u.test(text)) return false;
+  if (isUtilityClassText(text)) return false;
   if (/^(?:https?:|data:|file:|[.#/]|--)/i.test(text)) return false;
   if (/^[a-z0-9:_./-]+$/i.test(text) && !/[A-Z]/.test(text)) return false;
   if (/^(?:flex|grid|block|hidden|relative|absolute|fixed|sticky|rounded|border|bg-|text-|p-|m-|w-|h-|min-|max-|gap-|items-|justify-|overflow-|shadow|transition)/.test(text)) {
@@ -79,6 +108,45 @@ const needsPortugueseNormalization = (text) =>
   /\b(?:acao|acoes|anuncio|anuncios|ate|atualizacao|atualizacoes|codigo|compativel|compativeis|configuracao|configuracoes|conexao|conexoes|conteudo|conteudos|disponivel|disponiveis|exibicao|experiencia|funcao|funcoes|grafico|indisponivel|instancia|instancias|ja|licenca|midia|nao|numero|obrigatorio|obrigatorios|opcao|opcoes|otimizacao|padrao|possivel|preferencia|preferencias|propria|proprio|sessao|so|ultima|ultimo|usuario|usuarios|versao|versoes|voce)\b/i.test(
     text,
   );
+
+const portugueseCopyCorrections = new Map([
+  ["Ajusta a camera de dano para PvP 1.8.9.", "Ajusta a câmera de dano para PvP 1.8.9."],
+  [
+    "Ao clicar em Equipar, a skin fica ativa no launcher e tambem vai para a conta original quando ela estiver verificada.",
+    "Ao clicar em Equipar, a skin fica ativa no launcher e também vai para a conta original quando ela estiver verificada.",
+  ],
+  ["Aplicacao de skins offline pela aba Avatar.", "Aplicação de skins offline pela aba Avatar."],
+  ["Aplicacao local", "Aplicação local"],
+  ["Area central", "Área central"],
+  ["Arte, IP e botao de entrada.", "Arte, IP e botão de entrada."],
+  ["Base atras de todo o app.", "Base atrás de todo o app."],
+  [
+    "Biblioteca marca modpacks baixados e permite baixar uma nova copia.",
+    "Biblioteca marca modpacks baixados e permite baixar uma nova cópia.",
+  ],
+  ["Botao principal", "Botão principal"],
+  ["Conta e area lateral.", "Conta e área lateral."],
+  ["Cor dentro dos botoes.", "Cor dentro dos botões."],
+  [
+    "Corrige vazamentos de memoria e ajuda com texturas pesadas.",
+    "Corrige vazamentos de memória e ajuda com texturas pesadas.",
+  ],
+  ["Data, servidor e premio da rodada.", "Data, servidor e prêmio da rodada."],
+  ["Descricoes e ajudas.", "Descrições e ajudas."],
+  [
+    "Fundo, laterais, cards, campos, bordas, textos, botoes e item ativo do menu.",
+    "Fundo, laterais, cards, campos, bordas, textos, botões e item ativo do menu.",
+  ],
+  [
+    "O MLUltimate esta sendo desenvolvido por apenas uma pessoa. Espere bugs, falhas e comportamentos que ainda podem quebrar partes do app.",
+    "O MLUltimate está sendo desenvolvido por apenas uma pessoa. Espere bugs, falhas e comportamentos que ainda podem quebrar partes do app.",
+  ],
+  [
+    "Reduz uso de memoria e melhora carregamento em Forge 1.8.9.",
+    "Reduz uso de memória e melhora carregamento em Forge 1.8.9.",
+  ],
+  ["Texto dos botoes", "Texto dos botões"],
+]);
 
 const stringValue = (node) => {
   if (ts.isStringLiteralLike(node)) return normalizeText(node.text);
@@ -112,7 +180,11 @@ const renderedExpression = (node) => {
   while (current) {
     if (ts.isJsxExpression(current)) {
       if (ts.isJsxAttribute(current.parent)) {
-        return translatedAttributes.has(current.parent.name.getText());
+        const attributeName = current.parent.name.getText();
+        return (
+          translatedAttributes.has(attributeName) &&
+          !ignoredJsxAttributes.has(attributeName)
+        );
       }
       return true;
     }
@@ -373,6 +445,10 @@ if (supplementalPortuguese.length > 0) {
     sourcePairs.set(source, normalizedLookup.get(canonical) ?? canonical);
   });
 }
+
+sourcePairs.forEach((canonical, source) => {
+  sourcePairs.set(source, portugueseCopyCorrections.get(canonical) ?? canonical);
+});
 
 const canonicalTexts = [...new Set(sourcePairs.values())].sort((left, right) =>
   left.localeCompare(right, "pt-BR"),

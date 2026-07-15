@@ -8,6 +8,8 @@ const legacyByLanguage =
   legacyTranslations as Partial<Record<AppLanguage, TranslationMap>>;
 const legacyPortuguese = legacyByLanguage["pt-BR"] ?? {};
 const expandedLegacy = (language: AppLanguage) => {
+  if (language !== "pt-BR" && language !== "pt-PT") return {};
+
   const locale = legacyByLanguage[language];
   if (!locale) return {};
 
