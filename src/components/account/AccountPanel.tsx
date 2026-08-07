@@ -88,7 +88,7 @@ export const AccountPanel = () => {
 
         <div className="mt-5 flex items-center gap-4">
           <MinecraftHead
-            skin={equippedSkin}
+            skin={account ? equippedSkin : undefined}
             username={account?.displayName}
             accountSkinDataUrl={account?.skinDataUrl}
             fallback={account?.avatarLabel ?? "ML"}

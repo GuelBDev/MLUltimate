@@ -22,6 +22,8 @@ const MICROSOFT_GRAPH_ME_URL = "https://graph.microsoft.com/v1.0/me";
 const SESSION_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 const DEFAULT_MICROSOFT_CLIENT_ID = "fd9f6eb4-bfa8-4985-85e9-18c5db6cf6ad";
 const MICROSOFT_MINECRAFT_SCOPE = "XboxLive.signin offline_access";
+const LICENSE_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const MINECRAFT_RATE_LIMIT_COOLDOWN_MS = 5 * 60 * 1000;
 
 const microsoftTokenSchema = z.object({
   access_token: z.string(),
@@ -67,6 +69,7 @@ export class MicrosoftAuthService {
   private clientId =
     process.env.MLULTIMATE_MICROSOFT_CLIENT_ID ?? DEFAULT_MICROSOFT_CLIENT_ID;
   private cancelPendingOAuth: ((error?: Error) => void) | null = null;
+  private minecraftAuthRateLimitedUntil = 0;
 
   constructor(
     private readonly tokenStore: SecureTokenStore,
@@ -74,17 +77,10 @@ export class MicrosoftAuthService {
   ) {}
 
   async getSession(accountId?: string): Promise<AuthSession> {
-    const active = this.accountStore.getActiveAccount();
-    const secureSession = accountId
-      ? this.tokenStore.loadSession(accountId)
-      : active?.provider === "microsoft"
-        ? this.tokenStore.loadSession(active.id)
-        : active
-          ? null
-          : this.tokenStore.loadSession();
+    const secureSession = this.getStoredSession(accountId);
 
     if (!secureSession) {
-      return { status: "signed-out", encryptionAvailable: this.tokenStore.isEncryptionAvailable() };
+      return this.signedOutSession();
     }
 
     const refreshed = await this.ensureProfileAppearance(
@@ -96,6 +92,18 @@ export class MicrosoftAuthService {
       account: this.toPublicAccount(refreshed),
       encryptionAvailable: this.tokenStore.isEncryptionAvailable(),
     };
+  }
+
+  getStoredSession(accountId?: string) {
+    const active = this.accountStore.getActiveAccount();
+
+    return accountId
+      ? this.tokenStore.loadSession(accountId)
+      : active?.provider === "microsoft"
+        ? this.tokenStore.loadSession(active.id)
+        : active
+          ? null
+          : this.tokenStore.loadSession();
   }
 
   async login(otherAccountCount = 0): Promise<AuthSession> {
@@ -158,7 +166,7 @@ export class MicrosoftAuthService {
       this.accountStore.clearActiveAccount();
     }
 
-    return { status: "signed-out", encryptionAvailable: this.tokenStore.isEncryptionAvailable() };
+    return this.signedOutSession();
   }
 
   listAccounts() {
@@ -194,14 +202,20 @@ export class MicrosoftAuthService {
     const refreshed = await this.ensureProfileAppearance(
       await this.refreshIfNeeded(secureSession),
     );
-    const licenseVerified = await this.verifyMinecraftLicense(
-      refreshed.minecraftAccessToken,
-    );
+    const shouldReuseLicense =
+      refreshed.licenseVerified &&
+      refreshed.licenseCheckedAt &&
+      Date.now() - Date.parse(refreshed.licenseCheckedAt) < LICENSE_RECHECK_INTERVAL_MS;
+    const licenseVerified = shouldReuseLicense
+      ? true
+      : await this.verifyMinecraftLicense(refreshed.minecraftAccessToken);
 
     const checkedSession = {
       ...refreshed,
       licenseVerified,
-      licenseCheckedAt: new Date().toISOString(),
+      licenseCheckedAt: shouldReuseLicense
+        ? refreshed.licenseCheckedAt
+        : new Date().toISOString(),
     };
 
     this.tokenStore.saveSession(checkedSession);
@@ -444,6 +458,12 @@ export class MicrosoftAuthService {
   }
 
   private async loginMinecraft(xstsToken: string, uhs: string) {
+    if (Date.now() < this.minecraftAuthRateLimitedUntil) {
+      throw new Error(
+        "A Microsoft/Minecraft bloqueou novas tentativas por excesso de requisições. Aguarde alguns minutos, saia da conta se quiser trocar de perfil e tente novamente.",
+      );
+    }
+
     const response = await fetch(MINECRAFT_LOGIN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -451,6 +471,18 @@ export class MicrosoftAuthService {
         identityToken: `XBL3.0 x=${uhs};${xstsToken}`,
       }),
     });
+
+    if (response.status === 429) {
+      const retryAfter = Number(response.headers.get("retry-after"));
+      this.minecraftAuthRateLimitedUntil =
+        Date.now() +
+        (Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter * 1000
+          : MINECRAFT_RATE_LIMIT_COOLDOWN_MS);
+      throw new Error(
+        "A Microsoft/Minecraft recusou novas autenticações por excesso de tentativas. Aguarde alguns minutos antes de iniciar com essa conta novamente.",
+      );
+    }
 
     return minecraftLoginSchema.parse(
       await parseJsonResponse(response, "Minecraft services"),
@@ -612,6 +644,10 @@ export class MicrosoftAuthService {
         "Configure MLULTIMATE_MICROSOFT_CLIENT_ID com o app OAuth oficial antes de entrar com Microsoft.",
       );
     }
+  }
+
+  signedOutSession(): AuthSession {
+    return { status: "signed-out", encryptionAvailable: this.tokenStore.isEncryptionAvailable() };
   }
 }
 

@@ -676,9 +676,9 @@ export class LauncherService {
   }
 
   private async getLaunchSession() {
-    const microsoftSession = await this.microsoftAuth.getSession();
+    const microsoftSession = this.microsoftAuth.getStoredSession();
 
-    if (microsoftSession.status === "signed-in") {
+    if (microsoftSession) {
       const secure = await this.microsoftAuth.requireLicensedSession();
       return {
         provider: "microsoft" as const,

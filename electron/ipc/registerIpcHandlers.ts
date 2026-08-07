@@ -327,26 +327,41 @@ export const registerIpcHandlers = ({
     return offlineAuth.switchAccount(parsed.id);
   });
   ipcMain.handle("auth:logout", async () => {
-    const session = await microsoftAuth.getSession();
-    const activeSession = session.status === "signed-in"
-      ? session
+    const activeSession = await microsoftAuth.getSession();
+    const activeOfflineSession = activeSession.status === "signed-in"
+      ? null
       : offlineAuth.getLastOfflineSession();
+    const activeAccount = activeSession.status === "signed-in"
+      ? activeSession.account
+      : activeOfflineSession?.status === "signed-in"
+        ? activeOfflineSession.account
+        : null;
 
-    if (activeSession?.status === "signed-in") {
-      if (activeSession.account.provider === "microsoft") {
-        microsoftAuth.removeAccount(activeSession.account.id);
+    if (activeAccount) {
+      if (activeAccount.provider === "microsoft") {
+        microsoftAuth.removeAccount(activeAccount.id);
       } else {
-        offlineAuth.removeAccount(activeSession.account.id);
+        offlineAuth.removeAccount(activeAccount.id);
       }
     }
 
-    return microsoftAuth.getSession().then((nextMicrosoftSession) => {
-      if (nextMicrosoftSession.status === "signed-in") {
-        return nextMicrosoftSession;
-      }
+    const remainingAccounts = [
+      ...microsoftAuth.listAccounts(),
+      ...offlineAuth.listAccounts(),
+    ];
 
-      return offlineAuth.getLastOfflineSession() ?? nextMicrosoftSession;
-    });
+    if (remainingAccounts.length > 0) {
+      const nextAccount = remainingAccounts[0];
+      if (nextAccount) {
+        if (nextAccount.provider === "microsoft") {
+          return microsoftAuth.switchAccount(nextAccount.id);
+        } else {
+          return offlineAuth.switchAccount(nextAccount.id);
+        }
+      }
+    }
+
+    return microsoftAuth.signedOutSession();
   });
   ipcMain.handle("launcher:launch", async (_, input: unknown) =>
     launcher.launch(launchRequestSchema.parse(input)),
