@@ -1,0 +1,5 @@
+node_modules
+dist
+.tempmediaStorage
+.DS_Store
+*.local
