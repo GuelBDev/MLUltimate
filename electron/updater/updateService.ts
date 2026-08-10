@@ -55,6 +55,12 @@ export class UpdateService {
         availableVersion: info.version,
         message: `Atualização ${info.version} encontrada. Baixando...`,
       });
+      void autoUpdater.downloadUpdate().catch((error) => {
+        this.setState({
+          status: "error",
+          message: error instanceof Error ? error.message : "Falha ao baixar atualização.",
+        });
+      });
     });
 
     autoUpdater.on("update-not-available", () => {
