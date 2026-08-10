@@ -1154,7 +1154,7 @@ while ($true) {
     }
   }
 
-  Start-Sleep -Milliseconds 250
+  Start-Sleep -Milliseconds 1500
 }
 `;
 
@@ -1188,8 +1188,8 @@ while ($true) {
 const isFabricBasedLoader = (loader: string) =>
   loader === "fabric" || loader === "iris" || loader === "iris-sodium";
 
-const legacyPvpModPattern = /(basichud|oneconfig|togglesneak).*\.jar$/i;
-const legacyPvpFolders = ["OneConfig", ".mixin.out"];
+const legacyPvpModPattern = /(basichud|oneconfig|togglesneak|betterhurtcam|essential).*\.jar$/i;
+const legacyPvpFolders = ["OneConfig", "essential", ".mixin.out"];
 
 const cleanupLegacyPvpKitArtifacts = (instance: LauncherInstance) => {
   if (

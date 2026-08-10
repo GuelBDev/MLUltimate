@@ -7,6 +7,7 @@ import { InstanceTile } from "../components/library/InstanceTile";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
+import { AppSelect } from "../components/ui/AppSelect";
 import { useAppDialog } from "../components/ui/appDialogContext";
 import { useInstances } from "../hooks/useInstances";
 import { useDownloads } from "../hooks/useDownloads";
@@ -476,18 +477,18 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
 
                 <label className="block">
                   <span className="text-sm font-semibold text-white">Minecraft Version</span>
-                  <select
-                    value={selectedVersion}
-                    onChange={(event) => setMinecraftVersion(event.target.value)}
-                    disabled={Boolean(editing)}
-                    className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70 disabled:opacity-60"
-                  >
-                    {releaseVersions.map((version) => (
-                      <option key={version.id} value={version.id}>
-                        {version.id}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="mt-2">
+                    <AppSelect
+                      value={selectedVersion}
+                      onChange={(val) => setMinecraftVersion(val)}
+                      disabled={Boolean(editing)}
+                      options={releaseVersions.map((version) => ({
+                        value: version.id,
+                        label: version.id,
+                      }))}
+                      className="w-full"
+                    />
+                  </div>
                 </label>
 
                 <div>

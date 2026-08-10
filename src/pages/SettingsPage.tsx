@@ -23,6 +23,7 @@ import { languageOptions } from "../constants/languages";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
+import { AppSelect } from "../components/ui/AppSelect";
 import { Progress } from "../components/ui/progress";
 import { useAppDialog } from "../components/ui/appDialogContext";
 import { useUpdater } from "../hooks/useUpdater";
@@ -796,24 +797,24 @@ export const SettingsPage = () => {
           </Badge>
         </div>
 
-        <select
-          data-i18n-skip="true"
-          value={settings.data?.language ?? "pt-BR"}
-          disabled={settings.isLoading || updateSettings.isPending}
-          onChange={(event) =>
-            updateSettings.mutate({
-              language: event.target.value as typeof languageOptions[number]["id"],
-              languageSelected: true,
-            })
-          }
-          className="mt-5 h-11 w-full rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none transition focus:border-[#60A5FA]/70"
-        >
-          {languageOptions.map((language) => (
-            <option key={language.id} value={language.id}>
-              {language.label}
-            </option>
-          ))}
-        </select>
+        <div className="mt-5">
+          <AppSelect
+            data-i18n-skip="true"
+            value={settings.data?.language ?? "pt-BR"}
+            disabled={settings.isLoading || updateSettings.isPending}
+            onChange={(val) =>
+              updateSettings.mutate({
+                language: val as typeof languageOptions[number]["id"],
+                languageSelected: true,
+              })
+            }
+            options={languageOptions.map((language) => ({
+              value: language.id,
+              label: language.label,
+            }))}
+            className="w-full"
+          />
+        </div>
       </Card>
 
       <Card className="p-5">

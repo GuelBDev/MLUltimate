@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
+import { AppSelect } from "../components/ui/AppSelect";
 import { useInstances } from "../hooks/useInstances";
 import { useInstalledContent } from "../hooks/useInstalledContent";
 import { useMinecraftVersions } from "../hooks/useMinecraftVersions";
@@ -426,66 +427,44 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
         </div>
 
         <form className="mt-5 flex flex-wrap items-center gap-3" onSubmit={submit}>
-          <select
+          <AppSelect
             value={provider}
-            onChange={(event) =>
-              updateSearchShape(() => setProvider(event.target.value as ContentProviderFilter))
-            }
-            className="h-11 min-w-0 flex-1 basis-[120px] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
-          >
-            {providerFilters.map((item) => (
-              <option key={item} value={item}>
-                {providerLabels[item]}
-              </option>
-            ))}
-          </select>
-          <select
+            onChange={(val) => updateSearchShape(() => setProvider(val as ContentProviderFilter))}
+            options={providerFilters.map((item) => ({ value: item, label: providerLabels[item] }))}
+            className="flex-1 basis-[120px]"
+          />
+          <AppSelect
             value={type}
-            onChange={(event) =>
-              updateSearchShape(() => setType(event.target.value as ContentType))
-            }
-            className="h-11 min-w-0 flex-1 basis-[130px] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
-          >
-            {types.map((item) => (
-              <option key={item} value={item}>
-                {typeLabels[item]}
-              </option>
-            ))}
-          </select>
+            onChange={(val) => updateSearchShape(() => setType(val as ContentType))}
+            options={types.map((item) => ({ value: item, label: typeLabels[item] }))}
+            className="flex-1 basis-[130px]"
+          />
           <input
             value={query}
             onChange={(event) => updateSearchShape(() => setQuery(event.target.value))}
-            className="h-11 min-w-0 flex-[1.6] basis-[180px] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
+            className="h-11 min-w-0 flex-[1.6] basis-[180px] rounded-xl border border-white/10 bg-[#0D1117]/90 px-3 text-sm text-white outline-none transition focus:border-[color:var(--app-primary)]"
             placeholder="Pesquisar"
           />
-          <select
+          <AppSelect
             value={selectedVersion}
-            onChange={(event) => updateSearchShape(() => setVersion(event.target.value))}
+            onChange={(val) => updateSearchShape(() => setVersion(val))}
             disabled={Boolean(targetInstance)}
-            className="h-11 min-w-0 flex-1 basis-[140px] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
-          >
-            <option value="">Todas versoes</option>
-            {releaseVersions.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.id}
-              </option>
-            ))}
-          </select>
-          <select
+            options={[
+              { value: "", label: "Todas versoes" },
+              ...releaseVersions.map((item) => ({ value: item.id, label: item.id })),
+            ]}
+            className="flex-1 basis-[140px]"
+          />
+          <AppSelect
             value={loader}
-            onChange={(event) =>
-              updateSearchShape(() => setLoader(event.target.value as LoaderType | ""))
-            }
+            onChange={(val) => updateSearchShape(() => setLoader(val as LoaderType | ""))}
             disabled={Boolean(targetInstance)}
-            className="h-11 min-w-0 flex-1 basis-[140px] rounded-xl border border-white/10 bg-[#0D1117] px-3 text-sm text-white outline-none focus:border-[#60A5FA]/70"
-          >
-            <option value="">Todos loaders</option>
-            {loaders.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "Todos loaders" },
+              ...loaders.map((item) => ({ value: item, label: item })),
+            ]}
+            className="flex-1 basis-[140px]"
+          />
           <div className="flex shrink-0 gap-2">
             <Button type="submit" size="icon" title="Buscar" disabled={search.isPending}>
               <Search className="h-4 w-4" />

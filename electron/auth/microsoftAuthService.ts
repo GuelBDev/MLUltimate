@@ -83,15 +83,23 @@ export class MicrosoftAuthService {
       return this.signedOutSession();
     }
 
-    const refreshed = await this.ensureProfileAppearance(
-      await this.refreshIfNeeded(secureSession),
-    );
+    try {
+      const refreshed = await this.ensureProfileAppearance(
+        await this.refreshIfNeeded(secureSession),
+      );
 
-    return {
-      status: "signed-in",
-      account: this.toPublicAccount(refreshed),
-      encryptionAvailable: this.tokenStore.isEncryptionAvailable(),
-    };
+      return {
+        status: "signed-in",
+        account: this.toPublicAccount(refreshed),
+        encryptionAvailable: this.tokenStore.isEncryptionAvailable(),
+      };
+    } catch {
+      return {
+        status: "signed-in",
+        account: this.toPublicAccount(secureSession),
+        encryptionAvailable: this.tokenStore.isEncryptionAvailable(),
+      };
+    }
   }
 
   getStoredSession(accountId?: string) {

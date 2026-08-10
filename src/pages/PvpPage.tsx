@@ -394,15 +394,6 @@ const curatedMods: CuratedPvpContent[] = [
     imageUrl: "https://media.forgecdn.net/avatars/919/408/638381618061787810.png",
   },
   {
-    title: "BetterHurtCam",
-    provider: "modrinth",
-    projectId: "DQKdq5re",
-    type: "mod",
-    description: "Ajusta a camera de dano para PvP 1.8.9.",
-    tag: "Camera",
-    imageUrl: "https://cdn.modrinth.com/data/DQKdq5re/icon.png",
-  },
-  {
     title: "SimpleTimeChanger",
     provider: "modrinth",
     projectId: "uHERytn5",
@@ -507,6 +498,11 @@ const incompatiblePvpContent = [
     projectId: "d9VOPfkU",
     fileNamePattern: /tcpdelaymod/i,
   },
+  {
+    provider: "modrinth",
+    projectId: "DQKdq5re",
+    fileNamePattern: /(betterhurtcam|oneconfig|essential)/i,
+  },
 ] satisfies Array<{
   provider: ContentProvider;
   projectId: string;
@@ -524,6 +520,8 @@ export const PvpPage = () => {
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchErrorLog, setLaunchErrorLog] = useState<string | null>(null);
   const [launchEvent, setLaunchEvent] = useState<LaunchEvent | null>(null);
+  const [showLaunchPopup, setShowLaunchPopup] = useState(false);
+  const [userClosedPopup, setUserClosedPopup] = useState(false);
   const [activeContentType, setActiveContentType] =
     useState<Extract<ContentType, "mod" | "resourcepack">>("mod");
   const [searchQuery, setSearchQuery] = useState(pvpSearchSuggestions.mod);
@@ -635,11 +633,19 @@ export const PvpPage = () => {
       if (event.id !== pvpInstance.id) return;
       setLaunchEvent(event);
 
+      if (["step", "console", "security"].includes(event.type) && !userClosedPopup) {
+        setShowLaunchPopup(true);
+      }
+
       if (["complete", "cancelled", "error", "closed", "killed"].includes(event.type)) {
-        window.setTimeout(() => setLaunchEvent(null), 1800);
+        window.setTimeout(() => {
+          setLaunchEvent(null);
+          setShowLaunchPopup(false);
+          setUserClosedPopup(false);
+        }, 1800);
       }
     });
-  }, [pvpInstance]);
+  }, [pvpInstance, userClosedPopup]);
 
   const installSingleContent = async (
     instanceId: string,
@@ -796,6 +802,17 @@ export const PvpPage = () => {
     }
   };
 
+  const cancelLaunch = async () => {
+    if (!pvpInstance) return;
+    try {
+      await launcherApi.cancel({ instanceId: pvpInstance.id });
+      setLaunchEvent(null);
+      setShowLaunchPopup(false);
+    } catch (err) {
+      console.error("Failed to cancel launch:", err);
+    }
+  };
+
   const launchKit = async () => {
     setLaunchError(null);
     setLaunchErrorLog(null);
@@ -808,15 +825,24 @@ export const PvpPage = () => {
     try {
       await ensureSkinLoaderInstalled(pvpInstance);
       await removeIncompatiblePvpContent(pvpInstance);
+      setUserClosedPopup(false);
+      setShowLaunchPopup(true);
       await launcherApi.launch({ instanceId: pvpInstance.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Não foi possível abrir o Kit PvP.";
 
       if (message.startsWith("INSTANCE_ALREADY_RUNNING")) {
         setLaunchError("O Kit PvP já está aberto.");
+        setShowLaunchPopup(false);
         return;
       }
 
+      if (message.toLowerCase().includes("cancel") || message.toLowerCase().includes("abort")) {
+        setShowLaunchPopup(false);
+        return;
+      }
+
+      setShowLaunchPopup(false);
       setLaunchError(null);
       setLaunchErrorLog(message);
     }
@@ -839,6 +865,8 @@ export const PvpPage = () => {
     try {
       await ensureSkinLoaderInstalled(pvpInstance);
       await removeIncompatiblePvpContent(pvpInstance);
+      setUserClosedPopup(false);
+      setShowLaunchPopup(true);
       await launcherApi.launch({
         instanceId: pvpInstance.id,
         server: {
@@ -853,6 +881,8 @@ export const PvpPage = () => {
 
       if (message.startsWith("INSTANCE_ALREADY_RUNNING")) {
         await removeIncompatiblePvpContent(pvpInstance);
+        setUserClosedPopup(false);
+        setShowLaunchPopup(true);
         await launcherApi.launch({
           instanceId: pvpInstance.id,
           force: true,
@@ -866,6 +896,12 @@ export const PvpPage = () => {
         return;
       }
 
+      if (message.toLowerCase().includes("cancel") || message.toLowerCase().includes("abort")) {
+        setShowLaunchPopup(false);
+        return;
+      }
+
+      setShowLaunchPopup(false);
       setLaunchError(null);
       setLaunchErrorLog(message);
     }
@@ -885,8 +921,8 @@ export const PvpPage = () => {
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-3xl border border-blue-300/15 bg-[#101722] shadow-2xl shadow-blue-950/20">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.22),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(99,102,241,0.16),transparent_32%)]" />
+      <section className="relative overflow-hidden rounded-3xl border border-[rgb(var(--app-primary-rgb)/0.3)] bg-[color:var(--app-card-bg)] shadow-2xl shadow-black/40">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgb(var(--app-primary-rgb)/0.32),transparent_42%),radial-gradient(circle_at_bottom_right,rgb(var(--app-secondary-rgb)/0.2),transparent_42%)] pointer-events-none" />
         {pvpInstance ? (
           <div className="absolute right-5 top-5 z-20">
             <button
@@ -985,7 +1021,19 @@ export const PvpPage = () => {
                 {setupError ? <StatusLine tone="error" text={setupError} /> : null}
                 {launchError ? <StatusLine tone="error" text={launchError} /> : null}
                 {launchErrorLog ? <LaunchErrorNotice log={launchErrorLog} /> : null}
-                {launchEvent ? <StatusLine tone="info" text={launchEvent.message} /> : null}
+                {launchEvent && ["step", "console", "security"].includes(launchEvent.type) ? (
+                  <div className="flex items-center justify-between gap-3 rounded-2xl border border-blue-400/25 bg-blue-500/10 px-4 py-3 text-sm text-blue-100">
+                    <div className="flex items-center gap-2">
+                      <RefreshCw className="h-4 w-4 animate-spin shrink-0" />
+                      <span>{launchEvent.message}</span>
+                    </div>
+                    <Button size="sm" variant="danger" onClick={cancelLaunch}>
+                      Cancelar
+                    </Button>
+                  </div>
+                ) : launchEvent ? (
+                  <StatusLine tone={launchEvent.type === "error" ? "error" : "info"} text={launchEvent.message} />
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -1265,6 +1313,17 @@ export const PvpPage = () => {
         </Card>
       ) : null}
 
+      {showLaunchPopup && (!launchEvent || ["step", "console", "security"].includes(launchEvent.type)) ? (
+        <LaunchProgressDialog
+          event={launchEvent}
+          onClose={() => {
+            setShowLaunchPopup(false);
+            setUserClosedPopup(true);
+          }}
+          onCancel={cancelLaunch}
+        />
+      ) : null}
+
       {kitEditorOpen ? (
         <KitEditorModal
           items={editableKitContent}
@@ -1274,6 +1333,81 @@ export const PvpPage = () => {
           onRemove={(item) => removeKitItem.mutate(item)}
         />
       ) : null}
+    </div>
+  );
+};
+
+const LaunchProgressDialog = ({
+  event,
+  onClose,
+  onCancel,
+}: {
+  event: LaunchEvent | null;
+  onClose: () => void;
+  onCancel: () => void;
+}) => {
+  const isLaunching = !event || ["step", "console", "security"].includes(event.type);
+  const message = event ? event.message : "Preparando inicialização...";
+  const progress = event ? event.progress : undefined;
+  const type = event ? event.type : "step";
+
+  return (
+    <div className="fixed inset-0 z-[90] grid place-items-center bg-black/75 px-4 text-white backdrop-blur-md">
+      <section className="relative w-full max-w-md overflow-hidden rounded-3xl border border-blue-300/15 bg-[#101722] p-6 shadow-2xl shadow-blue-950/20">
+        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.15),transparent_40%)]" />
+        
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-black/25 text-[#D7E2F2] transition hover:border-blue-300/35 hover:bg-white/10"
+          title="Fechar"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        <div className="flex flex-col items-center text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-300/15 bg-blue-500/15 shadow-lg shadow-blue-500/10 mb-4">
+            {isLaunching ? (
+              <RefreshCw className="h-6 w-6 text-[#60A5FA] animate-spin" />
+            ) : type === "error" || type === "killed" ? (
+              <AlertTriangle className="h-6 w-6 text-red-500" />
+            ) : (
+              <CheckCircle2 className="h-6 w-6 text-green-500" />
+            )}
+          </div>
+
+          <h3 className="text-xl font-bold text-white mb-2">
+            {isLaunching ? "Iniciando Minecraft" : "Status do Jogo"}
+          </h3>
+          
+          <div className="h-16 w-full flex items-center justify-center overflow-y-auto mb-6 px-4 text-sm leading-6 text-[#A7B4C8]">
+            <p className="line-clamp-2 text-center select-text">
+              {message}
+            </p>
+          </div>
+
+          {progress !== undefined && progress > 0 && isLaunching && (
+            <div className="w-full bg-white/10 rounded-full h-2 mb-6 overflow-hidden">
+              <div 
+                className="bg-blue-500 h-full rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          )}
+
+          <div className="flex w-full gap-3 mt-2">
+            {isLaunching ? (
+              <Button variant="danger" className="w-full" onClick={onCancel}>
+                Cancelar Inicialização
+              </Button>
+            ) : (
+              <Button className="w-full" onClick={onClose}>
+                Fechar
+              </Button>
+            )}
+          </div>
+        </div>
+      </section>
     </div>
   );
 };
