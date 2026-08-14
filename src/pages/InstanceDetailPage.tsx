@@ -38,6 +38,7 @@ import { launcherApi } from "../services/launcherApi";
 import { formatDownloadEta, formatDownloadSize, formatDownloadSpeed } from "../utils/downloadFormat";
 import type {
   ContentType,
+  CrashReportDetails,
   DownloadItem,
   ExportInstanceFolder,
   InstanceContentCategory,
@@ -144,6 +145,7 @@ export const InstanceDetailPage = ({
   const [selectedLog, setSelectedLog] = useState<string>();
   const [logQuery, setLogQuery] = useState("");
   const [launchErrorLog, setLaunchErrorLog] = useState<string | null>(null);
+  const [activeCrashReport, setActiveCrashReport] = useState<CrashReportDetails | null>(null);
   const [launchEvent, setLaunchEvent] = useState<LaunchEvent | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [updateTargetVersion, setUpdateTargetVersion] = useState<{ id: string; name: string } | null>(null);
@@ -151,6 +153,8 @@ export const InstanceDetailPage = ({
     useState<ExportInstanceFolder[]>(defaultExportFolders);
   const effectiveSelectedLog =
     selectedLog ??
+    inspection.data?.logs.find((log) => log.name.toLowerCase().startsWith("[crash]"))
+      ?.relativePath ??
     inspection.data?.logs.find((log) => log.name.toLowerCase() === "latest.log")
       ?.relativePath ??
     inspection.data?.logs[0]?.relativePath;
@@ -203,6 +207,7 @@ export const InstanceDetailPage = ({
         projectId: current.sourceProjectId!,
         type: "modpack",
         versionId,
+        title: current.name,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["instances"] });
@@ -265,7 +270,8 @@ export const InstanceDetailPage = ({
     [current, downloads.data],
   );
   const activity = launchEvent ?? activeDownload;
-  const activityLabel = launchEvent?.message ?? activeDownload?.label;
+  const activityLabel =
+    launchEvent?.message ?? activeDownload?.currentStep ?? activeDownload?.label;
   const activityProgress = launchEvent?.progress ?? activeDownload?.progress ?? 0;
   const selectedVersion =
     project.data?.versions.find((version) => version.id === current.sourceVersionId) ??
@@ -290,11 +296,16 @@ export const InstanceDetailPage = ({
         if (event.id !== current.id) return;
         setLaunchEvent(event);
 
+        if (event.type === "error") {
+          setActiveCrashReport(event.crashReport ?? null);
+          setLaunchErrorLog(event.message);
+        }
+
         if (["closed", "killed", "cancelled", "error"].includes(event.type)) {
           refresh();
         }
 
-        if (["complete", "cancelled", "error", "closed", "killed"].includes(event.type)) {
+        if (["complete", "cancelled", "closed", "killed"].includes(event.type)) {
           window.setTimeout(() => setLaunchEvent(null), 1800);
         }
       }),
@@ -304,6 +315,7 @@ export const InstanceDetailPage = ({
 
   const play = async () => {
     setLaunchErrorLog(null);
+    setActiveCrashReport(null);
 
     try {
       await launcherApi.launch({ instanceId: current.id });
@@ -508,7 +520,19 @@ export const InstanceDetailPage = ({
         </div>
       </section>
 
-      {launchErrorLog ? <LaunchErrorNotice log={launchErrorLog} /> : null}
+      {launchErrorLog ? (
+        <LaunchErrorNotice
+          log={launchErrorLog}
+          crashReport={activeCrashReport ?? undefined}
+          instanceId={current.id}
+          onRefreshInstance={refresh}
+          onClear={() => {
+            setLaunchErrorLog(null);
+            setActiveCrashReport(null);
+            setLaunchEvent(null);
+          }}
+        />
+      ) : null}
 
       {shareOpen ? (
         <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/75 p-4 backdrop-blur-sm">

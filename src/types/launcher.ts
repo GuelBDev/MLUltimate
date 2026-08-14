@@ -111,12 +111,26 @@ export type LaunchEventType =
   | "complete"
   | "error";
 
+export type CrashReportDetails = {
+  crashFilePath?: string;
+  crashFileName?: string;
+  exceptionType?: string;
+  exceptionMessage?: string;
+  culpritModName?: string;
+  culpritModId?: string;
+  culpritFilePath?: string;
+  description?: string;
+  fullContent?: string;
+  recommendation?: string;
+};
+
 export type LaunchEvent = {
   id: string;
   type: LaunchEventType;
   message: string;
   progress?: number;
   createdAt: string;
+  crashReport?: CrashReportDetails;
 };
 
 export type LoaderType =
@@ -211,6 +225,7 @@ export type DownloadItem = {
   startedAt: string;
   completedAt?: string;
   error?: string;
+  currentStep?: string;
 };
 
 export type ContentSearchInput = {
@@ -305,6 +320,7 @@ export type InstallContentAsInstanceInput = {
   type: "mod" | "modpack";
   projectId: string;
   versionId?: string;
+  title?: string;
 };
 
 export type ContentProjectInput = {

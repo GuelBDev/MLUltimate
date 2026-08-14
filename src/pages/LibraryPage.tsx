@@ -14,7 +14,7 @@ import { useDownloads } from "../hooks/useDownloads";
 import { useMinecraftVersions } from "../hooks/useMinecraftVersions";
 import { useRunningInstances } from "../hooks/useRunningInstances";
 import { launcherApi } from "../services/launcherApi";
-import type { ContentType, DownloadItem, LaunchEvent, LauncherInstance, LoaderType } from "../types/launcher";
+import type { ContentType, CrashReportDetails, DownloadItem, LaunchEvent, LauncherInstance, LoaderType } from "../types/launcher";
 import { InstanceDetailPage } from "./InstanceDetailPage";
 
 type LibraryPageProps = {
@@ -116,6 +116,8 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   const [selectedIconPath, setSelectedIconPath] = useState("");
   const [selectedIconPreview, setSelectedIconPreview] = useState("");
   const [launchErrorLog, setLaunchErrorLog] = useState<string | null>(null);
+  const [activeCrashReport, setActiveCrashReport] = useState<CrashReportDetails | null>(null);
+  const [errorInstanceId, setErrorInstanceId] = useState<string | null>(null);
   const [launchEvents, setLaunchEvents] = useState<Record<string, LaunchEvent>>({});
 
   const releaseVersions = useMemo(
@@ -229,7 +231,13 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
       launcherApi.onLaunchEvent((event) => {
         setLaunchEvents((current) => ({ ...current, [event.id]: event }));
 
-        if (["complete", "cancelled", "error", "closed", "killed"].includes(event.type)) {
+        if (event.type === "error") {
+          setActiveCrashReport(event.crashReport ?? null);
+          setErrorInstanceId(event.id);
+          setLaunchErrorLog(event.message);
+        }
+
+        if (["complete", "cancelled", "closed", "killed"].includes(event.type)) {
           window.setTimeout(() => {
             setLaunchEvents((current) => {
               const next = { ...current };
@@ -244,6 +252,8 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
 
   const play = async (instance: LauncherInstance) => {
     setLaunchErrorLog(null);
+    setActiveCrashReport(null);
+    setErrorInstanceId(null);
 
     try {
       await launcherApi.launch({ instanceId: instance.id });
@@ -376,7 +386,19 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
         </button>
       </div>
 
-      {launchErrorLog ? <LaunchErrorNotice log={launchErrorLog} /> : null}
+      {launchErrorLog ? (
+        <LaunchErrorNotice
+          log={launchErrorLog}
+          crashReport={activeCrashReport ?? undefined}
+          instanceId={errorInstanceId ?? undefined}
+          onRefreshInstance={() => void queryClient.invalidateQueries({ queryKey: ["instances"] })}
+          onClear={() => {
+            setLaunchErrorLog(null);
+            setActiveCrashReport(null);
+            setErrorInstanceId(null);
+          }}
+        />
+      ) : null}
 
       {!modalOpen && error ? (
         <div className="rounded-sm border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">

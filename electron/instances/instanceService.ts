@@ -159,6 +159,7 @@ const curseForgeFileSchema = z.object({
 
 
 const modrinthVersionSchema = z.object({
+  name: z.string().optional(),
   files: z.array(
     z.object({
       url: z.string().url(),
@@ -357,7 +358,10 @@ export class InstanceService {
     this.database.run("DELETE FROM custom_servers WHERE id = ?", [id]);
   }
 
-  async create(input: CreateInstanceInput): Promise<LauncherInstance> {
+  async create(
+    input: CreateInstanceInput,
+    options?: { parentTaskId?: string },
+  ): Promise<LauncherInstance> {
     const parsed = createInstanceSchema.parse(input);
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -403,7 +407,7 @@ export class InstanceService {
     );
 
     try {
-      await this.prepareInstance({ ...parsed, loaderVersion }, gameDir);
+      await this.prepareInstance({ ...parsed, loaderVersion }, gameDir, options?.parentTaskId);
       return this.getById(id);
     } catch (error) {
       this.database.run("DELETE FROM installed_content WHERE instance_id = ?", [id]);
@@ -669,126 +673,176 @@ export class InstanceService {
       await this.deletePathWithRetries(modsDir).catch(() => undefined);
       
       if (instance.sourceProvider === "curseforge") {
-        const fileResponse = await this.fetchCurseForge(
-          `/mods/${instance.sourceProjectId}/files/${newVersionId}`,
-          "Buscar arquivo de atualização CurseForge",
+        const taskId = this.downloads.createTask(
+          `Atualizando Modpack ${instance.name}`,
+          instance.gameDir,
+          "curseforge://update",
+          true,
         );
-        if (!fileResponse.ok) {
-          throw new Error("Não foi possível buscar os dados da atualização no CurseForge.");
-        }
-        
-        const file = z
-          .object({ data: z.object({ downloadUrl: z.string().nullable(), fileName: z.string() }) })
-          .parse(await fileResponse.json()).data;
-          
-        if (!file.downloadUrl) {
-          throw new Error("CurseForge não liberou a URL de download da atualização.");
-        }
-        
-        const zipPath = path.join(instance.gameDir, file.fileName);
-        await this.downloads.download({
-          url: file.downloadUrl,
-          destination: zipPath,
+        this.downloads.updateTask(taskId, {
           label: `Atualizando Modpack ${instance.name}`,
+          currentStep: "Iniciando download da atualização...",
+          progress: 0,
         });
-        
-        const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-update-"));
+
         try {
-          await extractArchive(zipPath, tempDir);
-          const curseForgeManifestPath = path.join(tempDir, "manifest.json");
-          
-          if (existsSync(curseForgeManifestPath)) {
-            const manifest = JSON.parse(await readFile(curseForgeManifestPath, "utf8"));
-            const overridesDir = manifest.overrides || "overrides";
-            const overridesPath = path.join(tempDir, overridesDir);
-            
-            if (existsSync(overridesPath)) {
-              await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
-            }
-            
-            await this.downloadCurseForgeManifestFiles(manifest, instance);
-          } else {
-            throw new Error("manifest.json não encontrado na raiz da atualização CurseForge.");
-          }
-        } finally {
-          await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
-        }
-        
-        await rm(zipPath, { force: true }).catch(() => undefined);
-        
-        await this.setSourceMetadata(instance.id, {
-          provider: "curseforge",
-          projectId: instance.sourceProjectId,
-          versionId: newVersionId,
-          projectSlug: instance.sourceProjectSlug,
-        });
-        
-        return this.getById(instance.id);
-      }
-      
-      if (instance.sourceProvider === "modrinth") {
-      
-      const response = await fetchWithElectronNet(
-        `${MODRINTH_API}/version/${newVersionId}`,
-        "Buscar Modpack",
-      );
-      if (!response.ok) {
-        throw new Error("Não foi possível buscar os dados da atualização no Modrinth.");
-      }
-
-      const version = modrinthInstallVersionSchema.parse(await response.json());
-      const file = version.files.find((f) => f.primary) || version.files[0];
-      
-      if (!file || !file.filename.endsWith(".mrpack")) {
-         throw new Error("Arquivo .mrpack não encontrado na atualização.");
-      }
-      
-      const mrpackPath = path.join(instance.gameDir, file.filename);
-      await this.downloads.download({
-        url: file.url,
-        destination: mrpackPath,
-        label: `Atualizando Modpack ${instance.name}`,
-        sha1: file.hashes?.sha1,
-      });
-      
-      const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-update-"));
-      
-      try {
-        await extractArchive(mrpackPath, tempDir);
-        const modrinthIndexPath = path.join(tempDir, "modrinth.index.json");
-        
-        if (existsSync(modrinthIndexPath)) {
-          const index = modrinthIndexSchema.parse(
-            JSON.parse(await readFile(modrinthIndexPath, "utf8")),
+          const fileResponse = await this.fetchCurseForge(
+            `/mods/${instance.sourceProjectId}/files/${newVersionId}`,
+            "Buscar arquivo de atualização CurseForge",
           );
-          
-          const overridesPath = path.join(tempDir, "overrides");
-          if (existsSync(overridesPath)) {
-            await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
+          if (!fileResponse.ok) {
+            throw new Error("Não foi possível buscar os dados da atualização no CurseForge.");
           }
 
-          await this.downloadModrinthManifestFiles(index, instance);
-        } else {
-          throw new Error("Arquivo modrinth.index.json não encontrado no .mrpack da atualização.");
+          const file = z
+            .object({ data: z.object({ downloadUrl: z.string().nullable(), fileName: z.string() }) })
+            .parse(await fileResponse.json()).data;
+
+          if (!file.downloadUrl) {
+            throw new Error("CurseForge não liberou a URL de download da atualização.");
+          }
+
+          const zipPath = path.join(instance.gameDir, file.fileName);
+          this.downloads.updateTask(taskId, {
+            currentStep: `Baixando pacote ${file.fileName}...`,
+          });
+          await this.downloads.download({
+            url: file.downloadUrl,
+            destination: zipPath,
+            label: `Atualizando Modpack ${instance.name}`,
+            visible: false,
+          });
+
+          const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-update-"));
+          try {
+            this.downloads.updateTask(taskId, {
+              currentStep: "Extraindo arquivos do pacote...",
+            });
+            await extractArchive(zipPath, tempDir);
+            const curseForgeManifestPath = path.join(tempDir, "manifest.json");
+
+            if (existsSync(curseForgeManifestPath)) {
+              const manifest = JSON.parse(await readFile(curseForgeManifestPath, "utf8"));
+              const overridesDir = manifest.overrides || "overrides";
+              const overridesPath = path.join(tempDir, overridesDir);
+
+              if (existsSync(overridesPath)) {
+                await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
+              }
+
+              await this.downloadCurseForgeManifestFiles(manifest, instance, taskId);
+            } else {
+              throw new Error("manifest.json não encontrado na raiz da atualização CurseForge.");
+            }
+          } finally {
+            await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+          }
+
+          await rm(zipPath, { force: true }).catch(() => undefined);
+
+          await this.setSourceMetadata(instance.id, {
+            provider: "curseforge",
+            projectId: instance.sourceProjectId,
+            versionId: newVersionId,
+            projectSlug: instance.sourceProjectSlug,
+          });
+
+          this.downloads.completeTask(taskId);
+          return this.getById(instance.id);
+        } catch (error) {
+          this.downloads.failTask(taskId, error);
+          throw error;
         }
-      } finally {
-        await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
       }
-      
-      await rm(mrpackPath, { force: true }).catch(() => undefined);
-      
-      await this.setSourceMetadata(instance.id, {
-        provider: "modrinth",
-        projectId: instance.sourceProjectId,
-        versionId: newVersionId,
-        projectSlug: instance.sourceProjectSlug,
-      });
-      
-      
+
+      if (instance.sourceProvider === "modrinth") {
+        const taskId = this.downloads.createTask(
+          `Atualizando Modpack ${instance.name}`,
+          instance.gameDir,
+          "modrinth://update",
+          true,
+        );
+        this.downloads.updateTask(taskId, {
+          label: `Atualizando Modpack ${instance.name}`,
+          currentStep: "Iniciando download da atualização...",
+          progress: 0,
+        });
+
+        try {
+          const response = await fetchWithElectronNet(
+            `${MODRINTH_API}/version/${newVersionId}`,
+            "Buscar Modpack",
+          );
+          if (!response.ok) {
+            throw new Error("Não foi possível buscar os dados da atualização no Modrinth.");
+          }
+
+          const version = modrinthInstallVersionSchema.parse(await response.json());
+          const file = version.files.find((f) => f.primary) || version.files[0];
+
+          if (!file || !file.filename.endsWith(".mrpack")) {
+            throw new Error("Arquivo .mrpack não encontrado na atualização.");
+          }
+
+          const mrpackPath = path.join(instance.gameDir, file.filename);
+          this.downloads.updateTask(taskId, {
+            currentStep: `Baixando pacote ${file.filename}...`,
+          });
+          await this.downloads.download({
+            url: file.url,
+            destination: mrpackPath,
+            label: `Atualizando Modpack ${instance.name}`,
+            sha1: file.hashes?.sha1,
+            visible: false,
+          });
+
+          const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-update-"));
+
+          try {
+            this.downloads.updateTask(taskId, {
+              currentStep: "Extraindo arquivos do pacote...",
+            });
+            await extractArchive(mrpackPath, tempDir);
+            const modrinthIndexPath = path.join(tempDir, "modrinth.index.json");
+
+            if (existsSync(modrinthIndexPath)) {
+              const index = modrinthIndexSchema.parse(
+                JSON.parse(await readFile(modrinthIndexPath, "utf8")),
+              );
+
+              const overridesPath = path.join(tempDir, "overrides");
+              if (existsSync(overridesPath)) {
+                await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
+              }
+
+              await this.downloadModrinthManifestFiles(index, instance, taskId);
+            } else {
+              throw new Error("Arquivo modrinth.index.json não encontrado no .mrpack da atualização.");
+            }
+          } finally {
+            await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+          }
+
+          await rm(mrpackPath, { force: true }).catch(() => undefined);
+
+          await this.setSourceMetadata(instance.id, {
+            provider: "modrinth",
+            projectId: instance.sourceProjectId,
+            versionId: newVersionId,
+            projectSlug: instance.sourceProjectSlug,
+          });
+
+          this.downloads.completeTask(taskId);
+          return this.getById(instance.id);
+        } catch (error) {
+          this.downloads.failTask(taskId, error);
+          throw error;
+        }
+      }
+
       return this.getById(instance.id);
-      }
     } else {
-       throw new Error("Para nova instância, use a rota de importação.");
+      throw new Error("Para nova instância, use a rota de importação.");
     }
   }
 
@@ -978,16 +1032,35 @@ export class InstanceService {
     };
   }
 
-  private async prepareInstance(parsed: z.infer<typeof createInstanceSchema>, gameDir: string) {
+  private async prepareInstance(
+    parsed: z.infer<typeof createInstanceSchema>,
+    gameDir: string,
+    parentTaskId?: string,
+  ) {
+    if (parentTaskId) {
+      this.downloads.updateTask(parentTaskId, {
+        currentStep: `Verificando Java para Minecraft ${parsed.minecraftVersion}...`,
+      });
+    }
     await this.minecraftVersions.ensureJavaRuntime(parsed.minecraftVersion);
 
     if (isFabricBasedLoader(parsed.loader)) {
+      if (parentTaskId) {
+        this.downloads.updateTask(parentTaskId, {
+          currentStep: `Instalando Fabric Loader para Minecraft ${parsed.minecraftVersion}...`,
+        });
+      }
       await this.minecraftVersions.installFabricLoader(
         parsed.minecraftVersion,
         parsed.loaderVersion,
       );
 
       try {
+        if (parentTaskId) {
+          this.downloads.updateTask(parentTaskId, {
+            currentStep: "Instalando Fabric API...",
+          });
+        }
         await this.installModrinthMod(
           FABRIC_API_PROJECT_ID,
           parsed.minecraftVersion,
@@ -999,6 +1072,11 @@ export class InstanceService {
       }
 
       if (parsed.loader === "iris" || parsed.loader === "iris-sodium") {
+        if (parentTaskId) {
+          this.downloads.updateTask(parentTaskId, {
+            currentStep: "Instalando Iris Shaders...",
+          });
+        }
         const irisVersion = await this.installModrinthMod(
           IRIS_PROJECT_ID,
           parsed.minecraftVersion,
@@ -1022,17 +1100,28 @@ export class InstanceService {
               const file = version.files.find((candidate) => candidate.primary) ?? version.files.at(0);
 
               if (file) {
+                if (parentTaskId) {
+                  this.downloads.updateTask(parentTaskId, {
+                    currentStep: "Instalando Sodium...",
+                  });
+                }
                 await this.downloads.download({
                   label: `Sodium (Compatível com Iris) ${parsed.minecraftVersion}`,
                   url: file.url,
                   destination: path.join(gameDir, "mods", sanitizeFileName(file.filename)),
                   sha1: file.hashes?.sha1,
+                  visible: false,
                 });
               }
             } else {
               throw new Error(`Não foi possível buscar a versão obrigatória do Sodium.`);
             }
           } else {
+            if (parentTaskId) {
+              this.downloads.updateTask(parentTaskId, {
+                currentStep: "Instalando Sodium...",
+              });
+            }
             await this.installModrinthMod(
               SODIUM_PROJECT_ID,
               parsed.minecraftVersion,
@@ -1046,6 +1135,11 @@ export class InstanceService {
     }
 
     if (parsed.loader === "quilt") {
+      if (parentTaskId) {
+        this.downloads.updateTask(parentTaskId, {
+          currentStep: `Instalando Quilt Loader para Minecraft ${parsed.minecraftVersion}...`,
+        });
+      }
       await this.minecraftVersions.installQuiltLoader(
         parsed.minecraftVersion,
         parsed.loaderVersion,
@@ -1054,15 +1148,30 @@ export class InstanceService {
     }
 
     if (parsed.loader === "forge") {
+      if (parentTaskId) {
+        this.downloads.updateTask(parentTaskId, {
+          currentStep: `Instalando Forge Loader para Minecraft ${parsed.minecraftVersion}...`,
+        });
+      }
       await this.minecraftVersions.installForgeLoader(parsed.minecraftVersion, parsed.loaderVersion);
       return;
     }
 
     if (parsed.loader === "neoforge") {
+      if (parentTaskId) {
+        this.downloads.updateTask(parentTaskId, {
+          currentStep: `Instalando NeoForge Loader para Minecraft ${parsed.minecraftVersion}...`,
+        });
+      }
       await this.minecraftVersions.installNeoForgeLoader(parsed.minecraftVersion, parsed.loaderVersion);
       return;
     }
 
+    if (parentTaskId) {
+      this.downloads.updateTask(parentTaskId, {
+        currentStep: `Instalando Minecraft ${parsed.minecraftVersion}...`,
+      });
+    }
     await this.minecraftVersions.installVersion(parsed.minecraftVersion);
   }
 
@@ -1098,6 +1207,7 @@ export class InstanceService {
       url: file.url,
       destination: path.join(gameDir, "mods", sanitizeFileName(file.filename)),
       sha1: file.hashes?.sha1,
+      visible: false,
     });
 
     return version;
@@ -1128,8 +1238,11 @@ export class InstanceService {
     return this.importFile(result.filePaths[0]);
   }
 
-  async importArchiveFile(archivePath: string): Promise<LauncherInstance> {
-    return this.importFile(archivePath);
+  async importArchiveFile(
+    archivePath: string,
+    options?: { parentTaskId?: string; name?: string },
+  ): Promise<LauncherInstance> {
+    return this.importFile(archivePath, options);
   }
 
   async exportInstance(input: ExportInstanceInput): Promise<ExportInstanceResult | null> {
@@ -1242,36 +1355,46 @@ export class InstanceService {
     }
   }
 
-  private async importFile(filePath: string) {
+  private async importFile(
+    filePath: string,
+    options?: { parentTaskId?: string; name?: string },
+  ) {
     if (path.extname(filePath).toLowerCase() === ".json") {
-      return this.importCurseForgeManifestFile(filePath);
+      return this.importCurseForgeManifestFile(filePath, options);
     }
 
-    return this.importArchive(filePath);
+    return this.importArchive(filePath, options);
   }
 
-  private async importCurseForgeManifestFile(manifestPath: string) {
+  private async importCurseForgeManifestFile(
+    manifestPath: string,
+    options?: { parentTaskId?: string; name?: string },
+  ) {
     const manifest = curseForgeManifestSchema.parse(
       JSON.parse(await readFile(manifestPath, "utf8")),
     );
-    return this.createFromCurseForgeManifest(manifest, path.dirname(manifestPath));
+    return this.createFromCurseForgeManifest(manifest, path.dirname(manifestPath), options);
   }
 
   private async createFromCurseForgeManifest(
     manifest: z.infer<typeof curseForgeManifestSchema>,
     packageRoot?: string,
+    options?: { parentTaskId?: string; name?: string },
   ) {
-    const instance = await this.create({
-      name: manifest.name,
-      minecraftVersion: manifest.minecraft.version,
-      loader: loaderFromCurseForgeManifest(manifest.minecraft.modLoaders),
-      loaderVersion: loaderVersionFromCurseForgeManifest(
-        manifest.minecraft.modLoaders,
-        manifest.minecraft.version,
-      ),
-      ramMb: recommendedModpackRam(manifest.files.length),
-      contentManagementEnabled: true,
-    });
+    const instance = await this.create(
+      {
+        name: options?.name ?? manifest.name,
+        minecraftVersion: manifest.minecraft.version,
+        loader: loaderFromCurseForgeManifest(manifest.minecraft.modLoaders),
+        loaderVersion: loaderVersionFromCurseForgeManifest(
+          manifest.minecraft.modLoaders,
+          manifest.minecraft.version,
+        ),
+        ramMb: recommendedModpackRam(manifest.files.length),
+        contentManagementEnabled: true,
+      },
+      { parentTaskId: options?.parentTaskId },
+    );
 
     try {
       if (packageRoot) {
@@ -1282,7 +1405,7 @@ export class InstanceService {
         }
       }
 
-      await this.downloadCurseForgeManifestFiles(manifest, instance);
+      await this.downloadCurseForgeManifestFiles(manifest, instance, options?.parentTaskId);
       return instance;
     } catch (error) {
       await this.remove(instance.id).catch(() => undefined);
@@ -1290,7 +1413,33 @@ export class InstanceService {
     }
   }
 
-  private async importArchive(archivePath: string) {
+  private async importArchive(
+    archivePath: string,
+    options?: { parentTaskId?: string; name?: string },
+  ) {
+    const isOwnTask = !options?.parentTaskId;
+    const initialName = options?.name ?? path.basename(archivePath);
+    const taskId =
+      options?.parentTaskId ??
+      this.downloads.createTask(
+        `Modpack ${initialName}`,
+        "Preparando...",
+        "import://archive",
+        true,
+      );
+
+    if (isOwnTask) {
+      this.downloads.updateTask(taskId, {
+        label: `Modpack ${initialName}`,
+        currentStep: "Extraindo arquivos do pacote...",
+        progress: 0,
+      });
+    } else {
+      this.downloads.updateTask(taskId, {
+        currentStep: "Extraindo arquivos do pacote...",
+      });
+    }
+
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-import-"));
 
     try {
@@ -1304,12 +1453,15 @@ export class InstanceService {
         const manifest = mlultimateManifestSchema.parse(
           JSON.parse(await readFile(mlultimateManifestPath, "utf8")),
         );
-        const instance = await this.create(manifest);
+        const instance = await this.create(manifest, { parentTaskId: taskId });
         await copyArchiveContents(tempDir, instance.gameDir, [
           "mlultimate-instance.json",
           "modrinth.index.json",
           "manifest.json",
         ]);
+        if (isOwnTask) {
+          this.downloads.completeTask(taskId);
+        }
         return instance;
       }
 
@@ -1323,14 +1475,17 @@ export class InstanceService {
           throw new Error("O .mrpack não informa a versão do Minecraft.");
         }
 
-        const instance = await this.create({
-          name: index.name,
-          minecraftVersion,
-          loader: loaderFromModrinthDependencies(index.dependencies),
-          loaderVersion: loaderVersionFromModrinthDependencies(index.dependencies),
-          ramMb: recommendedModpackRam(index.files.length),
-          contentManagementEnabled: true,
-        });
+        const instance = await this.create(
+          {
+            name: options?.name ?? index.name,
+            minecraftVersion,
+            loader: loaderFromModrinthDependencies(index.dependencies),
+            loaderVersion: loaderVersionFromModrinthDependencies(index.dependencies),
+            ramMb: recommendedModpackRam(index.files.length),
+            contentManagementEnabled: true,
+          },
+          { parentTaskId: taskId },
+        );
 
         try {
           const overridesPath = path.join(tempDir, "overrides");
@@ -1339,8 +1494,11 @@ export class InstanceService {
             await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
           }
 
-          await this.downloadModrinthManifestFiles(index, instance);
+          await this.downloadModrinthManifestFiles(index, instance, taskId);
 
+          if (isOwnTask) {
+            this.downloads.completeTask(taskId);
+          }
           return instance;
         } catch (error) {
           await this.remove(instance.id).catch(() => undefined);
@@ -1352,12 +1510,24 @@ export class InstanceService {
         const manifest = curseForgeManifestSchema.parse(
           JSON.parse(await readFile(curseForgeManifestPath, "utf8")),
         );
-        return await this.createFromCurseForgeManifest(manifest, tempDir);
+        const instance = await this.createFromCurseForgeManifest(manifest, tempDir, {
+          parentTaskId: taskId,
+          name: options?.name,
+        });
+        if (isOwnTask) {
+          this.downloads.completeTask(taskId);
+        }
+        return instance;
       }
 
       throw new Error(
         "Arquivo importado sem manifesto reconhecido. Use .mrpack, zip CurseForge ou pacote MLUltimate.",
       );
+    } catch (error) {
+      if (isOwnTask) {
+        this.downloads.failTask(taskId, error);
+      }
+      throw error;
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -1387,22 +1557,48 @@ export class InstanceService {
       return this.create(manifest);
     }
 
-    if (trimmed.includes("modrinth.com") || trimmed.startsWith("modrinth:")) {
-      return this.importModrinthCode(trimmed);
-    }
+    const taskId = this.downloads.createTask(
+      "Importando modpack...",
+      "Preparando...",
+      "import://code",
+      true,
+    );
+    this.downloads.updateTask(taskId, {
+      label: "Importando modpack",
+      currentStep: "Iniciando download...",
+      progress: 0,
+    });
 
-    if (trimmed.includes("curseforge.com") || /^\d+$/.test(trimmed)) {
-      return this.importCurseForgeCode(trimmed);
-    }
+    try {
+      let instance: LauncherInstance | null = null;
 
-    throw new Error("Código não reconhecido. Use URL Modrinth, URL/ID CurseForge, MLU: ou caminho local.");
+      if (trimmed.includes("modrinth.com") || trimmed.startsWith("modrinth:")) {
+        instance = await this.importModrinthCode(trimmed, taskId);
+      } else if (trimmed.includes("curseforge.com") || /^\d+$/.test(trimmed)) {
+        instance = await this.importCurseForgeCode(trimmed, taskId);
+      } else {
+        throw new Error("Código não reconhecido. Use URL Modrinth, URL/ID CurseForge, MLU: ou caminho local.");
+      }
+
+      this.downloads.completeTask(taskId);
+      return instance;
+    } catch (error) {
+      this.downloads.failTask(taskId, error);
+      throw error;
+    }
   }
 
-  private async importModrinthCode(code: string) {
+  private async importModrinthCode(code: string, parentTaskId?: string) {
     const slug = extractModrinthSlug(code);
 
     if (!slug) {
       throw new Error("Não consegui identificar o modpack Modrinth nessa URL/código.");
+    }
+
+    if (parentTaskId) {
+      this.downloads.updateTask(parentTaskId, {
+        currentStep: `Consultando Modrinth (${slug})...`,
+      });
     }
 
     const response = await fetchWithElectronNet(
@@ -1421,6 +1617,13 @@ export class InstanceService {
       throw new Error("O modpack Modrinth não possui arquivo .mrpack disponível.");
     }
 
+    if (parentTaskId && version?.name) {
+      this.downloads.updateTask(parentTaskId, {
+        label: `Modpack ${version.name}`,
+        currentStep: `Baixando ${file.filename}...`,
+      });
+    }
+
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-code-"));
     const archivePath = path.join(tempDir, file.filename);
 
@@ -1429,20 +1632,40 @@ export class InstanceService {
         label: `Import ${file.filename}`,
         url: file.url,
         destination: archivePath,
+        visible: false,
+        onProgress: ({ bytesReceived, totalBytes }) => {
+          if (parentTaskId) {
+            this.downloads.updateTask(parentTaskId, {
+              bytesReceived,
+              totalBytes,
+              progress: totalBytes ? Math.round((bytesReceived / totalBytes) * 100) : 0,
+            });
+          }
+        },
       });
 
-      return await this.importArchive(archivePath);
+      return await this.importArchive(archivePath, {
+        parentTaskId,
+        name: version?.name,
+      });
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
   }
 
-  private async importCurseForgeCode(code: string) {
+  private async importCurseForgeCode(code: string, parentTaskId?: string) {
     const projectRef = extractCurseForgeProjectRef(code);
 
     if (!projectRef) {
       throw new Error("Não consegui identificar o projeto CurseForge nesse código/URL.");
     }
+
+    if (parentTaskId) {
+      this.downloads.updateTask(parentTaskId, {
+        currentStep: `Consultando CurseForge (${projectRef})...`,
+      });
+    }
+
     const numericProjectId = /^\d+$/.test(projectRef)
       ? Number(projectRef)
       : await this.resolveCurseForgeProjectId(projectRef);
@@ -1473,6 +1696,13 @@ export class InstanceService {
       throw new Error("Nenhum arquivo CurseForge foi encontrado para importar.");
     }
 
+    if (parentTaskId) {
+      this.downloads.updateTask(parentTaskId, {
+        label: `Modpack ${file.fileName}`,
+        currentStep: `Baixando ${file.fileName}...`,
+      });
+    }
+
     const downloadUrl =
       file.downloadUrl ?? (await this.getCurseForgeDownloadUrl(numericProjectId, file.id));
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-cf-"));
@@ -1483,9 +1713,22 @@ export class InstanceService {
         label: `Import CurseForge ${file.fileName}`,
         url: downloadUrl,
         destination: archivePath,
+        visible: false,
+        onProgress: ({ bytesReceived, totalBytes }) => {
+          if (parentTaskId) {
+            this.downloads.updateTask(parentTaskId, {
+              bytesReceived,
+              totalBytes,
+              progress: totalBytes ? Math.round((bytesReceived / totalBytes) * 100) : 0,
+            });
+          }
+        },
       });
 
-      return await this.importArchive(archivePath);
+      return await this.importArchive(archivePath, {
+        parentTaskId,
+        name: file.fileName,
+      });
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -1494,20 +1737,31 @@ export class InstanceService {
   private async downloadCurseForgeManifestFiles(
     manifest: z.infer<typeof curseForgeManifestSchema>,
     instance: LauncherInstance,
+    existingTaskId?: string,
   ) {
     if (manifest.files.length === 0) {
       return;
     }
 
-    const taskId = this.downloads.createTask(
-      `Modpack ${manifest.name}`,
-      path.join(instance.gameDir, "mods"),
-      "curseforge://manifest",
-    );
+    const isOwnTask = !existingTaskId;
+    const taskId =
+      existingTaskId ??
+      this.downloads.createTask(
+        `Modpack ${manifest.name}`,
+        path.join(instance.gameDir, "mods"),
+        "curseforge://manifest",
+        true,
+      );
     let completed = 0;
     let aggregateBytesReceived = 0;
     let aggregateTotalBytes = 0;
     const lockedFiles: z.infer<typeof modpackLockSchema>["files"] = [];
+
+    this.downloads.updateTask(taskId, {
+      destination: instance.gameDir,
+      label: `Modpack ${manifest.name}`,
+      currentStep: `Baixando mods (0/${manifest.files.length})...`,
+    });
 
     try {
       await runPool(manifest.files, 16, async (fileRef) => {
@@ -1526,6 +1780,7 @@ export class InstanceService {
         aggregateTotalBytes += fileTotalBytes;
         this.downloads.updateTask(taskId, {
           totalBytes: aggregateTotalBytes || undefined,
+          currentStep: `Baixando mods (${completed + 1}/${manifest.files.length}): ${file.fileName}`,
         });
 
         this.downloads.throwIfCancelled(taskId);
@@ -1573,7 +1828,7 @@ export class InstanceService {
         completed += 1;
         this.downloads.throwIfCancelled(taskId);
         this.downloads.updateTask(taskId, {
-          label: `Modpack ${manifest.name} - mods ${completed}/${manifest.files.length}`,
+          currentStep: `Baixando mods (${completed}/${manifest.files.length}): ${file.fileName}`,
           progress: Math.round((completed / manifest.files.length) * 100),
         });
       });
@@ -1590,9 +1845,13 @@ export class InstanceService {
         name: manifest.name,
         files: lockedFiles,
       });
-      this.downloads.completeTask(taskId);
+      if (isOwnTask) {
+        this.downloads.completeTask(taskId);
+      }
     } catch (error) {
-      this.downloads.failTask(taskId, error);
+      if (isOwnTask) {
+        this.downloads.failTask(taskId, error);
+      }
       throw error;
     }
   }
@@ -1600,6 +1859,7 @@ export class InstanceService {
   private async downloadModrinthManifestFiles(
     index: z.infer<typeof modrinthIndexSchema>,
     instance: LauncherInstance,
+    existingTaskId?: string,
   ) {
     const files = index.files.filter((file) => file.downloads.at(0));
 
@@ -1607,17 +1867,24 @@ export class InstanceService {
       return;
     }
 
-    const taskId = this.downloads.createTask(
-      `Modpack ${index.name}`,
-      instance.gameDir,
-      "modrinth://manifest",
-    );
+    const isOwnTask = !existingTaskId;
+    const taskId =
+      existingTaskId ??
+      this.downloads.createTask(
+        `Modpack ${index.name}`,
+        instance.gameDir,
+        "modrinth://manifest",
+        true,
+      );
     let completed = 0;
     let aggregateBytesReceived = 0;
     let aggregateTotalBytes = files.reduce((total, file) => total + (file.fileSize ?? 0), 0);
     const lockedFiles: z.infer<typeof modpackLockSchema>["files"] = [];
 
     this.downloads.updateTask(taskId, {
+      destination: instance.gameDir,
+      label: `Modpack ${index.name}`,
+      currentStep: `Baixando arquivos (0/${files.length})...`,
       totalBytes: aggregateTotalBytes || undefined,
     });
 
@@ -1632,11 +1899,16 @@ export class InstanceService {
 
         const destination = path.join(instance.gameDir, file.path);
         const importedType = importedContentTypeFromPath(file.path);
+        const currentFileName = path.basename(file.path);
 
         let fileTotalBytes = file.fileSize ?? 0;
 
+        this.downloads.updateTask(taskId, {
+          currentStep: `Baixando arquivos (${completed + 1}/${files.length}): ${currentFileName}`,
+        });
+
         await this.downloads.download({
-          label: `Modrinth ${path.basename(file.path)}`,
+          label: `Modrinth ${currentFileName}`,
           url: downloadUrl,
           destination,
           sha1: file.hashes?.sha1,
@@ -1661,8 +1933,8 @@ export class InstanceService {
             type: importedType,
             projectId: file.hashes?.sha1 ?? file.path,
             versionId: file.hashes?.sha1 ?? file.path,
-            name: path.basename(file.path),
-            fileName: path.basename(file.path),
+            name: currentFileName,
+            fileName: currentFileName,
             filePath: destination,
           });
           lockedFiles.push({
@@ -1670,8 +1942,8 @@ export class InstanceService {
             type: importedType,
             projectId: file.hashes?.sha1 ?? file.path,
             versionId: file.hashes?.sha1 ?? file.path,
-            name: path.basename(file.path),
-            fileName: path.basename(file.path),
+            name: currentFileName,
+            fileName: currentFileName,
             relativePath: normalizeArchivePath(file.path),
           });
         }
@@ -1679,7 +1951,7 @@ export class InstanceService {
         completed += 1;
         this.downloads.throwIfCancelled(taskId);
         this.downloads.updateTask(taskId, {
-          label: `Modpack ${index.name} - arquivos ${completed}/${files.length}`,
+          currentStep: `Baixando arquivos (${completed}/${files.length}): ${currentFileName}`,
           progress: Math.round((completed / files.length) * 100),
         });
       });
@@ -1690,9 +1962,13 @@ export class InstanceService {
         name: index.name,
         files: lockedFiles,
       });
-      this.downloads.completeTask(taskId);
+      if (isOwnTask) {
+        this.downloads.completeTask(taskId);
+      }
     } catch (error) {
-      this.downloads.failTask(taskId, error);
+      if (isOwnTask) {
+        this.downloads.failTask(taskId, error);
+      }
       throw error;
     }
   }

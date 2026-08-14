@@ -27,6 +27,11 @@ export const DownloadsPage = () => {
                 )}
                 <p className="truncate text-base font-semibold text-white">{item.label}</p>
               </div>
+              {item.currentStep ? (
+                <p className="mt-1 truncate text-xs font-medium text-sky-400">
+                  {item.currentStep}
+                </p>
+              ) : null}
               <p className="mt-1 truncate text-sm text-[#94A3B8]">{item.destination}</p>
               {item.error ? <p className="mt-2 text-sm text-red-200">{item.error}</p> : null}
             </div>

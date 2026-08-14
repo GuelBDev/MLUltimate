@@ -232,7 +232,21 @@ export class DownloadManager {
     return id;
   }
 
-  updateTask(id: string, patch: Partial<Pick<DownloadItem, "label" | "progress" | "bytesReceived" | "totalBytes" | "speedBytesPerSecond">>) {
+  updateTask(
+    id: string,
+    patch: Partial<
+      Pick<
+        DownloadItem,
+        | "label"
+        | "destination"
+        | "currentStep"
+        | "progress"
+        | "bytesReceived"
+        | "totalBytes"
+        | "speedBytesPerSecond"
+      >
+    >,
+  ) {
     const item = this.downloads.get(id);
 
     if (!item || item.status === "cancelled") {

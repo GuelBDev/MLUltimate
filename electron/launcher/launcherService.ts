@@ -12,6 +12,7 @@ import { JavaRuntimeService } from "../java/javaRuntimeService";
 import { MinecraftVersionService } from "../minecraft/minecraftVersionService";
 import { ServersDatService } from "../minecraft/serversDatService";
 import { repairLaunchCompatibility } from "./launchCompatibility";
+import { analyzeInstanceCrash } from "./crashAnalyzer";
 import type { LauncherInstance, LaunchEvent, LaunchRequest, MinecraftWindowMode } from "../../src/types/launcher";
 
 type EmitLaunchEvent = (event: LaunchEvent) => void;
@@ -487,7 +488,7 @@ export class LauncherService {
         }
 
         output.push(text);
-        if (output.length > 80) {
+        if (output.length > 120) {
           output.shift();
         }
 
@@ -495,15 +496,13 @@ export class LauncherService {
           handoffLaunch("Minecraft carregado.");
         }
 
-        if (!handedOff) {
-          this.emit({
-            id: request.instanceId,
-            type: "console",
-            message: text,
-            progress: 100,
-            createdAt: new Date().toISOString(),
-          });
-        }
+        this.emit({
+          id: request.instanceId,
+          type: "console",
+          message: text,
+          progress: 100,
+          createdAt: new Date().toISOString(),
+        });
       };
 
       const finishLaunch = () => {
@@ -579,6 +578,38 @@ export class LauncherService {
         }
         this.flushPlayTime(request.instanceId, launchState);
         this.activeLaunches.delete(request.instanceId);
+
+        // Analisar se houve crash (crash report em crash-reports/, hs_err ou exceção fatal)
+        const crashAnalysis = analyzeInstanceCrash(
+          instance.gameDir,
+          launchProcessStartedAt,
+          output,
+        );
+
+        if (crashAnalysis.hasCrash && crashAnalysis.crashReport) {
+          const rep = crashAnalysis.crashReport;
+          const culpritInfo = rep.culpritModName ? ` (Mod: ${rep.culpritModName})` : "";
+          const header = `Minecraft encerrou inesperadamente${culpritInfo}: ${rep.exceptionType || "Erro"}`;
+          const messageWithRecommendation = rep.recommendation
+            ? `${header}\n${rep.exceptionMessage ? rep.exceptionMessage + "\n\n" : ""}${rep.recommendation}`
+            : `${header}\n${rep.exceptionMessage || rep.description || "Consulte os logs."}`;
+
+          if (handedOff) {
+            this.emit({
+              id: request.instanceId,
+              type: "error",
+              message: messageWithRecommendation,
+              progress: 0,
+              createdAt: new Date().toISOString(),
+              crashReport: rep,
+            });
+            return;
+          }
+
+          failLaunch(new Error(messageWithRecommendation));
+          return;
+        }
+
         if (handedOff) {
           const details = summarizeLaunchFailure(output, instance.gameDir, launchProcessStartedAt);
           this.emit({
@@ -1107,10 +1138,16 @@ public static class NativeWindow {
   [DllImport("user32.dll")]
   public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
-  public static IntPtr[] FindMinecraftWindows() {
+  public static IntPtr[] FindMinecraftWindows(uint targetPid) {
     var handles = new List<IntPtr>();
     EnumWindows((hWnd, lParam) => {
       if (!IsWindowVisible(hWnd)) {
+        return true;
+      }
+
+      uint windowPid = 0;
+      GetWindowThreadProcessId(hWnd, out windowPid);
+      if (targetPid > 0 && windowPid != targetPid) {
         return true;
       }
 
@@ -1183,7 +1220,7 @@ while ($true) {
   $minecraftWindows = @()
 
   try {
-    $minecraftWindows = @([NativeWindow]::FindMinecraftWindows())
+    $minecraftWindows = @([NativeWindow]::FindMinecraftWindows([uint]$TargetPid))
   } catch {}
 
   foreach ($handle in $minecraftWindows) {
@@ -1221,14 +1258,13 @@ while ($true) {
         if ($nextStyle -ne $style) {
           [void][NativeWindow]::SetWindowLongPtr($handle, $GWL_STYLE, [IntPtr]::new($nextStyle))
           [void][NativeWindow]::SetWindowPos($handle, [IntPtr]::Zero, 0, 0, 0, 0, $flags)
+          [void][NativeWindow]::DrawMenuBar($handle)
         }
 
         if ($TargetWindowMode -eq "borderless" -and -not $isFullscreen) {
           [void][NativeWindow]::ShowWindow($handle, $SW_MAXIMIZE)
         }
       }
-
-      [void][NativeWindow]::DrawMenuBar($handle)
     }
   }
 

@@ -47,12 +47,21 @@ export const formatDuration = (seconds: number) => {
   return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}min` : `${hours}h`;
 };
 
-export const formatDownloadSize = (item: DownloadItem) =>
-  item.totalBytes
+export const formatDownloadSize = (item: DownloadItem) => {
+  if (item.status === "running" && item.bytesReceived === 0 && !item.totalBytes) {
+    return "Iniciando download...";
+  }
+
+  return item.totalBytes
     ? `${formatBytes(item.bytesReceived)} / ${formatBytes(item.totalBytes)}`
     : formatBytes(item.bytesReceived);
+};
 
 export const formatDownloadEta = (item: DownloadItem) => {
+  if (item.status === "running" && item.bytesReceived === 0) {
+    return "iniciando...";
+  }
+
   const eta = getDownloadEtaSeconds(item);
   return eta === null ? "estimando..." : formatDuration(eta);
 };

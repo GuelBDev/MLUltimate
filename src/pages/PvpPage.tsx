@@ -35,6 +35,7 @@ import type {
   ContentProvider,
   ContentSearchResult,
   ContentType,
+  CrashReportDetails,
   InstanceContentEntry,
   LauncherInstance,
   LaunchEvent,
@@ -519,6 +520,7 @@ export const PvpPage = () => {
   const [setupError, setSetupError] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchErrorLog, setLaunchErrorLog] = useState<string | null>(null);
+  const [activeCrashReport, setActiveCrashReport] = useState<CrashReportDetails | null>(null);
   const [launchEvent, setLaunchEvent] = useState<LaunchEvent | null>(null);
   const [showLaunchPopup, setShowLaunchPopup] = useState(false);
   const [userClosedPopup, setUserClosedPopup] = useState(false);
@@ -637,7 +639,13 @@ export const PvpPage = () => {
         setShowLaunchPopup(true);
       }
 
-      if (["complete", "cancelled", "error", "closed", "killed"].includes(event.type)) {
+      if (event.type === "error") {
+        setActiveCrashReport(event.crashReport ?? null);
+        setLaunchErrorLog(event.message);
+        setShowLaunchPopup(false);
+      }
+
+      if (["complete", "cancelled", "closed", "killed"].includes(event.type)) {
         window.setTimeout(() => {
           setLaunchEvent(null);
           setShowLaunchPopup(false);
@@ -816,6 +824,7 @@ export const PvpPage = () => {
   const launchKit = async () => {
     setLaunchError(null);
     setLaunchErrorLog(null);
+    setActiveCrashReport(null);
 
     if (!pvpInstance) {
       setLaunchError("Baixe o Kit PvP 1.8.9 antes de iniciar.");
@@ -1020,7 +1029,19 @@ export const PvpPage = () => {
                 {setupStatus ? <StatusLine tone="info" text={setupStatus} /> : null}
                 {setupError ? <StatusLine tone="error" text={setupError} /> : null}
                 {launchError ? <StatusLine tone="error" text={launchError} /> : null}
-                {launchErrorLog ? <LaunchErrorNotice log={launchErrorLog} /> : null}
+                {launchErrorLog ? (
+                  <LaunchErrorNotice
+                    log={launchErrorLog}
+                    crashReport={activeCrashReport ?? undefined}
+                    instanceId={pvpInstance?.id}
+                    onClear={() => {
+                      setLaunchErrorLog(null);
+                      setActiveCrashReport(null);
+                      setLaunchError(null);
+                      setLaunchEvent(null);
+                    }}
+                  />
+                ) : null}
                 {launchEvent && ["step", "console", "security"].includes(launchEvent.type) ? (
                   <div className="flex items-center justify-between gap-3 rounded-2xl border border-blue-400/25 bg-blue-500/10 px-4 py-3 text-sm text-blue-100">
                     <div className="flex items-center gap-2">

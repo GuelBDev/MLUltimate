@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowLeft, CheckCircle2, Download, Images, Package, Palette, RefreshCw, Search, Sparkles } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Download, Images, Package, Palette, RefreshCw, Search, Sparkles, X } from "lucide-react";
 import { SiCurseforge, SiModrinth } from "react-icons/si";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "../components/ui/badge";
@@ -69,6 +69,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   const { versions } = useMinecraftVersions();
   const [provider, setProvider] = useState<ContentProviderFilter>("all");
   const [type, setType] = useState<ContentType>(initialType);
+  const [activeInstanceId, setActiveInstanceId] = useState<string | undefined>(initialInstanceId);
   const [query, setQuery] = useState("");
   const [loader, setLoader] = useState<LoaderType | "">("");
   const [version, setVersion] = useState("");
@@ -81,6 +82,10 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   const [activeOperations, setActiveOperations] = useState<string[]>([]);
   const [operationError, setOperationError] = useState<string | null>(null);
 
+  useEffect(() => {
+    setActiveInstanceId(initialInstanceId);
+  }, [initialInstanceId]);
+
   const releaseVersions = useMemo(
     () =>
       (versions.data ?? [])
@@ -91,21 +96,21 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   const selectedVersion = version;
   const targetInstance = useMemo(
     () =>
-      initialInstanceId
-        ? instances.data?.find((instance) => instance.id === initialInstanceId)
+      activeInstanceId
+        ? instances.data?.find((instance) => instance.id === activeInstanceId)
         : undefined,
-    [initialInstanceId, instances.data],
+    [activeInstanceId, instances.data],
   );
   const effectiveVersion = targetInstance?.minecraftVersion ?? selectedVersion;
   const effectiveLoader = targetInstance
     ? normalizeContentLoader(targetInstance.loader)
     : loader;
   const resultLimit = loadClicks < 3 ? 20 + loadClicks * 20 : 60 + (loadClicks - 2) * 40;
-  const installedContent = useInstalledContent(initialInstanceId);
+  const installedContent = useInstalledContent(activeInstanceId);
   const installedUpdates = useQuery({
-    queryKey: ["installed-content-updates", initialInstanceId],
-    queryFn: () => launcherApi.checkInstalledContentUpdates(initialInstanceId ?? ""),
-    enabled: Boolean(initialInstanceId),
+    queryKey: ["installed-content-updates", activeInstanceId],
+    queryFn: () => launcherApi.checkInstalledContentUpdates(activeInstanceId ?? ""),
+    enabled: Boolean(activeInstanceId),
     staleTime: 60_000,
   });
   const updateMap = useMemo(
@@ -114,7 +119,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   );
   const visibleResults = useMemo(
     () => {
-      if (initialInstanceId && !targetInstance) {
+      if (activeInstanceId && !targetInstance) {
         return [];
       }
 
@@ -124,7 +129,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
           )
         : results;
     },
-    [initialInstanceId, results, targetInstance],
+    [activeInstanceId, results, targetInstance],
   );
 
   const search = useMutation({
@@ -174,6 +179,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
         type: input.project.type as "mod" | "modpack",
         projectId: input.project.projectId,
         versionId: input.versionId,
+        title: input.project.title,
       }),
     onSuccess: () => {
       setInstallTarget(null);
@@ -217,9 +223,9 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   };
 
   const refreshInstallState = () => {
-    void queryClient.invalidateQueries({ queryKey: ["installed-content", initialInstanceId] });
-    void queryClient.invalidateQueries({ queryKey: ["installed-content-updates", initialInstanceId] });
-    void queryClient.invalidateQueries({ queryKey: ["instance-inspection", initialInstanceId] });
+    void queryClient.invalidateQueries({ queryKey: ["installed-content", activeInstanceId] });
+    void queryClient.invalidateQueries({ queryKey: ["installed-content-updates", activeInstanceId] });
+    void queryClient.invalidateQueries({ queryKey: ["instance-inspection", activeInstanceId] });
     void queryClient.invalidateQueries({ queryKey: ["instances"] });
     void queryClient.invalidateQueries({ queryKey: ["downloads"] });
   };
@@ -313,8 +319,8 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
       return;
     }
 
-    if (initialInstanceId) {
-      startInstallToInstance({ project, version: selectedContentVersion }, initialInstanceId, project);
+    if (activeInstanceId) {
+      startInstallToInstance({ project, version: selectedContentVersion }, activeInstanceId, project);
       return;
     }
 
@@ -407,20 +413,31 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   return (
     <div className="space-y-5">
       <Card className="p-5">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-white">Biblioteca de conteúdo</h2>
             <p className="mt-1 text-sm text-[#94A3B8]">
               {targetInstance
-                ? `Adicionando conteudo em ${targetInstance.name}. So aparecem itens compativeis com esta instancia.`
-                : "Pesquise livremente e escolha a instancia compativel na hora de instalar."}
+                ? `Adicionando conteúdo em ${targetInstance.name}. Só aparecem itens compatíveis com esta instância.`
+                : "Pesquise livremente e escolha a instância compatível na hora de instalar."}
             </p>
           </div>
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {targetInstance ? (
-              <Badge tone="green">
-                {targetInstance.minecraftVersion} - {targetInstance.loader}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge tone="green">
+                  {targetInstance.name} ({targetInstance.minecraftVersion} - {targetInstance.loader})
+                </Badge>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-[#B8C2D0] hover:bg-white/10 hover:text-white transition"
+                  onClick={() => setActiveInstanceId(undefined)}
+                  title="Desvincular instância para buscar livremente na biblioteca"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Explorar tudo
+                </button>
+              </div>
             ) : null}
             <Badge tone="blue">{providerLabels[provider]}</Badge>
           </div>

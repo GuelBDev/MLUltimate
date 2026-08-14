@@ -228,8 +228,21 @@ function AppShell() {
     void queryClient.invalidateQueries();
     setPageRevision((revision) => revision + 1);
   }, [queryClient]);
+
+  const navigateToExplore = useCallback(
+    (type: ContentType, instanceId?: string) => {
+      setExploreContext({ type, instanceId });
+      setActivePage("explore");
+    },
+    [],
+  );
+
   const changePage = useCallback(
     (page: PageId) => {
+      if (page === "explore") {
+        setExploreContext({ type: "mod", instanceId: undefined });
+      }
+
       if (page === activePage) {
         refreshActivePage();
         return;
@@ -264,8 +277,7 @@ function AppShell() {
         return (
           <LibraryPage
             onExploreInstance={(type, instanceId) => {
-              setExploreContext({ type, instanceId });
-              changePage("explore");
+              navigateToExplore(type, instanceId);
             }}
           />
         );
@@ -292,13 +304,12 @@ function AppShell() {
             focus={activePage}
             onNavigate={changePage}
             onExploreInstance={(type, instanceId) => {
-              setExploreContext({ type, instanceId });
-              changePage("explore");
+              navigateToExplore(type, instanceId);
             }}
           />
         );
     }
-  }, [activePage, changePage, exploreContext.instanceId, exploreContext.type]);
+  }, [activePage, changePage, exploreContext.instanceId, exploreContext.type, navigateToExplore]);
 
   return (
     <div className="app-shell h-dvh overflow-hidden pt-8 text-white">

@@ -300,32 +300,86 @@ const describeEntry = async (
 };
 
 const scanLogs = async (gameDir: string) => {
-  const directory = path.join(gameDir, "logs");
+  const logsDir = path.join(gameDir, "logs");
+  const crashReportsDir = path.join(gameDir, "crash-reports");
 
+  const scannedLogs: Array<{
+    name: string;
+    relativePath: string;
+    sizeBytes: number;
+    modifiedAt: string;
+  }> = [];
+
+  // 1. Logs normais em logs/
   try {
-    const entries = await readdir(directory, { withFileTypes: true });
-    const logs = await Promise.all(
-      entries
+    if (existsSync(logsDir)) {
+      const entries = await readdir(logsDir, { withFileTypes: true });
+      const items = await Promise.all(
+        entries
+          .filter((entry) => entry.isFile() && /\.(log|txt|gz)$/i.test(entry.name))
+          .map(async (entry) => {
+            const absolutePath = path.join(logsDir, entry.name);
+            const metadata = await stat(absolutePath);
+            return {
+              name: entry.name,
+              relativePath: path.relative(gameDir, absolutePath),
+              sizeBytes: metadata.size,
+              modifiedAt: metadata.mtime.toISOString(),
+            };
+          }),
+      );
+      scannedLogs.push(...items);
+    }
+  } catch {}
+
+  // 2. Crash Reports em crash-reports/
+  try {
+    if (existsSync(crashReportsDir)) {
+      const entries = await readdir(crashReportsDir, { withFileTypes: true });
+      const items = await Promise.all(
+        entries
+          .filter((entry) => entry.isFile() && /\.(txt|log)$/i.test(entry.name))
+          .map(async (entry) => {
+            const absolutePath = path.join(crashReportsDir, entry.name);
+            const metadata = await stat(absolutePath);
+            return {
+              name: `[Crash] ${entry.name}`,
+              relativePath: path.relative(gameDir, absolutePath),
+              sizeBytes: metadata.size,
+              modifiedAt: metadata.mtime.toISOString(),
+            };
+          }),
+      );
+      scannedLogs.push(...items);
+    }
+  } catch {}
+
+  // 3. JVM Fatal Errors (hs_err_pid*.log)
+  try {
+    const rootEntries = await readdir(gameDir, { withFileTypes: true });
+    const items = await Promise.all(
+      rootEntries
         .filter(
           (entry) =>
-            entry.isFile() && /\.(log|txt|gz)$/i.test(entry.name),
+            entry.isFile() &&
+            entry.name.toLowerCase().startsWith("hs_err_pid") &&
+            entry.name.toLowerCase().endsWith(".log"),
         )
         .map(async (entry) => {
-          const absolutePath = path.join(directory, entry.name);
+          const absolutePath = path.join(gameDir, entry.name);
           const metadata = await stat(absolutePath);
           return {
-            name: entry.name,
+            name: `[JVM Error] ${entry.name}`,
             relativePath: path.relative(gameDir, absolutePath),
             sizeBytes: metadata.size,
             modifiedAt: metadata.mtime.toISOString(),
           };
         }),
     );
+    scannedLogs.push(...items);
+  } catch {}
 
-    return logs.sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
-  } catch {
-    return [];
-  }
+  return scannedLogs.sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
 };
 
 const scanScreenshots = async (gameDir: string) => {
@@ -598,8 +652,12 @@ const assertManageableContentPath = (gameDir: string, targetPath: string) => {
 const assertReadableLogPath = (gameDir: string, targetPath: string) => {
   const relative = normalizeRelativePath(path.relative(gameDir, targetPath));
 
-  if (!relative.startsWith("logs/") || !/\.(log|txt|gz)$/i.test(targetPath)) {
-    throw new Error("Somente arquivos de log da instancia podem ser lidos.");
+  const isLogsDir = relative.startsWith("logs/") && /\.(log|txt|gz)$/i.test(targetPath);
+  const isCrashReportsDir = relative.startsWith("crash-reports/") && /\.(txt|log|gz)$/i.test(targetPath);
+  const isHsErrLog = !relative.includes("/") && /^hs_err_pid.*\.log$/i.test(relative);
+
+  if (!isLogsDir && !isCrashReportsDir && !isHsErrLog) {
+    throw new Error("Somente arquivos de log e crash reports da instancia podem ser lidos.");
   }
 };
 

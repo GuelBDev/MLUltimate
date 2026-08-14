@@ -56,6 +56,7 @@ const installAsInstanceInputSchema = z.object({
   type: z.enum(["mod", "modpack"]),
   projectId: z.string().min(1),
   versionId: z.string().optional(),
+  title: z.string().optional(),
 });
 
 const projectInputSchema = z.object({
@@ -358,72 +359,157 @@ export class ContentService {
 
   async installAsInstance(input: InstallContentAsInstanceInput): Promise<LauncherInstance> {
     const parsed = installAsInstanceInputSchema.parse(input);
-    const project = await this.getProject({
-      provider: parsed.provider,
-      type: parsed.type,
-      projectId: parsed.projectId,
+    const initialTitle = parsed.title || parsed.projectId;
+    const initialLabel =
+      parsed.type === "modpack" ? `Modpack ${initialTitle}` : `Instalando ${initialTitle}`;
+    const taskId = this.downloads.createTask(
+      initialLabel,
+      "Preparando...",
+      `${parsed.provider}://${parsed.projectId}`,
+      true,
+    );
+
+    this.downloads.updateTask(taskId, {
+      label: initialLabel,
+      currentStep: "Iniciando download...",
+      progress: 0,
+      bytesReceived: 0,
     });
-    const iconPath = project.iconUrl
-      ? await downloadImageToTemp(project.iconUrl, parsed.projectId).catch(() => undefined)
-      : undefined;
-    const selected = await this.findInstallableFileForNewInstance(parsed);
 
-    if (parsed.type === "modpack") {
-      const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-modpack-"));
-      const archivePath = path.join(tempDir, sanitizeFileName(selected.fileName));
+    try {
+      const project = await this.getProject({
+        provider: parsed.provider,
+        type: parsed.type,
+        projectId: parsed.projectId,
+      });
+      const resolvedLabel =
+        parsed.type === "modpack" ? `Modpack ${project.title}` : `Instalando ${project.title}`;
+      this.downloads.updateTask(taskId, {
+        label: resolvedLabel,
+        currentStep: "Obtendo dados do pacote...",
+      });
 
-      try {
-        await this.downloads.download({
-          label: `Criando modpack ${project.title}`,
-          url: selected.url,
-          destination: archivePath,
-          sha1: selected.sha1,
+      const iconPath = project.iconUrl
+        ? await downloadImageToTemp(project.iconUrl, parsed.projectId).catch(() => undefined)
+        : undefined;
+      const selected = await this.findInstallableFileForNewInstance(parsed);
+
+      if (parsed.type === "modpack") {
+        this.downloads.updateTask(taskId, {
+          currentStep: `Baixando pacote ${selected.fileName}...`,
         });
 
-        const instance = await this.instances.importArchiveFile(archivePath);
-        const updated = await this.instances.update({
-          id: instance.id,
+        const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-modpack-"));
+        const archivePath = path.join(tempDir, sanitizeFileName(selected.fileName));
+
+        try {
+          await this.downloads.download({
+            label: `Pacote ${project.title}`,
+            url: selected.url,
+            destination: archivePath,
+            sha1: selected.sha1,
+            visible: false,
+            onProgress: ({ bytesReceived, totalBytes }) => {
+              this.downloads.updateTask(taskId, {
+                bytesReceived,
+                totalBytes,
+                progress: totalBytes
+                  ? Math.min(99, Math.round((bytesReceived / totalBytes) * 100))
+                  : 0,
+                currentStep: `Baixando pacote do modpack (${selected.fileName})...`,
+              });
+            },
+          });
+
+          this.downloads.updateTask(taskId, {
+            currentStep: "Extraindo e configurando modpack...",
+            progress: 0,
+            bytesReceived: 0,
+            totalBytes: undefined,
+          });
+
+          const instance = await this.instances.importArchiveFile(archivePath, {
+            parentTaskId: taskId,
+            name: project.title,
+          });
+
+          const updated = await this.instances.update({
+            id: instance.id,
+            name: project.title,
+            iconPath,
+            contentManagementEnabled: true,
+          });
+
+          await this.instances.setSourceMetadata(updated.id, {
+            provider: parsed.provider,
+            projectId: parsed.projectId,
+            versionId: selected.versionId,
+            projectSlug: project.slug,
+          });
+
+          this.downloads.updateTask(taskId, {
+            label: `Modpack ${project.title}`,
+            destination: updated.gameDir,
+            currentStep: "Concluído",
+            progress: 100,
+          });
+          this.downloads.completeTask(taskId);
+          return updated;
+        } finally {
+          await rm(tempDir, { recursive: true, force: true });
+        }
+      }
+
+      this.downloads.updateTask(taskId, {
+        currentStep: "Criando instância...",
+      });
+      const minecraftVersion = chooseMinecraftVersion(selected.gameVersions);
+      const loader = chooseLoaderForNewModInstance(selected.loaders);
+
+      const instance = await this.instances.create(
+        {
           name: project.title,
+          minecraftVersion,
+          loader,
+          ramMb: 4096,
           iconPath,
           contentManagementEnabled: true,
-        });
-        return this.instances.setSourceMetadata(updated.id, {
-          provider: parsed.provider,
-          projectId: parsed.projectId,
-          versionId: selected.versionId,
-          projectSlug: project.slug,
-        });
-      } finally {
-        await rm(tempDir, { recursive: true, force: true });
-      }
+        },
+        { parentTaskId: taskId },
+      );
+
+      this.downloads.updateTask(taskId, {
+        destination: instance.gameDir,
+        currentStep: `Baixando ${selected.fileName}...`,
+      });
+
+      await this.install({
+        provider: parsed.provider,
+        type: "mod",
+        projectId: parsed.projectId,
+        instanceId: instance.id,
+        versionId: selected.versionId,
+      });
+
+      const finalInstance = await this.instances.setSourceMetadata(instance.id, {
+        provider: parsed.provider,
+        projectId: parsed.projectId,
+        versionId: selected.versionId,
+        projectSlug: project.slug,
+      });
+
+      this.downloads.updateTask(taskId, {
+        label: `Instância ${project.title}`,
+        destination: instance.gameDir,
+        currentStep: "Concluído",
+        progress: 100,
+      });
+      this.downloads.completeTask(taskId);
+      return finalInstance;
+    } catch (error) {
+      this.downloads.failTask(taskId, error);
+      throw error;
     }
-
-    const minecraftVersion = chooseMinecraftVersion(selected.gameVersions);
-    const loader = chooseLoaderForNewModInstance(selected.loaders);
-
-    const instance = await this.instances.create({
-      name: project.title,
-      minecraftVersion,
-      loader,
-      ramMb: 4096,
-      iconPath,
-      contentManagementEnabled: true,
-    });
-
-    await this.install({
-      provider: parsed.provider,
-      type: "mod",
-      projectId: parsed.projectId,
-      instanceId: instance.id,
-      versionId: selected.versionId,
-    });
-
-    return this.instances.setSourceMetadata(instance.id, {
-      provider: parsed.provider,
-      projectId: parsed.projectId,
-      versionId: selected.versionId,
-      projectSlug: project.slug,
-    });
   }
 
   async getProject(input: ContentProjectInput): Promise<ContentProjectDetails> {

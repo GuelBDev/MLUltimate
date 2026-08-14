@@ -45,7 +45,8 @@ export const InstanceTile = ({
       : null;
   const activeDownload =
     download && ["queued", "running"].includes(download.status) ? download : null;
-  const activityLabel = activeLaunch?.message ?? activeDownload?.label;
+  const activityLabel =
+    activeLaunch?.message ?? activeDownload?.currentStep ?? activeDownload?.label;
   const activityProgress = activeLaunch?.progress ?? activeDownload?.progress ?? 0;
 
   return (

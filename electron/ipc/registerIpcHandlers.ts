@@ -93,6 +93,7 @@ const installContentAsInstanceSchema = z.object({
   type: z.enum(["mod", "modpack"]),
   projectId: z.string(),
   versionId: z.string().optional(),
+  title: z.string().optional(),
 });
 
 const installedContentIdSchema = z.string().min(1);

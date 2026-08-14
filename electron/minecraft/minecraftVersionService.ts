@@ -260,6 +260,7 @@ export class MinecraftVersionService {
       `Minecraft ${versionId}`,
       versionDir,
       summary.url,
+      false,
     );
 
     try {
@@ -468,6 +469,7 @@ export class MinecraftVersionService {
       `Fabric ${minecraftVersion}`,
       path.dirname(profilePath),
       FABRIC_META_URL,
+      false,
     );
 
     try {
@@ -568,6 +570,7 @@ export class MinecraftVersionService {
       `Quilt ${minecraftVersion}`,
       path.dirname(profilePath),
       QUILT_META_URL,
+      false,
     );
 
     try {
@@ -671,6 +674,7 @@ export class MinecraftVersionService {
       `Forge ${minecraftVersion}`,
       installerDir,
       installerUrl,
+      false,
     );
 
     try {
@@ -755,6 +759,7 @@ export class MinecraftVersionService {
       `NeoForge ${minecraftVersion}`,
       installerDir,
       installerUrl,
+      false,
     );
 
     try {

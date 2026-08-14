@@ -232,11 +232,11 @@ const fallbackCatalog: LibraryServer[] = [
   },
 ];
 
-const defaultCustomServers: AddCustomServerInput[] = [
-  { name: "Mush MC", host: "mush.com.br", port: 25565, requiresMicrosoft: false },
-  { name: "Rede Sky", host: "redesky.net", port: 25565, requiresMicrosoft: false },
-  { name: "Hypixel", host: "mc.hypixel.net", port: 25565, requiresMicrosoft: true },
-  { name: "PvP Legacy", host: "play.pvplegacy.net", port: 25565, requiresMicrosoft: true },
+const defaultCustomServers: (AddCustomServerInput & { version?: string })[] = [
+  { name: "Mush MC", host: "mush.com.br", port: 25565, requiresMicrosoft: false, version: "1.8.9" },
+  { name: "Rede Sky", host: "redesky.net", port: 25565, requiresMicrosoft: false, version: "1.8.9" },
+  { name: "Hypixel", host: "mc.hypixel.net", port: 25565, requiresMicrosoft: true, version: "1.8.9" },
+  { name: "PvP Legacy", host: "play.pvplegacy.net", port: 25565, requiresMicrosoft: true, version: "1.20.1" },
 ];
 
 export const ServersPage = () => {
@@ -353,6 +353,7 @@ export const ServersPage = () => {
   const getSelectedInstanceForServer = (server: {
     id: string;
     host: string;
+    name?: string;
     preferredInstanceId?: string;
     version?: string;
   }) => {
@@ -361,14 +362,42 @@ export const ServersPage = () => {
       selectedInstanceByServerId[server.host.toLowerCase()] ||
       server.preferredInstanceId;
 
-    if (chosenId && chosenId !== "__create_new__" && instances.some((i) => i.id === chosenId)) {
-      return chosenId;
+    if (chosenId) {
+      if (chosenId === "__create_new__") return "__create_new__";
+      if (instances.some((i) => i.id === chosenId)) {
+        return chosenId;
+      }
     }
 
-    const compatible = instances.find((i) =>
-      server.version ? i.minecraftVersion === server.version : true,
-    );
-    return compatible?.id || instances[0]?.id || "__create_new__";
+    const catalogEntry =
+      onlineCatalog.find((c) => c.host.toLowerCase() === server.host.toLowerCase()) ||
+      fallbackCatalog.find((c) => c.host.toLowerCase() === server.host.toLowerCase());
+    const targetVersion = server.version || catalogEntry?.version;
+
+    // Nunca auto-selecionar modpacks (Cobblemon, etc.) para servidores limpos/vanilla
+    if (targetVersion) {
+      const cleanMatch = instances.find(
+        (i) => !i.sourceProvider && !i.sourceProjectId && i.minecraftVersion === targetVersion,
+      );
+      if (cleanMatch) {
+        return cleanMatch.id;
+      }
+    }
+
+    if (server.name) {
+      const serverNameLower = server.name.toLowerCase();
+      const namedMatch = instances.find(
+        (i) =>
+          !i.sourceProvider &&
+          !i.sourceProjectId &&
+          i.name.toLowerCase().includes(serverNameLower),
+      );
+      if (namedMatch) {
+        return namedMatch.id;
+      }
+    }
+
+    return "__create_new__";
   };
 
   // Create Instance Mutation
@@ -441,9 +470,11 @@ export const ServersPage = () => {
       { value: "__create_new__", label: "+ Criar Nova Instância..." },
     ];
     instances.forEach((inst) => {
+      const isModpack = Boolean(inst.sourceProvider || inst.sourceProjectId);
+      const tag = isModpack ? " [Modpack]" : "";
       opts.push({
         value: inst.id,
-        label: `${inst.name} (${inst.minecraftVersion} - ${inst.loader})`,
+        label: `${inst.name}${tag} (${inst.minecraftVersion} - ${inst.loader})`,
       });
     });
     return opts;
@@ -491,8 +522,14 @@ export const ServersPage = () => {
     const targetInstanceId = getSelectedInstanceForServer(server);
 
     if (!targetInstanceId || targetInstanceId === "__create_new__") {
+      const catalogEntry =
+        onlineCatalog.find((c) => c.host.toLowerCase() === server.host.toLowerCase()) ||
+        fallbackCatalog.find((c) => c.host.toLowerCase() === server.host.toLowerCase());
+      const defaultVer = server.version || catalogEntry?.version || "1.20.1";
+
       setTargetServerIdForNewInstance(server.id);
       setNewInstanceName(`Instância ${server.name}`);
+      setNewInstanceVersion(defaultVer);
       setCreateInstanceModalOpen(true);
       return;
     }
@@ -548,6 +585,7 @@ export const ServersPage = () => {
       port: number;
       requiresMicrosoft: boolean;
       preferredInstanceId?: string;
+      version?: string;
       isCustom: boolean;
     }> = [];
 
@@ -563,6 +601,9 @@ export const ServersPage = () => {
         if (!isNaN(p)) port = p;
       }
       const hostKey = `${host.toLowerCase()}:${port}`;
+      const catalogEntry =
+        onlineCatalog.find((c) => c.host.toLowerCase() === host.toLowerCase()) ||
+        fallbackCatalog.find((c) => c.host.toLowerCase() === host.toLowerCase());
       if (!seenHosts.has(hostKey)) {
         seenHosts.add(hostKey);
         list.push({
@@ -572,6 +613,7 @@ export const ServersPage = () => {
           port,
           requiresMicrosoft: s.requiresMicrosoft,
           preferredInstanceId: s.preferredInstanceId,
+          version: catalogEntry?.version,
           isCustom: true,
         });
       }
@@ -587,6 +629,9 @@ export const ServersPage = () => {
         if (!isNaN(p)) port = p;
       }
       const hostKey = `${host.toLowerCase()}:${port}`;
+      const catalogEntry =
+        onlineCatalog.find((c) => c.host.toLowerCase() === host.toLowerCase()) ||
+        fallbackCatalog.find((c) => c.host.toLowerCase() === host.toLowerCase());
       if (!seenHosts.has(hostKey) && !list.some((existing) => existing.host.toLowerCase() === host.toLowerCase())) {
         seenHosts.add(hostKey);
         list.push({
@@ -595,6 +640,7 @@ export const ServersPage = () => {
           host,
           port,
           requiresMicrosoft: Boolean(s.requiresMicrosoft),
+          version: s.version || catalogEntry?.version,
           isCustom: false,
         });
       }
@@ -606,7 +652,7 @@ export const ServersPage = () => {
       if (favA !== favB) return favB - favA;
       return a.name.localeCompare(b.name);
     });
-  }, [customServers, favorites]);
+  }, [customServers, favorites, onlineCatalog]);
 
   // Filtered Real-Time Online Library Catalog
   const filteredLibrary = useMemo(() => {
