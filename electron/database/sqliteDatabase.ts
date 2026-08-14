@@ -164,6 +164,17 @@ export class LauncherDatabase {
         value TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS custom_servers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        host TEXT NOT NULL,
+        port INTEGER NOT NULL DEFAULT 25565,
+        requires_microsoft INTEGER NOT NULL DEFAULT 0,
+        preferred_instance_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `);
 
     const instanceColumns = this.all<{ name: string }>("PRAGMA table_info(instances)").map(
@@ -212,6 +223,27 @@ export class LauncherDatabase {
 
     if (!instanceColumns.includes("last_launched_at")) {
       database.run("ALTER TABLE instances ADD COLUMN last_launched_at TEXT");
+    }
+
+    if (!instanceColumns.includes("auto_update_modpack")) {
+      database.run(
+        "ALTER TABLE instances ADD COLUMN auto_update_modpack INTEGER NOT NULL DEFAULT 1",
+      );
+    }
+
+    const customServerColumns = this.all<{ name: string }>(
+      "PRAGMA table_info(custom_servers)",
+    ).map((column) => column.name);
+
+    if (customServerColumns.length > 0) {
+      if (!customServerColumns.includes("requires_microsoft")) {
+        database.run(
+          "ALTER TABLE custom_servers ADD COLUMN requires_microsoft INTEGER NOT NULL DEFAULT 0",
+        );
+      }
+      if (!customServerColumns.includes("preferred_instance_id")) {
+        database.run("ALTER TABLE custom_servers ADD COLUMN preferred_instance_id TEXT");
+      }
     }
 
     const installedContentColumns = this.all<{ name: string }>(

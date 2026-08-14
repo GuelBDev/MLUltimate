@@ -45,7 +45,7 @@ export function AppSelect<T extends string = string>({
       <Select.Trigger
         data-i18n-skip={dataI18nSkip}
         className={cn(
-          "inline-flex h-11 items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#0D1117]/90 px-3 text-sm text-white transition hover:border-white/20 focus:border-[color:var(--app-primary)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+          "inline-flex h-11 items-center justify-between gap-2 rounded-xl border border-[color:var(--app-border-color)] bg-[var(--app-input-bg)] px-3 text-sm text-[var(--app-text-primary)] transition hover:border-[color:var(--app-secondary)] focus:border-[color:var(--app-primary)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50",
           triggerClassName,
           className,
         )}
@@ -53,7 +53,7 @@ export function AppSelect<T extends string = string>({
         <Select.Value placeholder={placeholder}>
           {selectedOption ? selectedOption.label : placeholder || (value === "" ? "" : value)}
         </Select.Value>
-        <Select.Icon className="text-white/60">
+        <Select.Icon className="text-[var(--app-text-muted)]">
           <ChevronDown className="h-4 w-4 transition-transform duration-200" />
         </Select.Icon>
       </Select.Trigger>
@@ -62,13 +62,13 @@ export function AppSelect<T extends string = string>({
         <Select.Content
           data-i18n-skip={dataI18nSkip}
           className={cn(
-            "z-[9999] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-2xl border border-white/15 bg-[#121824]/95 p-1.5 shadow-2xl shadow-black/70 backdrop-blur-xl animate-in fade-in-0 zoom-in-95",
+            "z-[9999] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-2xl border border-[color:var(--app-border-color)] bg-[var(--app-card-bg)] p-1.5 shadow-2xl shadow-black/50 backdrop-blur-xl animate-in fade-in-0 zoom-in-95",
             contentClassName,
           )}
           position="popper"
           sideOffset={5}
         >
-          <Select.ScrollUpButton className="flex items-center justify-center py-1 text-white/60">
+          <Select.ScrollUpButton className="flex items-center justify-center py-1 text-[var(--app-text-muted)]">
             <ChevronUp className="h-4 w-4" />
           </Select.ScrollUpButton>
 
@@ -80,7 +80,7 @@ export function AppSelect<T extends string = string>({
                   key={optValue || idx}
                   value={optValue}
                   disabled={option.disabled}
-                  className="relative flex cursor-pointer select-none items-center rounded-xl py-2.5 pl-8 pr-4 text-sm text-white/90 outline-none transition data-[disabled]:pointer-events-none data-[highlighted]:bg-[rgb(var(--app-primary-rgb)/0.25)] data-[highlighted]:text-white data-[state=checked]:font-semibold data-[state=checked]:text-white data-[disabled]:opacity-40"
+                  className="relative flex cursor-pointer select-none items-center rounded-xl py-2.5 pl-8 pr-4 text-sm text-[var(--app-text-primary)] outline-none transition data-[disabled]:pointer-events-none data-[highlighted]:bg-[rgb(var(--app-primary-rgb)/0.18)] data-[highlighted]:text-[var(--app-text-primary)] data-[state=checked]:font-semibold data-[state=checked]:text-[var(--app-text-primary)] data-[disabled]:opacity-40"
                 >
                   <Select.ItemIndicator className="absolute left-2.5 inline-flex items-center justify-center text-[color:var(--app-primary)]">
                     <Check className="h-4 w-4" />
@@ -91,7 +91,7 @@ export function AppSelect<T extends string = string>({
             })}
           </Select.Viewport>
 
-          <Select.ScrollDownButton className="flex items-center justify-center py-1 text-white/60">
+          <Select.ScrollDownButton className="flex items-center justify-center py-1 text-[var(--app-text-muted)]">
             <ChevronDown className="h-4 w-4" />
           </Select.ScrollDownButton>
         </Select.Content>

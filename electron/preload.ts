@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   ApplyOfficialSkinInput,
+  AddCustomServerInput,
   AuthSession,
   ContentProjectDetails,
   ContentProjectInput,
@@ -8,6 +9,7 @@ import type {
   ContentSearchResult,
   ContentType,
   CreateInstanceInput,
+  CustomServer,
   DownloadItem,
   InstallContentInput,
   InstallContentAsInstanceInput,
@@ -41,11 +43,14 @@ import type {
   SkinSearchResult,
   SystemMemoryInfo,
   UpdaterState,
+  UpdateCustomServerInput,
   UpdateLauncherSettingsInput,
   UpdateInstanceInput,
+  OnlineLibraryServer,
 } from "../src/types/launcher";
 
 const api = {
+  platform: process.platform,
   auth: {
     getSession: () => ipcRenderer.invoke("auth:get-session") as Promise<AuthSession>,
     listAccounts: () =>
@@ -96,6 +101,10 @@ const api = {
       ipcRenderer.invoke("instances:remove", instanceId) as Promise<void>,
     openFolder: (instanceId: string) =>
       ipcRenderer.invoke("instances:open-folder", instanceId) as Promise<void>,
+    checkModpackUpdate: (instanceId: string) =>
+      ipcRenderer.invoke("instances.checkModpackUpdate", instanceId) as Promise<{ hasUpdate: boolean; newVersionId?: string; newVersionNumber?: string }>,
+    updateModpack: (instanceId: string, mode: "in-place" | "new-instance", newVersionId: string) =>
+      ipcRenderer.invoke("instances.updateModpack", instanceId, mode, newVersionId) as Promise<LauncherInstance>,
     selectIcon: () =>
       ipcRenderer.invoke("instances:select-icon") as Promise<InstanceIconSelection | null>,
     importInstance: (input: ImportInstanceInput) =>
@@ -202,8 +211,18 @@ const api = {
       ipcRenderer.invoke("system:get-memory") as Promise<SystemMemoryInfo>,
   },
   servers: {
+    fetchLibrary: () =>
+      ipcRenderer.invoke("servers:fetch-library") as Promise<OnlineLibraryServer[]>,
     status: (input: ServerStatusLookupInput) =>
       ipcRenderer.invoke("servers:status", input) as Promise<ServerStatusResult[]>,
+    listCustom: () =>
+      ipcRenderer.invoke("servers:list-custom") as Promise<CustomServer[]>,
+    addCustom: (input: AddCustomServerInput) =>
+      ipcRenderer.invoke("servers:add-custom", input) as Promise<CustomServer>,
+    updateCustom: (input: UpdateCustomServerInput) =>
+      ipcRenderer.invoke("servers:update-custom", input) as Promise<CustomServer>,
+    removeCustom: (id: string) =>
+      ipcRenderer.invoke("servers:remove-custom", id) as Promise<void>,
   },
   window: {
     minimize: () => ipcRenderer.invoke("window:minimize") as Promise<void>,

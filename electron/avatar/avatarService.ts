@@ -177,6 +177,38 @@ export class AvatarService {
   async saveNicknameSkin(input: SaveNicknameSkinInput) {
     const parsed = saveNicknameSkinSchema.parse(input);
     const result = await this.searchNickname(parsed.nickname);
+
+    const existing = this.database.get<SkinRow>(
+      "SELECT * FROM avatar_skins WHERE (nickname IS NOT NULL AND LOWER(nickname) = LOWER(?)) OR skin_url = ? LIMIT 1",
+      [result.nickname, result.skinUrl],
+    );
+
+    if (existing) {
+      const localPath = existing.local_path && existsSync(existing.local_path)
+        ? existing.local_path
+        : path.join(this.getSkinsDir(), `${existing.id}.png`);
+      const skinBytes = await downloadBytes(result.skinUrl);
+      writeFileSync(localPath, skinBytes);
+      this.database.run(
+        `
+        UPDATE avatar_skins
+        SET name = ?, nickname = ?, uuid = ?, skin_url = ?, preview_url = ?, skin_variant = ?, local_path = ?
+        WHERE id = ?
+        `,
+        [
+          parsed.name ?? result.nickname,
+          result.nickname,
+          result.uuid,
+          result.skinUrl,
+          result.avatarUrl,
+          result.variant ?? "classic",
+          localPath,
+          existing.id,
+        ],
+      );
+      return this.getById(existing.id);
+    }
+
     const id = randomUUID();
     const now = new Date().toISOString();
     const localPath = path.join(this.getSkinsDir(), `${id}.png`);
@@ -346,9 +378,6 @@ export class AvatarService {
   async saveNameMcSkin(input: SaveNameMCSkinInput) {
     const parsed = saveNameMcSkinSchema.parse(input);
     const name = parsed.name ?? `NameMC ${(parsed.skinId ?? "skin").slice(0, 8)}`;
-    const id = randomUUID();
-    const now = new Date().toISOString();
-    const localPath = path.join(this.getSkinsDir(), `${id}.png`);
     const skinUrl = parsed.skinId ? nameMcSkinDownloadUrl(parsed.skinId) : parsed.skinUrl;
     const variant = parsed.variant ?? inferVariantFromUrl(parsed.previewUrl) ?? "classic";
     const previewUrl = parsed.skinId
@@ -359,6 +388,37 @@ export class AvatarService {
       throw new Error("Skin do NameMC invalida.");
     }
 
+    const existing = this.database.get<SkinRow>(
+      "SELECT * FROM avatar_skins WHERE skin_url = ? OR preview_url = ? LIMIT 1",
+      [skinUrl, previewUrl],
+    );
+
+    if (existing) {
+      const localPath = existing.local_path && existsSync(existing.local_path)
+        ? existing.local_path
+        : path.join(this.getSkinsDir(), `${existing.id}.png`);
+
+      if (!existsSync(localPath)) {
+        const skinBytes = await downloadBytes(skinUrl);
+        assertMinecraftSkinPng(skinBytes);
+        writeFileSync(localPath, skinBytes);
+      }
+
+      this.database.run(
+        `
+        UPDATE avatar_skins
+        SET name = ?, skin_url = ?, preview_url = ?, skin_variant = ?, local_path = ?
+        WHERE id = ?
+        `,
+        [name, skinUrl, previewUrl, variant, localPath, existing.id],
+      );
+
+      return this.getById(existing.id);
+    }
+
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const localPath = path.join(this.getSkinsDir(), `${id}.png`);
     const skinBytes = await downloadBytes(skinUrl);
 
     assertMinecraftSkinPng(skinBytes);
@@ -458,9 +518,31 @@ export class AvatarService {
   }
 
   list() {
-    return this.database
-      .all<SkinRow>("SELECT * FROM avatar_skins ORDER BY equipped_at DESC, created_at DESC")
-      .map(this.toPublicSkin);
+    const rows = this.database.all<SkinRow>(
+      "SELECT * FROM avatar_skins ORDER BY equipped_at DESC, created_at DESC",
+    );
+
+    const seen = new Set<string>();
+    const uniqueRows: SkinRow[] = [];
+    const duplicateIds: string[] = [];
+
+    for (const row of rows) {
+      const key = row.skin_url || (row.nickname ? `nick:${row.nickname.toLowerCase()}` : `id:${row.id}`);
+      if (seen.has(key)) {
+        duplicateIds.push(row.id);
+        continue;
+      }
+      seen.add(key);
+      uniqueRows.push(row);
+    }
+
+    if (duplicateIds.length > 0) {
+      for (const dupId of duplicateIds) {
+        this.database.run("DELETE FROM avatar_skins WHERE id = ? AND equipped_at IS NULL", [dupId]);
+      }
+    }
+
+    return uniqueRows.map(this.toPublicSkin);
   }
 
   getEquippedSkinFile() {

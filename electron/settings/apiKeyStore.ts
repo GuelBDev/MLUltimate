@@ -5,6 +5,7 @@ import type {
   LauncherAppearancePreset,
   LauncherSettings,
   MinecraftOpenAction,
+  MinecraftWindowMode,
   UpdateLauncherSettingsInput,
 } from "../../src/types/launcher";
 
@@ -41,6 +42,7 @@ const backgroundImageDataUrlKey = "appearance.backgroundImageDataUrl";
 const backgroundImageNameKey = "appearance.backgroundImageName";
 const sidebarImageDataUrlKey = "appearance.sidebarImageDataUrl";
 const sidebarImageNameKey = "appearance.sidebarImageName";
+const sidebarNavOrderKey = "appearance.sidebarNavOrder";
 const defaultLanguage: AppLanguage = "pt-BR";
 const appLanguages = new Set<AppLanguage>([
   "pt-BR",
@@ -59,6 +61,8 @@ const appLanguages = new Set<AppLanguage>([
   "tr",
 ]);
 const minecraftOpenActions = new Set<MinecraftOpenAction>(["none", "minimize", "background"]);
+const minecraftWindowModeKey = "minecraft.windowMode";
+const minecraftWindowModes = new Set<MinecraftWindowMode>(["fullscreen", "windowed", "borderless"]);
 const appearancePresets = new Set<LauncherAppearancePreset>([
   "night-dark",
   "light-mode",
@@ -147,6 +151,14 @@ export class ApiKeyStore {
     this.saveSetting(minecraftOpenActionKey, action);
   }
 
+  saveMinecraftWindowMode(mode: MinecraftWindowMode) {
+    if (!minecraftWindowModes.has(mode)) {
+      throw new Error("Modo de janela do Minecraft invalido.");
+    }
+
+    this.saveSetting(minecraftWindowModeKey, mode);
+  }
+
   saveAppearanceSettings(input: UpdateLauncherSettingsInput) {
     if (input.appearancePreset !== undefined) {
       if (!appearancePresets.has(input.appearancePreset)) {
@@ -187,6 +199,10 @@ export class ApiKeyStore {
     if (input.sidebarImageName !== undefined) {
       this.saveSetting(sidebarImageNameKey, input.sidebarImageName ?? "");
     }
+
+    if (input.sidebarNavOrder !== undefined) {
+      this.saveSetting(sidebarNavOrderKey, JSON.stringify(input.sidebarNavOrder));
+    }
   }
 
   getPublicSettings(): LauncherSettings {
@@ -195,6 +211,7 @@ export class ApiKeyStore {
       language: this.loadLanguage(),
       languageSelected: this.loadLanguageSelected(),
       minecraftOpenAction: this.loadMinecraftOpenAction(),
+      minecraftWindowMode: this.loadMinecraftWindowMode(),
       ...this.loadAppearanceSettings(),
     };
   }
@@ -207,6 +224,16 @@ export class ApiKeyStore {
     const action = record?.value as MinecraftOpenAction | undefined;
 
     return action && minecraftOpenActions.has(action) ? action : "none";
+  }
+
+  loadMinecraftWindowMode(): MinecraftWindowMode {
+    const record = this.database.get<{ value: string }>(
+      "SELECT value FROM settings WHERE key = ?",
+      [minecraftWindowModeKey],
+    );
+    const mode = record?.value as MinecraftWindowMode | undefined;
+
+    return mode && minecraftWindowModes.has(mode) ? mode : "windowed";
   }
 
   private loadLanguage() {
@@ -253,7 +280,36 @@ export class ApiKeyStore {
       backgroundImageName: this.loadOptionalString(backgroundImageNameKey),
       sidebarImageDataUrl: this.loadOptionalString(sidebarImageDataUrlKey),
       sidebarImageName: this.loadOptionalString(sidebarImageNameKey),
-    } as Omit<LauncherSettings, "encryptionAvailable" | "language" | "languageSelected" | "minecraftOpenAction">;
+      sidebarNavOrder: this.loadSidebarNavOrder(),
+    } as Omit<
+      LauncherSettings,
+      "encryptionAvailable" | "language" | "languageSelected" | "minecraftOpenAction" | "minecraftWindowMode"
+    >;
+  }
+
+  private loadSidebarNavOrder(): string[] {
+    const raw = this.readSetting(sidebarNavOrderKey);
+    const validNonHome = ["avatar", "servers", "library", "explore", "downloads", "settings"];
+    if (!raw) {
+      return ["home", ...validNonHome];
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const filtered = parsed.filter(
+          (id) => typeof id === "string" && validNonHome.includes(id) && id !== "home",
+        );
+        for (const id of validNonHome) {
+          if (!filtered.includes(id)) {
+            filtered.push(id);
+          }
+        }
+        return ["home", ...filtered];
+      }
+    } catch {
+      // fallback
+    }
+    return ["home", ...validNonHome];
   }
 
   private loadColor(key: string, fallback: string) {

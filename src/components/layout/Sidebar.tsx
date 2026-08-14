@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import {
   Blocks,
   Compass,
@@ -5,16 +6,18 @@ import {
   Home,
   UserRound,
   Settings,
-  Swords,
+  Server,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useMemo } from "react";
 import { useDownloads } from "../../hooks/useDownloads";
+import { launcherApi } from "../../services/launcherApi";
 import { cn } from "../../utils/cn";
 
 export type PageId =
   | "home"
   | "avatar"
-  | "pvp"
+  | "servers"
   | "library"
   | "explore"
   | "downloads"
@@ -29,7 +32,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { id: "home", label: "Home", icon: Home },
   { id: "avatar", label: "Avatar", icon: UserRound },
-  { id: "pvp", label: "PVP", icon: Swords },
+  { id: "servers", label: "Servidores", icon: Server },
   { id: "library", label: "Minhas Instâncias", icon: Blocks },
   { id: "explore", label: "Biblioteca", icon: Compass },
   { id: "downloads", label: "Downloads", icon: Download },
@@ -43,9 +46,42 @@ type SidebarProps = {
 
 export const Sidebar = ({ activePage, onPageChange }: SidebarProps) => {
   const downloads = useDownloads();
+  const settings = useQuery({
+    queryKey: ["settings"],
+    queryFn: launcherApi.getSettings,
+    staleTime: 30_000,
+  });
+
   const activeDownloads = (downloads.data ?? []).filter((item) =>
     item.status === "queued" || item.status === "running",
   ).length;
+
+  const orderedNavItems = useMemo(() => {
+    const customOrder = settings.data?.sidebarNavOrder;
+    if (!customOrder || !Array.isArray(customOrder) || customOrder.length === 0) {
+      return navItems;
+    }
+
+    const itemMap = new Map(navItems.map((item) => [item.id, item]));
+    const homeItem = itemMap.get("home");
+    const result: NavItem[] = homeItem ? [homeItem] : [];
+
+    for (const id of customOrder) {
+      if (id === "home") continue;
+      const item = itemMap.get(id as PageId);
+      if (item && !result.some((r) => r.id === item.id)) {
+        result.push(item);
+      }
+    }
+
+    for (const item of navItems) {
+      if (!result.some((r) => r.id === item.id)) {
+        result.push(item);
+      }
+    }
+
+    return result;
+  }, [settings.data?.sidebarNavOrder]);
 
   return (
     <aside className="app-sidebar flex h-full min-w-0 flex-col px-2 py-4 xl:px-4 xl:py-5">
@@ -60,7 +96,7 @@ export const Sidebar = ({ activePage, onPageChange }: SidebarProps) => {
       </div>
 
       <nav className="flex flex-1 flex-col gap-1.5">
-        {navItems.map((item) => {
+        {orderedNavItems.map((item) => {
           const Icon = item.icon;
           const active = activePage === item.id;
           const showDownloadCount = item.id === "downloads" && activeDownloads > 0;

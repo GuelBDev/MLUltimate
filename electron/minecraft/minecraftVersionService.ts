@@ -507,7 +507,7 @@ export class MinecraftVersionService {
 
       let completed = 0;
 
-      await runPool(profile.libraries, 6, async (library) => {
+      await runPool(profile.libraries, 32, async (library) => {
         this.downloads.throwIfCancelled(taskId);
         const libraryPath = mavenPath(library.name);
         await this.downloads.download({
@@ -607,7 +607,7 @@ export class MinecraftVersionService {
 
       let completed = 0;
 
-      await runPool(profile.libraries, 6, async (library) => {
+      await runPool(profile.libraries, 32, async (library) => {
         this.downloads.throwIfCancelled(taskId);
         const libraryPath = mavenPath(library.name);
         await this.downloads.download({
@@ -1154,7 +1154,7 @@ export class MinecraftVersionService {
       });
 
     let completed = 0;
-    await runPool(artifacts, 6, async (artifact) => {
+    await runPool(artifacts, 32, async (artifact) => {
       this.downloads.throwIfCancelled(taskId);
       await this.downloads.download({
         label: `Biblioteca ${artifact.path}`,
@@ -1180,7 +1180,7 @@ export class MinecraftVersionService {
   ) {
     let completed = 0;
 
-    await runPool(profile.libraries, 6, async (library) => {
+    await runPool(profile.libraries, 32, async (library) => {
       this.downloads.throwIfCancelled(taskId);
       const libraryPath = mavenPath(library.name);
       await this.downloads.download({
@@ -1210,7 +1210,7 @@ export class MinecraftVersionService {
     );
     let completed = 0;
 
-    await runPool(libraries, 6, async (library) => {
+    await runPool(libraries, 32, async (library) => {
       this.downloads.throwIfCancelled(taskId);
       const artifact = library.downloads?.artifact;
       const libraryPath = artifact?.path ?? safeMavenPath(library.name);
@@ -1280,7 +1280,7 @@ export class MinecraftVersionService {
     const assets = Object.entries(assetIndex.objects);
 
     let completed = 0;
-    await runPool(assets, 10, async ([name, asset]) => {
+    await runPool(assets, 50, async ([name, asset]) => {
       this.downloads.throwIfCancelled(taskId);
       const prefix = asset.hash.slice(0, 2);
       await this.downloads.download({

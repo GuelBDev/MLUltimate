@@ -1,4 +1,5 @@
-import { app, BrowserWindow, Menu, shell } from "electron";
+import { app, BrowserWindow, Menu, Tray, nativeImage, shell } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 import { LauncherDatabase } from "./database/sqliteDatabase";
 import { AvatarService } from "./avatar/avatarService";
@@ -20,10 +21,71 @@ import { ApiKeyStore } from "./settings/apiKeyStore";
 import { UpdateService } from "./updater/updateService";
 
 let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
 
 app.setName(launcherAppName);
 app.setPath("userData", getLauncherDataPath());
 Menu.setApplicationMenu(null);
+
+const getIconPath = () => {
+  const devIcon = path.join(process.cwd(), "public", "icon.png");
+  if (process.env.VITE_DEV_SERVER_URL && fs.existsSync(devIcon)) {
+    return devIcon;
+  }
+
+  const distIcon = path.join(__dirname, "../dist/icon.png");
+  if (fs.existsSync(distIcon)) {
+    return distIcon;
+  }
+
+  const buildIcon = path.join(__dirname, "../build/icon.png");
+  if (fs.existsSync(buildIcon)) {
+    return buildIcon;
+  }
+
+  return devIcon;
+};
+
+const createTray = () => {
+  if (tray && !tray.isDestroyed()) {
+    return tray;
+  }
+
+  const iconPath = getIconPath();
+  const icon = nativeImage.createFromPath(iconPath);
+  tray = new Tray(icon);
+  tray.setToolTip("MLUltimate Launcher");
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: "Abrir MLUltimate",
+      click: () => {
+        showMainWindow();
+      },
+    },
+    {
+      type: "separator",
+    },
+    {
+      label: "Sair",
+      click: () => {
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+
+  tray.on("click", () => {
+    showMainWindow();
+  });
+
+  tray.on("double-click", () => {
+    showMainWindow();
+  });
+
+  return tray;
+};
 
 const gotSingleInstanceLock =
   process.env.MLULTIMATE_QA_ALLOW_SECOND_INSTANCE === "1" || app.requestSingleInstanceLock();
@@ -41,12 +103,12 @@ const showMainWindow = () => {
     return;
   }
 
-  if (mainWindow.isMinimized()) {
-    mainWindow.restore();
-  }
-
   if (!mainWindow.isVisible()) {
     mainWindow.show();
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
   }
 
   if (!mainWindow.isMaximized() && !mainWindow.isFullScreen()) {
@@ -62,22 +124,30 @@ app.on("second-instance", () => {
 
 const createWindow = async () => {
   const preload = path.join(__dirname, "preload.cjs");
-  const iconPath = process.env.VITE_DEV_SERVER_URL
-    ? path.join(process.cwd(), "public", "icon.png")
-    : path.join(__dirname, "../dist/icon.png");
+  const iconPath = getIconPath();
+
+  const isWindows = process.platform === "win32";
+
+  createTray();
 
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 960,
     minWidth: 360,
     minHeight: 520,
-    backgroundColor: "#00000000",
-    transparent: true,
+    backgroundColor: "#0a0e17",
     title: "MLUltimate Launcher",
     icon: iconPath,
     show: false,
     autoHideMenuBar: true,
-    frame: false,
+    titleBarStyle: "hidden",
+    titleBarOverlay: isWindows
+      ? {
+          color: "#111820",
+          symbolColor: "#94a3b8",
+          height: 32,
+        }
+      : false,
     webPreferences: {
       preload,
       nodeIntegration: false,
@@ -173,7 +243,15 @@ const bootstrap = async () => {
           mainWindow?.hide();
         }
       }
+
+      if (event.type === "closed" || event.type === "error") {
+        const action = apiKeys.loadMinecraftOpenAction();
+        if (action === "background" || action === "minimize") {
+          showMainWindow();
+        }
+      }
     },
+    () => apiKeys.loadMinecraftWindowMode(),
   );
 
   registerIpcHandlers({
@@ -234,6 +312,13 @@ if (gotSingleInstanceLock) {
   app.whenReady().then(bootstrap).catch((error: unknown) => {
     console.error("Failed to start MLUltimate Launcher", error);
     app.quit();
+  });
+
+  app.on("before-quit", () => {
+    if (tray && !tray.isDestroyed()) {
+      tray.destroy();
+      tray = null;
+    }
   });
 
   app.on("window-all-closed", () => {

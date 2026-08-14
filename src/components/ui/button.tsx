@@ -12,7 +12,7 @@ const buttonVariants = cva(
           "app-button-secondary border border-white/10 bg-white/6 text-white hover:bg-white/10",
         ghost: "text-[#94A3B8] hover:bg-white/8 hover:text-white",
         danger:
-          "border border-red-400/20 bg-red-500/10 text-red-200 hover:bg-red-500/20",
+          "app-button-danger border",
       },
       size: {
         sm: "h-9 px-3",

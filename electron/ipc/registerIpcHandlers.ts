@@ -167,6 +167,7 @@ const updateSettingsSchema = z.object({
     .optional(),
   languageSelected: z.boolean().optional(),
   minecraftOpenAction: z.enum(["none", "minimize", "background"]).optional(),
+  minecraftWindowMode: z.enum(["fullscreen", "windowed", "borderless"]).optional(),
   appearancePreset: z
     .enum(["night-dark", "light-mode", "blue-sky", "yellow-sun", "emerald-cave", "red-velt"])
     .optional(),
@@ -199,6 +200,7 @@ const updateSettingsSchema = z.object({
   backgroundImageName: z.string().max(160).nullable().optional(),
   sidebarImageDataUrl: z.string().max(7_000_000).nullable().optional(),
   sidebarImageName: z.string().max(160).nullable().optional(),
+  sidebarNavOrder: z.array(z.string()).max(10).optional(),
 });
 
 const saveNicknameSkinSchema = z.object({
@@ -390,7 +392,53 @@ export const registerIpcHandlers = ({
   ipcMain.handle("instances:open-folder", async (_, instanceId: unknown) =>
     instances.openFolder(z.string().min(1).parse(instanceId)),
   );
-  ipcMain.handle("instances:select-icon", async () => instances.selectIcon());
+
+  ipcMain.handle("instances.checkModpackUpdate", (_, instanceId) =>
+    instances.checkModpackUpdate(z.string().min(1).parse(instanceId)),
+  );
+
+  ipcMain.handle("instances.updateModpack", (_, instanceId, mode, newVersionId) =>
+    instances.updateModpack(
+      z.string().min(1).parse(instanceId),
+      z.enum(["in-place", "new-instance"]).parse(mode),
+      z.string().min(1).parse(newVersionId),
+    ),
+  );
+  ipcMain.handle("servers:fetch-library", async () => {
+    const { fetchServerLibrary } = await import("../servers/serverCatalogService.js");
+    return fetchServerLibrary();
+  });
+  ipcMain.handle("servers:list-custom", async () => instances.listCustomServers());
+  ipcMain.handle("servers:add-custom", async (_, input: unknown) =>
+    instances.addCustomServer(
+      z
+        .object({
+          name: z.string(),
+          host: z.string().min(1),
+          port: z.number().int().optional(),
+          requiresMicrosoft: z.boolean().optional(),
+          preferredInstanceId: z.string().optional(),
+        })
+        .parse(input),
+    ),
+  );
+  ipcMain.handle("servers:update-custom", async (_, input: unknown) =>
+    instances.updateCustomServer(
+      z
+        .object({
+          id: z.string().min(1),
+          name: z.string().optional(),
+          host: z.string().optional(),
+          port: z.number().int().optional(),
+          requiresMicrosoft: z.boolean().optional(),
+          preferredInstanceId: z.string().optional(),
+        })
+        .parse(input),
+    ),
+  );
+  ipcMain.handle("servers:remove-custom", async (_, id: unknown) =>
+    instances.removeCustomServer(z.string().min(1).parse(id)),
+  );
   ipcMain.handle("instances:import", async (_, input: unknown) =>
     instances.importInstance(importInstanceSchema.parse(input)),
   );
@@ -456,6 +504,10 @@ export const registerIpcHandlers = ({
 
     if (parsed.minecraftOpenAction) {
       apiKeys.saveMinecraftOpenAction(parsed.minecraftOpenAction);
+    }
+
+    if (parsed.minecraftWindowMode) {
+      apiKeys.saveMinecraftWindowMode(parsed.minecraftWindowMode);
     }
 
     apiKeys.saveAppearanceSettings(parsed);

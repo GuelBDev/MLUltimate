@@ -1,24 +1,36 @@
 import {
-  ChevronDown,
+  ArrowDown,
+  ArrowUp,
+  Blocks,
   CheckCircle2,
+  ChevronDown,
+  Compass,
+  Download,
   DownloadCloud,
   Eye,
+  Home,
   ImagePlus,
   Languages,
   Layers,
+  Lock,
+  Maximize2,
   MonitorPlay,
   Palette,
   PanelLeft,
   PaintBucket,
   RefreshCw,
   RotateCcw,
+  Server,
+  Settings as SettingsIcon,
   SlidersHorizontal,
   Type,
+  UserRound,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import type { PageId } from "../components/layout/Sidebar";
 import { languageOptions } from "../constants/languages";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -47,6 +59,24 @@ const minecraftOpenActions = [
     id: "background",
     label: "Fechar para segundo plano",
     description: "Quando o Minecraft abrir, a janela do launcher fica escondida.",
+  },
+] as const;
+
+const minecraftWindowModes = [
+  {
+    id: "fullscreen",
+    label: "Tela cheia",
+    description: "O Minecraft abre ocupando todo o monitor em tela cheia exclusiva.",
+  },
+  {
+    id: "windowed",
+    label: "Modo Janela",
+    description: "O Minecraft abre em uma janela padrão ajustável e redimensionável.",
+  },
+  {
+    id: "borderless",
+    label: "Tela Cheia Com Bordas",
+    description: "O Minecraft abre em janela maximizada mantendo a barra de tarefas acessível.",
   },
 ] as const;
 const appearancePresets = [
@@ -145,30 +175,30 @@ const appearancePresets = [
     label: "Light mode",
     description: "Cores claras com azul suave.",
     primaryColor: "#2563EB",
-    secondaryColor: "#14B8A6",
-    backgroundColor: "#EAF2FF",
-    mainColor: "#EEF6FF",
-    sidebarColor: "#DCEBFB",
-    rightPanelColor: "#E6F0FA",
-    cardColor: "#F8FBFF",
-    panelColor: "#EEF4FB",
+    secondaryColor: "#0284C7",
+    backgroundColor: "#F1F5F9",
+    mainColor: "#F8FAFC",
+    sidebarColor: "#FFFFFF",
+    rightPanelColor: "#FFFFFF",
+    cardColor: "#FFFFFF",
+    panelColor: "#F8FAFC",
     inputColor: "#FFFFFF",
-    borderColor: "#8EA7C3",
-    textColor: "#122033",
-    mutedTextColor: "#4B637D",
+    borderColor: "#CBD5E1",
+    textColor: "#0F172A",
+    mutedTextColor: "#475569",
     navActiveColor: "#2563EB",
-    buttonTextColor: "#F8FAFC",
-    backgroundOpacity: 0.72,
-    mainOpacity: 0.64,
-    surfaceOpacity: 0.66,
-    panelOpacity: 0.76,
-    inputOpacity: 0.96,
-    sidebarOpacity: 0.72,
-    rightPanelOpacity: 0.7,
-    navActiveOpacity: 0.18,
-    borderOpacity: 0.34,
-    backgroundImageOpacity: 0.16,
-    sidebarImageOpacity: 0.18,
+    buttonTextColor: "#FFFFFF",
+    backgroundOpacity: 1,
+    mainOpacity: 1,
+    surfaceOpacity: 1,
+    panelOpacity: 1,
+    inputOpacity: 1,
+    sidebarOpacity: 1,
+    rightPanelOpacity: 1,
+    navActiveOpacity: 0.15,
+    borderOpacity: 0.9,
+    backgroundImageOpacity: 0.12,
+    sidebarImageOpacity: 0.14,
   },
   {
     id: "emerald-cave",
@@ -296,6 +326,26 @@ const appearanceOpacityControls = [
   min: number;
 }>;
 
+const defaultNavOrder: PageId[] = [
+  "home",
+  "avatar",
+  "servers",
+  "library",
+  "explore",
+  "downloads",
+  "settings",
+];
+
+const sidebarNavMeta: Record<PageId, { label: string; icon: LucideIcon }> = {
+  home: { label: "Home", icon: Home },
+  avatar: { label: "Avatar", icon: UserRound },
+  servers: { label: "Servidores", icon: Server },
+  library: { label: "Minhas Instâncias", icon: Blocks },
+  explore: { label: "Biblioteca", icon: Compass },
+  downloads: { label: "Downloads", icon: Download },
+  settings: { label: "Configurações", icon: SettingsIcon },
+};
+
 export const SettingsPage = () => {
   const queryClient = useQueryClient();
   const dialog = useAppDialog();
@@ -317,6 +367,49 @@ export const SettingsPage = () => {
   const currentSettings = settings.data;
   const updateAppearance = (input: UpdateLauncherSettingsInput) => {
     updateSettings.mutate(input);
+  };
+
+  const currentNavOrder = useMemo(() => {
+    const custom = currentSettings?.sidebarNavOrder;
+    if (!custom || !Array.isArray(custom) || custom.length === 0) {
+      return defaultNavOrder;
+    }
+
+    const result: PageId[] = ["home"];
+    for (const id of custom) {
+      if (id !== "home" && defaultNavOrder.includes(id as PageId) && !result.includes(id as PageId)) {
+        result.push(id as PageId);
+      }
+    }
+    for (const id of defaultNavOrder) {
+      if (!result.includes(id)) {
+        result.push(id);
+      }
+    }
+    return result;
+  }, [currentSettings?.sidebarNavOrder]);
+
+  const moveSidebarNavItem = (index: number, direction: "up" | "down") => {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (index <= 0 || targetIndex <= 0 || targetIndex >= currentNavOrder.length) {
+      return;
+    }
+
+    const updated = [...currentNavOrder];
+    const source = updated[index];
+    const target = updated[targetIndex];
+    if (!source || !target) {
+      return;
+    }
+
+    updated[index] = target;
+    updated[targetIndex] = source;
+
+    updateAppearance({ sidebarNavOrder: updated });
+  };
+
+  const resetSidebarNavOrder = () => {
+    updateAppearance({ sidebarNavOrder: defaultNavOrder });
   };
   const applyAppearancePreset = (preset: AppearancePreset) => {
     const payload: UpdateLauncherSettingsInput = {
@@ -668,7 +761,7 @@ export const SettingsPage = () => {
                         description={item.description}
                         icon={Icon}
                         value={readAppearanceColor(item.key)}
-                        disabled={settings.isLoading || updateSettings.isPending}
+                        disabled={settings.isLoading}
                         onChange={(value) => updateAppearanceColor(item.key, value)}
                       />
                     );
@@ -689,7 +782,7 @@ export const SettingsPage = () => {
                       value={readAppearanceOpacity(item.key)}
                       min={item.min}
                       max={1}
-                      disabled={settings.isLoading || updateSettings.isPending}
+                      disabled={settings.isLoading}
                       onChange={(value) => updateAppearanceOpacity(item.key, value)}
                     />
                   ))}
@@ -708,7 +801,7 @@ export const SettingsPage = () => {
                     fileName={currentSettings?.backgroundImageName}
                     previewUrl={currentSettings?.backgroundImageDataUrl}
                     opacity={currentSettings?.backgroundImageOpacity ?? 0.28}
-                    disabled={settings.isLoading || updateSettings.isPending}
+                    disabled={settings.isLoading}
                     onFile={(event) => void handleAppearanceImage(event, "background")}
                     onClear={() => clearAppearanceImage("background")}
                     onOpacity={(backgroundImageOpacity) =>
@@ -721,11 +814,105 @@ export const SettingsPage = () => {
                     fileName={currentSettings?.sidebarImageName}
                     previewUrl={currentSettings?.sidebarImageDataUrl}
                     opacity={currentSettings?.sidebarImageOpacity ?? 0.22}
-                    disabled={settings.isLoading || updateSettings.isPending}
+                    disabled={settings.isLoading}
                     onFile={(event) => void handleAppearanceImage(event, "sidebar")}
                     onClear={() => clearAppearanceImage("sidebar")}
                     onOpacity={(sidebarImageOpacity) => updateAppearance({ sidebarImageOpacity })}
                   />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-[#0D1117]/70 p-4">
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                    <PanelLeft className="h-4 w-4 text-[#60A5FA]" />
+                    Ordem das abas da barra lateral
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={settings.isLoading || updateSettings.isPending}
+                    onClick={resetSidebarNavOrder}
+                    className="text-xs"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                    Ordem padrão
+                  </Button>
+                </div>
+                <p className="mb-4 text-xs text-[#94A3B8]">
+                  Personalize a ordem das abas na barra lateral esquerda. A aba Home permanece sempre fixa no topo.
+                </p>
+
+                <div className="space-y-2">
+                  {currentNavOrder.map((pageId, index) => {
+                    const meta = sidebarNavMeta[pageId] ?? { label: pageId, icon: Home };
+                    const Icon = meta.icon;
+                    const isHome = pageId === "home";
+                    const isFirstMovable = index === 1;
+                    const isLastMovable = index === currentNavOrder.length - 1;
+
+                    return (
+                      <div
+                        key={pageId}
+                        className={`flex items-center justify-between gap-3 rounded-xl border p-3 transition ${
+                          isHome
+                            ? "border-[#3B82F6]/30 bg-[#3B82F6]/10"
+                            : "border-white/10 bg-[#161B22]/80 hover:border-white/20"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`grid h-8 w-8 place-items-center rounded-lg ${
+                              isHome ? "bg-[#3B82F6]/20 text-[#60A5FA]" : "bg-white/5 text-[#94A3B8]"
+                            }`}
+                          >
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          <div>
+                            <span className="text-sm font-medium text-white">{meta.label}</span>
+                            {isHome ? (
+                              <span className="block text-[11px] text-[#60A5FA]">Início fixo do launcher</span>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {isHome ? (
+                          <Badge tone="blue" className="text-xs">
+                            <Lock className="mr-1 h-3 w-3 inline" />
+                            Fixo no topo
+                          </Badge>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              disabled={isFirstMovable || settings.isLoading || updateSettings.isPending}
+                              onClick={() => moveSidebarNavItem(index, "up")}
+                              title="Mover para cima"
+                              aria-label={`Mover ${meta.label} para cima`}
+                            >
+                              <ArrowUp className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              disabled={isLastMovable || settings.isLoading || updateSettings.isPending}
+                              onClick={() => moveSidebarNavItem(index, "down")}
+                              title="Mover para baixo"
+                              aria-label={`Mover ${meta.label} para baixo`}
+                            >
+                              <ArrowDown className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -737,10 +924,47 @@ export const SettingsPage = () => {
                 onClick={() => applyAppearancePreset(appearancePresets[0])}
               >
                 <RotateCcw className="h-4 w-4" />
-                Restaurar visual padrao
+                Restaurar visual padrão
               </Button>
             </div>
           ) : null}
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <div className="flex items-start justify-between gap-5">
+          <div className="flex items-center gap-3">
+            <Maximize2 className="h-5 w-5 text-[#60A5FA]" />
+            <div>
+              <h2 className="text-lg font-semibold text-white">Modo da janela do Minecraft</h2>
+              <p className="mt-1 text-sm leading-6 text-[#94A3B8]">
+                Escolha como você deseja que o Minecraft abra na tela (Tela cheia, Modo Janela ou Tela Cheia Com Bordas).
+              </p>
+            </div>
+          </div>
+          <Badge tone="slate">
+            {minecraftWindowModes.find((item) => item.id === settings.data?.minecraftWindowMode)?.label ??
+              "Modo Janela"}
+          </Badge>
+        </div>
+
+        <div className="mt-5 grid gap-3">
+          {minecraftWindowModes.map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              disabled={settings.isLoading || updateSettings.isPending}
+              onClick={() => updateSettings.mutate({ minecraftWindowMode: mode.id })}
+              className={`rounded-xl border px-4 py-3 text-left transition ${
+                (settings.data?.minecraftWindowMode ?? "windowed") === mode.id
+                  ? "border-[#60A5FA]/60 bg-[#3B82F6]/12"
+                  : "border-white/10 bg-[#0D1117]/70 hover:border-white/20"
+              }`}
+            >
+              <span className="text-sm font-semibold text-white">{mode.label}</span>
+              <span className="mt-1 block text-sm text-[#94A3B8]">{mode.description}</span>
+            </button>
+          ))}
         </div>
       </Card>
 
@@ -815,15 +1039,6 @@ export const SettingsPage = () => {
             className="w-full"
           />
         </div>
-      </Card>
-
-      <Card className="p-5">
-        <h2 className="text-lg font-semibold text-white">Dados locais</h2>
-        <p className="mt-2 text-sm leading-6 text-[#94A3B8]">
-          Instâncias, versões baixadas e conteúdo instalado ficam na pasta de dados do launcher.
-          Abra a pasta de uma instância por Minhas Instâncias para gerenciar mods, resourcepacks e
-          shaderpacks manualmente quando quiser.
-        </p>
       </Card>
     </div>
   );

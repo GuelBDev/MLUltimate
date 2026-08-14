@@ -7,6 +7,7 @@ import {
   History,
   Images,
   Map as MapIcon,
+  MoreVertical,
   Package,
   Palette,
   Play,
@@ -19,9 +20,11 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import instanceDefaultImage from "../assets/instance-default.png";
+import { ModpackUpdateModal } from "../components/instances/ModpackUpdateModal";
 import { LaunchErrorNotice } from "../components/launcher/LaunchErrorNotice";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -143,6 +146,7 @@ export const InstanceDetailPage = ({
   const [launchErrorLog, setLaunchErrorLog] = useState<string | null>(null);
   const [launchEvent, setLaunchEvent] = useState<LaunchEvent | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [updateTargetVersion, setUpdateTargetVersion] = useState<{ id: string; name: string } | null>(null);
   const [exportFolders, setExportFolders] =
     useState<ExportInstanceFolder[]>(defaultExportFolders);
   const effectiveSelectedLog =
@@ -159,6 +163,12 @@ export const InstanceDetailPage = ({
         relativePath: effectiveSelectedLog!,
       }),
     enabled: Boolean(effectiveSelectedLog),
+  });
+
+  const modpackUpdate = useQuery({
+    queryKey: ["modpack-update", current.id],
+    queryFn: () => launcherApi.checkModpackUpdate(current.id),
+    staleTime: 1000 * 60 * 5, // 5 min
   });
 
   const refresh = () => {
@@ -438,20 +448,48 @@ export const InstanceDetailPage = ({
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setExportFolders(defaultExportFolders);
-                setShareOpen(true);
-              }}
-            >
-              <Share2 className="h-4 w-4" />
-              Compartilhar
-            </Button>
-            <Button variant="secondary" onClick={() => openFolder.mutate(current.id)}>
-              <FolderOpen className="h-4 w-4" />
-              Pasta
-            </Button>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <Button variant="secondary" className="px-3" aria-label="Mais opções">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="end"
+                  className="z-50 min-w-[160px] overflow-hidden rounded-xl border border-white/10 bg-[#161b22] p-1.5 shadow-xl shadow-black/50"
+                >
+                  <DropdownMenu.Item
+                    onSelect={() => {
+                      setExportFolders(defaultExportFolders);
+                      setShareOpen(true);
+                    }}
+                    className="flex cursor-pointer select-none items-center gap-2 rounded-lg p-2 text-sm text-gray-300 outline-none hover:bg-white/10 focus:bg-white/10"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    Compartilhar
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={() => openFolder.mutate(current.id)}
+                    className="flex cursor-pointer select-none items-center gap-2 rounded-lg p-2 text-sm text-gray-300 outline-none hover:bg-white/10 focus:bg-white/10"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    Pasta
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+            {modpackUpdate.data?.hasUpdate ? (
+              <Button
+                onClick={() => setUpdateTargetVersion({
+                  id: modpackUpdate.data.newVersionId!,
+                  name: modpackUpdate.data.newVersionNumber || modpackUpdate.data.newVersionId!
+                })}
+                className="rounded-sm bg-orange-600 hover:bg-orange-500"
+              >
+                Atualizar Modpack
+              </Button>
+            ) : null}
             {runningInstances.isRunning(current.id) ? (
               <Button
                 onClick={() => void launcherApi.killInstance(current.id)}
@@ -555,6 +593,15 @@ export const InstanceDetailPage = ({
           </section>
         </div>
       ) : null}
+
+      <ModpackUpdateModal
+        instanceId={current.id}
+        isOpen={updateTargetVersion !== null}
+        onOpenChange={(open) => !open && setUpdateTargetVersion(null)}
+        newVersionId={updateTargetVersion?.id || ""}
+        newVersionNumber={updateTargetVersion?.name || ""}
+        autoUpdateEnabled={current.autoUpdateModpack ?? true}
+      />
 
       <div className="flex gap-5 overflow-x-auto border-b border-white/10">
         {sections.map((item) => (
@@ -783,9 +830,9 @@ export const InstanceDetailPage = ({
               <Button
                 variant="secondary"
                 disabled={installVersion.isPending || version.id === current.sourceVersionId}
-                onClick={() => installVersion.mutate(version.id)}
+                onClick={() => setUpdateTargetVersion({ id: version.id, name: version.fileName })}
               >
-                Instalar como nova
+                {version.id === current.sourceVersionId ? "Instalada" : "Atualizar"}
               </Button>
             </div>
           ))}

@@ -1,4 +1,5 @@
 import type {
+  AddCustomServerInput,
   ApplyOfficialSkinInput,
   AuthSession,
   ContentProjectDetails,
@@ -7,6 +8,7 @@ import type {
   ContentSearchResult,
   ContentType,
   CreateInstanceInput,
+  CustomServer,
   DownloadItem,
   InstallContentAsInstanceInput,
   InstallContentInput,
@@ -36,10 +38,12 @@ import type {
   SaveNameMCSkinInput,
   ServerStatusLookupInput,
   ServerStatusResult,
+  OnlineLibraryServer,
   SkinSearchResult,
   SwitchAccountInput,
   SystemMemoryInfo,
   UpdaterState,
+  UpdateCustomServerInput,
   UpdateLauncherSettingsInput,
   UpdateInstanceInput,
 } from "./launcher";
@@ -47,6 +51,7 @@ import type {
 declare global {
   interface Window {
     mlultimate: {
+      platform: NodeJS.Platform;
       auth: {
         getSession: () => Promise<AuthSession>;
         listAccounts: () => Promise<SavedAuthAccount[]>;
@@ -72,6 +77,8 @@ declare global {
         update: (input: UpdateInstanceInput) => Promise<LauncherInstance>;
         remove: (instanceId: string) => Promise<void>;
         openFolder: (instanceId: string) => Promise<void>;
+        checkModpackUpdate: (instanceId: string) => Promise<{ hasUpdate: boolean; newVersionId?: string; newVersionNumber?: string }>;
+        updateModpack: (instanceId: string, mode: "in-place" | "new-instance", newVersionId: string) => Promise<LauncherInstance>;
         selectIcon: () => Promise<InstanceIconSelection | null>;
         importInstance: (input: ImportInstanceInput) => Promise<LauncherInstance | null>;
         exportInstance: (input: ExportInstanceInput) => Promise<ExportInstanceResult | null>;
@@ -83,6 +90,14 @@ declare global {
           instanceId: string;
           folder: "logs" | "screenshots" | "saves" | "mods" | "resourcepacks" | "shaderpacks";
         }) => Promise<void>;
+      };
+      servers: {
+        fetchLibrary: () => Promise<OnlineLibraryServer[]>;
+        status: (input: ServerStatusLookupInput) => Promise<ServerStatusResult[]>;
+        listCustom: () => Promise<CustomServer[]>;
+        addCustom: (input: AddCustomServerInput) => Promise<CustomServer>;
+        updateCustom: (input: UpdateCustomServerInput) => Promise<CustomServer>;
+        removeCustom: (id: string) => Promise<void>;
       };
       content: {
         search: (input: ContentSearchInput) => Promise<ContentSearchResult[]>;

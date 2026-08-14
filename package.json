@@ -1,8 +1,8 @@
 {
   "name": "mlultimate-launcher",
   "private": true,
-  "version": "3.2.5",
-  "description": "MLUltimate Launcher 3.2.5 desktop launcher for Minecraft.",
+  "version": "3.3.5",
+  "description": "MLUltimate Launcher 3.3.5 desktop launcher for Minecraft.",
   "author": "MLUltimate",
   "desktopName": "MLUltimate Launcher",
   "repository": {
@@ -57,12 +57,20 @@
       "icon": "build/icon.ico",
       "target": [
         {
-          "target": "nsis",
+          "target": "nsis-web",
           "arch": [
             "x64"
           ]
         }
       ]
+    },
+    "nsisWeb": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "appPackageUrl": "https://github.com/GuelBDev/MLUltimate/releases/download/v${version}"
     },
     "nsis": {
       "oneClick": true,
@@ -118,6 +126,7 @@
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.16",
+    "@radix-ui/react-dropdown-menu": "^2.1.24",
     "@radix-ui/react-progress": "^1.1.9",
     "@radix-ui/react-scroll-area": "^1.2.11",
     "@radix-ui/react-select": "^2.3.0",
@@ -132,6 +141,7 @@
     "electron-updater": "^6.8.9",
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.17.0",
+    "prismarine-nbt": "^2.8.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-icons": "^5.6.0",

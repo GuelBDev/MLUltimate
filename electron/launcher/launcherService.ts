@@ -10,8 +10,9 @@ import { OfflineAuthService } from "../auth/offlineAuthService";
 import { InstanceService } from "../instances/instanceService";
 import { JavaRuntimeService } from "../java/javaRuntimeService";
 import { MinecraftVersionService } from "../minecraft/minecraftVersionService";
+import { ServersDatService } from "../minecraft/serversDatService";
 import { repairLaunchCompatibility } from "./launchCompatibility";
-import type { LauncherInstance, LaunchEvent, LaunchRequest } from "../../src/types/launcher";
+import type { LauncherInstance, LaunchEvent, LaunchRequest, MinecraftWindowMode } from "../../src/types/launcher";
 
 type EmitLaunchEvent = (event: LaunchEvent) => void;
 type LaunchState = {
@@ -34,6 +35,7 @@ export class LauncherService {
     private readonly minecraftVersions: MinecraftVersionService,
     private readonly avatar: AvatarService,
     private readonly emit: EmitLaunchEvent,
+    private readonly getWindowMode?: () => MinecraftWindowMode,
   ) {}
 
   async launch(request: LaunchRequest) {
@@ -58,7 +60,35 @@ export class LauncherService {
     });
 
     try {
-      const instance = await this.instances.applyModpackRuntimeRecommendations(
+      let instance = await this.instances.getById(request.instanceId);
+
+      if (instance.autoUpdateModpack && (instance.sourceProvider === "modrinth" || instance.sourceProvider === "curseforge")) {
+        this.emit({
+          id: request.instanceId,
+          type: "step",
+          message: "Buscando atualizações de modpack...",
+          progress: 5,
+          createdAt: new Date().toISOString(),
+        });
+        
+        try {
+          const update = await this.instances.checkModpackUpdate(instance.id);
+          if (update.hasUpdate && update.newVersionId) {
+             this.emit({
+               id: request.instanceId,
+               type: "step",
+               message: `Baixando nova versão do modpack (${update.newVersionNumber || update.newVersionId})...`,
+               progress: 8,
+               createdAt: new Date().toISOString(),
+             });
+             await this.instances.updateModpack(instance.id, "in-place", update.newVersionId);
+          }
+        } catch (e) {
+           console.warn("Falha ao atualizar modpack automaticamente antes de iniciar", e);
+        }
+      }
+
+      instance = await this.instances.applyModpackRuntimeRecommendations(
         request.instanceId,
       );
       const removedPvpArtifacts = cleanupLegacyPvpKitArtifacts(instance);
@@ -351,9 +381,34 @@ export class LauncherService {
           replacePlaceholders(argument, replacements),
         )
       : null;
-    const serverArgs = request.server
-      ? ["--server", request.server.host, "--port", String(request.server.port ?? 25565)]
+    let actualHost = request.server?.host?.trim();
+    let actualPort = request.server?.port ?? 25565;
+
+    if (actualHost && actualHost.includes(":")) {
+      const hParts = actualHost.split(":");
+      actualHost = hParts[0]?.trim() || actualHost;
+      const parsedPort = hParts[1] ? parseInt(hParts[1], 10) : NaN;
+      actualPort = !isNaN(parsedPort) ? parsedPort : actualPort;
+    }
+
+    const isModernVersion = parseFloat(instance.minecraftVersion.replace("1.", "")) >= 20;
+    const fullServerHost = actualPort === 25565 ? (actualHost || "") : `${actualHost}:${actualPort}`;
+
+    const serverArgs = request.server && actualHost
+      ? (isModernVersion 
+          ? ["--quickPlayMultiplayer", fullServerHost]
+          : ["--server", actualHost, "--port", String(actualPort)])
       : [];
+
+    if (request.server && actualHost) {
+      try {
+        const serverName = request.server.name?.trim() || actualHost || "Servidor do MLUltimate";
+        await ServersDatService.addServer(instance.gameDir, serverName, fullServerHost);
+      } catch (e) {
+        console.warn("Falha ao adicionar o servidor no servers.dat:", e);
+      }
+    }
+
     const gameArgs = [
       ...(legacyLoaderGameArgs ?? [
         ...vanillaGameArgs,
@@ -382,6 +437,20 @@ export class LauncherService {
       progress: 74,
       createdAt: new Date().toISOString(),
     });
+    const windowMode = this.getWindowMode ? this.getWindowMode() : "windowed";
+    normalizeMinecraftWindowOptions(instance.gameDir, windowMode);
+
+    if (windowMode === "fullscreen") {
+      if (!gameArgs.includes("--fullscreen")) {
+        gameArgs.push("--fullscreen");
+      }
+    } else {
+      const fsIdx = gameArgs.indexOf("--fullscreen");
+      if (fsIdx !== -1) {
+        gameArgs.splice(fsIdx, 1);
+      }
+    }
+
     const mainClass =
       loaderProfile?.mainClass ?? lightweightProfile?.mainClass ?? versionJson.mainClass;
     const launchArgs = [...jvmArgs, mainClass, ...gameArgs];
@@ -407,7 +476,7 @@ export class LauncherService {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: false,
       });
-      keepMinecraftWindowResizable(child.pid);
+      keepMinecraftWindowResizable(child.pid, windowMode);
       launchState.child = child;
       const output: string[] = [];
       const rememberOutput = (chunk: Buffer) => {
@@ -944,27 +1013,29 @@ const readInstanceJvmArgs = (gameDir: string) => {
   }
 };
 
-const normalizeMinecraftWindowOptions = (gameDir: string) => {
+const normalizeMinecraftWindowOptions = (gameDir: string, windowMode: MinecraftWindowMode = "windowed") => {
   const optionsPath = path.join(gameDir, "options.txt");
 
   try {
     const lines = existsSync(optionsPath)
       ? readFileSync(optionsPath, "utf8").split(/\r?\n/)
       : [];
+    const isFullscreen = windowMode === "fullscreen";
+    const targetValue = isFullscreen ? "fullscreen:true" : "fullscreen:false";
     let wroteFullscreen = false;
     const nextLines = lines
       .filter((line, index) => line || index < lines.length - 1)
       .map((line) => {
         if (/^fullscreen:/i.test(line)) {
           wroteFullscreen = true;
-          return "fullscreen:false";
+          return targetValue;
         }
 
         return line;
       });
 
     if (!wroteFullscreen) {
-      nextLines.push("fullscreen:false");
+      nextLines.push(targetValue);
     }
 
     writeFileSync(optionsPath, `${nextLines.join("\n")}\n`, "utf8");
@@ -973,7 +1044,7 @@ const normalizeMinecraftWindowOptions = (gameDir: string) => {
   }
 };
 
-const keepMinecraftWindowResizable = (pid?: number) => {
+const keepMinecraftWindowResizable = (pid?: number, windowMode: MinecraftWindowMode = "windowed") => {
   if (process.platform !== "win32" || !pid) {
     return;
   }
@@ -981,7 +1052,7 @@ const keepMinecraftWindowResizable = (pid?: number) => {
   const helperDir = path.join(app.getPath("userData"), "helpers");
   const helperPath = path.join(helperDir, "minecraft-window-repair.ps1");
   const script = `
-param([int]$TargetPid)
+param([int]$TargetPid, [string]$TargetWindowMode = "windowed")
 $code = @'
 using System;
 using System.Runtime.InteropServices;
@@ -998,60 +1069,68 @@ public static class NativeWindow {
   public static extern bool IsWindowVisible(IntPtr hWnd);
 
   [DllImport("user32.dll")]
-  public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
-
-  [DllImport("user32.dll")]
-  public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
-
-  [DllImport("user32.dll")]
   public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
-  [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr", SetLastError = true)]
+  [DllImport("user32.dll", CharSet = CharSet.Auto)]
+  public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+  [DllImport("user32.dll", CharSet = CharSet.Auto)]
+  public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+  [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")]
   public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
 
-  [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
+  [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")]
   public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
-  [DllImport("user32.dll", SetLastError = true)]
+  [DllImport("user32.dll")]
   public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
-  [DllImport("user32.dll", SetLastError = true)]
-  public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-
-  [DllImport("user32.dll", SetLastError = true)]
-  public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
-
-  [DllImport("user32.dll", SetLastError = true)]
-  public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
-
-  [DllImport("user32.dll", SetLastError = true)]
-  public static extern IntPtr GetSystemMenu(IntPtr hWnd, bool bRevert);
-
-  [DllImport("user32.dll", SetLastError = true)]
-  public static extern bool EnableMenuItem(IntPtr hMenu, uint uIDEnableItem, uint uEnable);
-
-  [DllImport("user32.dll", SetLastError = true)]
+  [DllImport("user32.dll")]
   public static extern bool DrawMenuBar(IntPtr hWnd);
 
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetSystemMenu(IntPtr hWnd, bool bRevert);
+
+  [DllImport("user32.dll")]
+  public static extern bool EnableMenuItem(IntPtr hMenu, uint uIDEnableItem, uint uEnable);
+
+  [DllImport("user32.dll")]
+  public static extern bool GetWindowRect(IntPtr hWnd, ref RECT lpRect);
+
+  [DllImport("user32.dll")]
+  public static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint dwFlags);
+
+  [DllImport("user32.dll", CharSet = CharSet.Auto)]
+  public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+  [DllImport("user32.dll")]
+  public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
   public static IntPtr[] FindMinecraftWindows() {
-    var windows = new List<IntPtr>();
+    var handles = new List<IntPtr>();
     EnumWindows((hWnd, lParam) => {
-      if (!IsWindowVisible(hWnd)) return true;
-      var titleBuilder = new StringBuilder(512);
-      var classBuilder = new StringBuilder(256);
-      GetWindowText(hWnd, titleBuilder, titleBuilder.Capacity);
-      GetClassName(hWnd, classBuilder, classBuilder.Capacity);
-      var title = titleBuilder.ToString();
-      var className = classBuilder.ToString();
-      if (
-        title.IndexOf("Minecraft", StringComparison.OrdinalIgnoreCase) >= 0 ||
-        className.IndexOf("LWJGL", StringComparison.OrdinalIgnoreCase) >= 0
-      ) {
-        windows.Add(hWnd);
+      if (!IsWindowVisible(hWnd)) {
+        return true;
       }
+
+      var className = new StringBuilder(256);
+      GetClassName(hWnd, className, className.Capacity);
+      var text = new StringBuilder(256);
+      GetWindowText(hWnd, text, text.Capacity);
+      var classStr = className.ToString();
+      var titleStr = text.ToString();
+
+      if (classStr.IndexOf("GLFW30", StringComparison.OrdinalIgnoreCase) >= 0 ||
+          classStr.IndexOf("SunAwtFrame", StringComparison.OrdinalIgnoreCase) >= 0 ||
+          titleStr.IndexOf("Minecraft", StringComparison.OrdinalIgnoreCase) >= 0) {
+        handles.Add(hWnd);
+      }
+
       return true;
     }, IntPtr.Zero);
-    return windows.ToArray();
+
+    return handles.ToArray();
   }
 }
 
@@ -1063,35 +1142,41 @@ public struct RECT {
   public int Bottom;
 }
 
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
 public struct MONITORINFO {
   public int cbSize;
   public RECT rcMonitor;
   public RECT rcWork;
-  public uint dwFlags;
+  public int dwFlags;
 }
 '@
-try { Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue } catch {}
+
+try {
+  Add-Type -TypeDefinition $code -ErrorAction Stop
+} catch {}
+
 $GWL_STYLE = -16
+$WS_OVERLAPPED = 0x00000000L
+$WS_CAPTION = 0x00C00000L
+$WS_SYSMENU = 0x00080000L
+$WS_THICKFRAME = 0x00040000L
+$WS_MINIMIZEBOX = 0x00020000L
+$WS_MAXIMIZEBOX = 0x00010000L
+$WS_OVERLAPPEDWINDOW = ($WS_OVERLAPPED -bor $WS_CAPTION -bor $WS_SYSMENU -bor $WS_THICKFRAME -bor $WS_MINIMIZEBOX -bor $WS_MAXIMIZEBOX)
 $WS_POPUP = 0x80000000L
-$WS_CAPTION = 0x00C00000
-$WS_SYSMENU = 0x00080000
-$WS_THICKFRAME = 0x00040000
-$WS_MINIMIZEBOX = 0x00020000
-$WS_MAXIMIZEBOX = 0x00010000
-$WS_OVERLAPPEDWINDOW = $WS_CAPTION -bor $WS_SYSMENU -bor $WS_THICKFRAME -bor $WS_MINIMIZEBOX -bor $WS_MAXIMIZEBOX
-$MONITOR_DEFAULTTONEAREST = 0x00000002
-$MF_BYCOMMAND = 0x00000000
-$MF_ENABLED = 0x00000000
+$SWP_FRAMECHANGED = 0x0020
+$SWP_NOMOVE = 0x0002
+$SWP_NOSIZE = 0x0001
+$SWP_NOZORDER = 0x0004
+$SWP_NOACTIVATE = 0x0010
+$SW_MAXIMIZE = 3
+$flags = $SWP_FRAMECHANGED -bor $SWP_NOMOVE -bor $SWP_NOSIZE -bor $SWP_NOZORDER -bor $SWP_NOACTIVATE
 $SC_SIZE = 0xF000
 $SC_MOVE = 0xF010
 $SC_MAXIMIZE = 0xF030
-$SWP_NOSIZE = 0x0001
-$SWP_NOMOVE = 0x0002
-$SWP_NOZORDER = 0x0004
-$SWP_FRAMECHANGED = 0x0020
-$SWP_NOOWNERZORDER = 0x0200
-$flags = $SWP_NOSIZE -bor $SWP_NOMOVE -bor $SWP_NOZORDER -bor $SWP_FRAMECHANGED -bor $SWP_NOOWNERZORDER
+$MF_BYCOMMAND = 0x00000000
+$MF_ENABLED = 0x00000000
+$MONITOR_DEFAULTTONEAREST = 2
 $emptyTicks = 0
 
 while ($true) {
@@ -1127,15 +1212,22 @@ while ($true) {
           [Math]::Abs($windowRect.Bottom - $monitorInfo.rcMonitor.Bottom) -le $tolerance
       }
 
-      $nextStyle = $style -bor $WS_OVERLAPPEDWINDOW
-      if (-not $isFullscreen) {
-        $nextStyle = $nextStyle -band (-bnot $WS_POPUP)
+      if ($TargetWindowMode -ne "fullscreen") {
+        $nextStyle = $style -bor $WS_OVERLAPPEDWINDOW
+        if (-not $isFullscreen) {
+          $nextStyle = $nextStyle -band (-bnot $WS_POPUP)
+        }
+
+        if ($nextStyle -ne $style) {
+          [void][NativeWindow]::SetWindowLongPtr($handle, $GWL_STYLE, [IntPtr]::new($nextStyle))
+          [void][NativeWindow]::SetWindowPos($handle, [IntPtr]::Zero, 0, 0, 0, 0, $flags)
+        }
+
+        if ($TargetWindowMode -eq "borderless" -and -not $isFullscreen) {
+          [void][NativeWindow]::ShowWindow($handle, $SW_MAXIMIZE)
+        }
       }
 
-      if ($nextStyle -ne $style) {
-        [void][NativeWindow]::SetWindowLongPtr($handle, $GWL_STYLE, [IntPtr]::new($nextStyle))
-        [void][NativeWindow]::SetWindowPos($handle, [IntPtr]::Zero, 0, 0, 0, 0, $flags)
-      }
       [void][NativeWindow]::DrawMenuBar($handle)
     }
   }
@@ -1172,6 +1264,7 @@ while ($true) {
         "-File",
         helperPath,
         String(pid),
+        windowMode,
       ],
       {
         detached: true,

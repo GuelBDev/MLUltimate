@@ -1,10 +1,12 @@
 import type {
+  AddCustomServerInput,
   ApplyOfficialSkinInput,
   AuthSession,
   ContentProjectInput,
   ContentSearchInput,
   ContentType,
   CreateInstanceInput,
+  CustomServer,
   InstallContentInput,
   InstallContentAsInstanceInput,
   InstalledContentUpdateInfo,
@@ -25,7 +27,9 @@ import type {
   SaveNameMCSkinInput,
   ServerStatusLookupInput,
   ServerStatusResult,
+  OnlineLibraryServer,
   UpdaterState,
+  UpdateCustomServerInput,
   UpdateLauncherSettingsInput,
   UpdateInstanceInput,
   SystemMemoryInfo,
@@ -47,6 +51,7 @@ const defaultSettings: LauncherSettings = {
   language: "pt-BR",
   languageSelected: false,
   minecraftOpenAction: "none",
+  minecraftWindowMode: "windowed",
   appearancePreset: "night-dark",
   primaryColor: "#3B82F6",
   secondaryColor: "#60A5FA",
@@ -183,6 +188,31 @@ export const launcherApi = {
     return window.mlultimate.instances.list();
   },
 
+  fetchServerLibrary: async (): Promise<OnlineLibraryServer[]> => {
+    if (!hasBridge()) return [];
+    return window.mlultimate.servers.fetchLibrary();
+  },
+
+  listCustomServers: async (): Promise<CustomServer[]> => {
+    if (!hasBridge()) return [];
+    return window.mlultimate.servers.listCustom();
+  },
+
+  addCustomServer: async (input: AddCustomServerInput): Promise<CustomServer> => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.servers.addCustom(input);
+  },
+
+  updateCustomServer: async (input: UpdateCustomServerInput): Promise<CustomServer> => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.servers.updateCustom(input);
+  },
+
+  removeCustomServer: async (id: string) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.servers.removeCustom(id);
+  },
+
   createInstance: async (input: CreateInstanceInput) => {
     if (!hasBridge()) throw desktopOnly();
     return window.mlultimate.instances.create(input);
@@ -201,6 +231,16 @@ export const launcherApi = {
   openInstanceFolder: async (instanceId: string) => {
     if (!hasBridge()) throw desktopOnly();
     return window.mlultimate.instances.openFolder(instanceId);
+  },
+
+  checkModpackUpdate: async (instanceId: string): Promise<{ hasUpdate: boolean; newVersionId?: string; newVersionNumber?: string }> => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.checkModpackUpdate(instanceId);
+  },
+
+  updateModpack: async (instanceId: string, mode: "in-place" | "new-instance", newVersionId: string) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.updateModpack(instanceId, mode, newVersionId);
   },
 
   selectInstanceIcon: async () => {

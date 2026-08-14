@@ -12,8 +12,11 @@ import { DownloadManager } from "../downloads/downloadManager";
 import { MinecraftVersionService } from "../minecraft/minecraftVersionService";
 import { getLauncherDataSubpath } from "../utils/launcherPaths";
 import type {
+  AddCustomServerInput,
   ContentProvider,
+  ContentType,
   CreateInstanceInput,
+  CustomServer,
   ExportInstanceFolder,
   ExportInstanceInput,
   ExportInstanceResult,
@@ -21,6 +24,7 @@ import type {
   InstanceIconSelection,
   LauncherInstance,
   LoaderType,
+  UpdateCustomServerInput,
   UpdateInstanceInput,
 } from "../../src/types/launcher";
 
@@ -32,6 +36,7 @@ const CURSEFORGE_PROXY_URL =
 const MODRINTH_API = "https://api.modrinth.com/v2";
 const IRIS_PROJECT_ID = "YL57xq9U";
 const SODIUM_PROJECT_ID = "AANobbMI";
+const FABRIC_API_PROJECT_ID = "P7dR8mSH";
 const MODPACK_LOCK_FILE = "mlultimate-modpack-lock.json";
 const DELETED_INSTANCES_DIR = ".mlultimate-trash";
 
@@ -53,6 +58,7 @@ const createInstanceSchema = z.object({
   javaPath: z.string().optional(),
   iconPath: z.string().optional(),
   contentManagementEnabled: z.boolean().optional().default(true),
+  autoUpdateModpack: z.boolean().optional().default(true),
 });
 
 const updateInstanceSchema = z.object({
@@ -63,6 +69,7 @@ const updateInstanceSchema = z.object({
   iconPath: z.string().optional(),
   loaderVersion: z.string().trim().min(1).optional(),
   contentManagementEnabled: z.boolean().optional(),
+  autoUpdateModpack: z.boolean().optional(),
 });
 
 const importInstanceSchema = z.object({
@@ -149,13 +156,7 @@ const curseForgeFileSchema = z.object({
   }),
 });
 
-const curseForgeProjectClassSchema = z.object({
-  data: z.object({
-    id: z.number(),
-    name: z.string(),
-    classId: z.number().optional(),
-  }),
-});
+
 
 const modrinthVersionSchema = z.object({
   files: z.array(
@@ -168,8 +169,18 @@ const modrinthVersionSchema = z.object({
 });
 
 const modrinthInstallVersionSchema = z.object({
-  id: z.string(),
-  name: z.string(),
+  id: z.string().min(1),
+  name: z.string().min(1),
+  version_number: z.string().optional(),
+  game_versions: z.array(z.string()).default([]),
+  loaders: z.array(z.string()).default([]),
+  dependencies: z.array(
+    z.object({
+      version_id: z.string().nullable().optional(),
+      project_id: z.string().nullable().optional(),
+      dependency_type: z.string().optional(),
+    }),
+  ).optional(),
   files: z.array(
     z.object({
       url: z.string().url(),
@@ -209,6 +220,7 @@ type InstanceRow = {
   game_dir: string;
   icon_path?: string | null;
   content_management_enabled?: number;
+  auto_update_modpack?: number;
   source_provider?: ContentProvider | null;
   source_project_id?: string | null;
   source_version_id?: string | null;
@@ -220,18 +232,130 @@ type InstanceRow = {
   updated_at: string;
 };
 
+type CustomServerRow = {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  requires_microsoft: number;
+  preferred_instance_id?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const rowToCustomServer = (row: CustomServerRow): CustomServer => ({
+  id: row.id,
+  name: row.name,
+  host: row.host,
+  port: row.port,
+  requiresMicrosoft: Boolean(row.requires_microsoft),
+  preferredInstanceId: row.preferred_instance_id ?? undefined,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
 export class InstanceService {
   private instancesRoot = getLauncherDataSubpath("Instances");
-  private readonly curseForgeProjectTypeCache = new Map<
-    number,
-    "mod" | "datapack" | "resourcepack" | "shader"
-  >();
+
 
   constructor(
     private readonly database: LauncherDatabase,
     private readonly minecraftVersions: MinecraftVersionService,
     private readonly downloads: DownloadManager,
   ) {}
+
+  async listCustomServers(): Promise<CustomServer[]> {
+    const rows = this.database.all<CustomServerRow>(
+      "SELECT * FROM custom_servers ORDER BY created_at DESC",
+    );
+    return rows.map(rowToCustomServer);
+  }
+
+  async addCustomServer(input: AddCustomServerInput): Promise<CustomServer> {
+    let cleanHost = input.host.trim();
+    let port = input.port ?? 25565;
+
+    if (cleanHost.includes(":")) {
+      const parts = cleanHost.split(":");
+      cleanHost = parts[0]?.trim() || cleanHost;
+      const parsedPort = parts[1] ? parseInt(parts[1], 10) : NaN;
+      if (!isNaN(parsedPort)) {
+        port = parsedPort;
+      }
+    }
+
+    const existing = this.database.get<CustomServerRow>(
+      "SELECT * FROM custom_servers WHERE LOWER(host) = LOWER(?) AND port = ?",
+      [cleanHost, port],
+    );
+    if (existing) {
+      return rowToCustomServer(existing);
+    }
+
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const serverName = input.name.trim() || cleanHost;
+
+    this.database.run(
+      `INSERT INTO custom_servers (id, name, host, port, requires_microsoft, preferred_instance_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        serverName,
+        cleanHost,
+        port,
+        input.requiresMicrosoft ? 1 : 0,
+        input.preferredInstanceId ?? null,
+        now,
+        now,
+      ],
+    );
+
+    const row = this.database.get<CustomServerRow>(
+      "SELECT * FROM custom_servers WHERE id = ?",
+      [id],
+    );
+    if (!row) throw new Error("Falha ao salvar servidor customizado.");
+    return rowToCustomServer(row);
+  }
+
+  async updateCustomServer(input: UpdateCustomServerInput): Promise<CustomServer> {
+    const current = this.database.get<CustomServerRow>(
+      "SELECT * FROM custom_servers WHERE id = ?",
+      [input.id],
+    );
+    if (!current) throw new Error("Servidor não encontrado.");
+
+    const now = new Date().toISOString();
+    const name = input.name !== undefined ? input.name.trim() : current.name;
+    const host = input.host !== undefined ? input.host.trim() : current.host;
+    const port = input.port !== undefined ? input.port : current.port;
+    const requiresMicrosoft =
+      input.requiresMicrosoft !== undefined
+        ? input.requiresMicrosoft ? 1 : 0
+        : current.requires_microsoft;
+    const preferredInstanceId =
+      (input.preferredInstanceId !== undefined
+        ? input.preferredInstanceId
+        : current.preferred_instance_id) ?? null;
+
+    this.database.run(
+      `UPDATE custom_servers
+       SET name = ?, host = ?, port = ?, requires_microsoft = ?, preferred_instance_id = ?, updated_at = ?
+       WHERE id = ?`,
+      [name, host, port, requiresMicrosoft, preferredInstanceId, now, input.id],
+    );
+
+    const updated = this.database.get<CustomServerRow>(
+      "SELECT * FROM custom_servers WHERE id = ?",
+      [input.id],
+    );
+    return rowToCustomServer(updated!);
+  }
+
+  async removeCustomServer(id: string): Promise<void> {
+    this.database.run("DELETE FROM custom_servers WHERE id = ?", [id]);
+  }
 
   async create(input: CreateInstanceInput): Promise<LauncherInstance> {
     const parsed = createInstanceSchema.parse(input);
@@ -258,11 +382,9 @@ export class InstanceService {
     );
 
     this.database.run(
-      `
-      INSERT INTO instances
-        (id, name, minecraft_version, loader, loader_version, ram_mb, java_path, game_dir, icon_path, content_management_enabled, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
+      `INSERT INTO instances 
+        (id, name, minecraft_version, loader, loader_version, ram_mb, java_path, game_dir, icon_path, content_management_enabled, auto_update_modpack, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         parsed.name,
@@ -274,6 +396,7 @@ export class InstanceService {
         gameDir,
         iconPath,
         parsed.contentManagementEnabled ? 1 : 0,
+        parsed.autoUpdateModpack ? 1 : 0,
         now,
         now,
       ],
@@ -414,11 +537,10 @@ export class InstanceService {
     const iconPath = parsed.iconPath
       ? await copyInstanceIcon(parsed.iconPath, current.gameDir)
       : current.iconPath ?? null;
-
     this.database.run(
       `
       UPDATE instances
-      SET name = ?, ram_mb = ?, java_path = ?, icon_path = ?, loader_version = ?, content_management_enabled = ?, updated_at = ?
+      SET name = ?, ram_mb = ?, java_path = ?, icon_path = ?, loader_version = ?, content_management_enabled = ?, auto_update_modpack = ?, updated_at = ?
       WHERE id = ?
       `,
       [
@@ -432,12 +554,242 @@ export class InstanceService {
           current.minecraftVersion,
         ) ?? null,
         (parsed.contentManagementEnabled ?? current.contentManagementEnabled) ? 1 : 0,
+        (parsed.autoUpdateModpack ?? current.autoUpdateModpack) ? 1 : 0,
         new Date().toISOString(),
         parsed.id,
       ],
     );
 
     return this.getById(parsed.id);
+  }
+
+  async checkModpackUpdate(id: string) {
+    const instance = await this.getById(id);
+    if (!instance.sourceProjectId || !instance.sourceVersionId) {
+      return { hasUpdate: false };
+    }
+
+    if (instance.sourceProvider === "curseforge") {
+      const response = await this.fetchCurseForge(
+        `/mods/${instance.sourceProjectId}/files?pageSize=50`,
+        "Verificar atualizações do modpack CurseForge",
+      );
+
+      if (!response.ok) return { hasUpdate: false };
+
+      const files = z
+        .object({
+          data: z.array(
+            z.object({
+              id: z.number(),
+              fileName: z.string(),
+              gameVersions: z.array(z.string()).default([]),
+            }),
+          ),
+        })
+        .parse(await response.json()).data;
+
+      let compatibleFiles = files.filter(
+        (f) =>
+          f.gameVersions.includes(instance.minecraftVersion) &&
+          f.gameVersions.some((v) => {
+            const normalized = v.toLowerCase();
+            if (instance.loader === "iris" || instance.loader === "iris-sodium") {
+              return normalized === "fabric" || normalized === "quilt";
+            }
+            return normalized === instance.loader.toLowerCase();
+          }),
+      );
+
+      if (compatibleFiles.length === 0) {
+        compatibleFiles = files.filter((f) => f.gameVersions.includes(instance.minecraftVersion));
+      }
+
+      const latest = compatibleFiles.find((f) => f.fileName.endsWith(".zip")) || compatibleFiles[0];
+      if (!latest) return { hasUpdate: false };
+
+      if (latest.id.toString() !== instance.sourceVersionId) {
+        return {
+          hasUpdate: true,
+          newVersionId: latest.id.toString(),
+          newVersionNumber: latest.fileName,
+        };
+      }
+
+      return { hasUpdate: false };
+    }
+
+    if (instance.sourceProvider === "modrinth") {
+
+    const response = await fetchWithElectronNet(
+      `${MODRINTH_API}/project/${instance.sourceProjectId}/version`,
+      "Verificar atualizações do modpack",
+    );
+
+    if (!response.ok) {
+      return { hasUpdate: false };
+    }
+
+    const versions = z.array(modrinthInstallVersionSchema).parse(await response.json());
+    
+    const compatibleVersions = versions.filter(
+      (v) =>
+        v.game_versions.includes(instance.minecraftVersion) &&
+        v.loaders.includes(
+          instance.loader === "iris" || instance.loader === "iris-sodium"
+            ? "fabric"
+            : instance.loader,
+        ),
+    );
+
+    const latest = compatibleVersions[0] || versions[0];
+    if (!latest) return { hasUpdate: false };
+
+    if (latest.id !== instance.sourceVersionId) {
+      return {
+        hasUpdate: true,
+        newVersionId: latest.id,
+        newVersionNumber: latest.version_number,
+      };
+    }
+    
+    }
+    
+    return { hasUpdate: false };
+  }
+
+  async updateModpack(id: string, mode: "in-place" | "new-instance", newVersionId: string) {
+    const instance = await this.getById(id);
+    if (!instance.sourceProjectId) {
+      throw new Error("Esta instância não possui projeto Modrinth ou CurseForge atrelado.");
+    }
+
+    if (mode === "in-place") {
+      const modsDir = path.join(instance.gameDir, "mods");
+      await this.deletePathWithRetries(modsDir).catch(() => undefined);
+      
+      if (instance.sourceProvider === "curseforge") {
+        const fileResponse = await this.fetchCurseForge(
+          `/mods/${instance.sourceProjectId}/files/${newVersionId}`,
+          "Buscar arquivo de atualização CurseForge",
+        );
+        if (!fileResponse.ok) {
+          throw new Error("Não foi possível buscar os dados da atualização no CurseForge.");
+        }
+        
+        const file = z
+          .object({ data: z.object({ downloadUrl: z.string().nullable(), fileName: z.string() }) })
+          .parse(await fileResponse.json()).data;
+          
+        if (!file.downloadUrl) {
+          throw new Error("CurseForge não liberou a URL de download da atualização.");
+        }
+        
+        const zipPath = path.join(instance.gameDir, file.fileName);
+        await this.downloads.download({
+          url: file.downloadUrl,
+          destination: zipPath,
+          label: `Atualizando Modpack ${instance.name}`,
+        });
+        
+        const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-update-"));
+        try {
+          await extractArchive(zipPath, tempDir);
+          const curseForgeManifestPath = path.join(tempDir, "manifest.json");
+          
+          if (existsSync(curseForgeManifestPath)) {
+            const manifest = JSON.parse(await readFile(curseForgeManifestPath, "utf8"));
+            const overridesDir = manifest.overrides || "overrides";
+            const overridesPath = path.join(tempDir, overridesDir);
+            
+            if (existsSync(overridesPath)) {
+              await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
+            }
+            
+            await this.downloadCurseForgeManifestFiles(manifest, instance);
+          } else {
+            throw new Error("manifest.json não encontrado na raiz da atualização CurseForge.");
+          }
+        } finally {
+          await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+        }
+        
+        await rm(zipPath, { force: true }).catch(() => undefined);
+        
+        await this.setSourceMetadata(instance.id, {
+          provider: "curseforge",
+          projectId: instance.sourceProjectId,
+          versionId: newVersionId,
+          projectSlug: instance.sourceProjectSlug,
+        });
+        
+        return this.getById(instance.id);
+      }
+      
+      if (instance.sourceProvider === "modrinth") {
+      
+      const response = await fetchWithElectronNet(
+        `${MODRINTH_API}/version/${newVersionId}`,
+        "Buscar Modpack",
+      );
+      if (!response.ok) {
+        throw new Error("Não foi possível buscar os dados da atualização no Modrinth.");
+      }
+
+      const version = modrinthInstallVersionSchema.parse(await response.json());
+      const file = version.files.find((f) => f.primary) || version.files[0];
+      
+      if (!file || !file.filename.endsWith(".mrpack")) {
+         throw new Error("Arquivo .mrpack não encontrado na atualização.");
+      }
+      
+      const mrpackPath = path.join(instance.gameDir, file.filename);
+      await this.downloads.download({
+        url: file.url,
+        destination: mrpackPath,
+        label: `Atualizando Modpack ${instance.name}`,
+        sha1: file.hashes?.sha1,
+      });
+      
+      const tempDir = await mkdtemp(path.join(os.tmpdir(), "mlultimate-update-"));
+      
+      try {
+        await extractArchive(mrpackPath, tempDir);
+        const modrinthIndexPath = path.join(tempDir, "modrinth.index.json");
+        
+        if (existsSync(modrinthIndexPath)) {
+          const index = modrinthIndexSchema.parse(
+            JSON.parse(await readFile(modrinthIndexPath, "utf8")),
+          );
+          
+          const overridesPath = path.join(tempDir, "overrides");
+          if (existsSync(overridesPath)) {
+            await cp(overridesPath, instance.gameDir, { recursive: true, force: true });
+          }
+
+          await this.downloadModrinthManifestFiles(index, instance);
+        } else {
+          throw new Error("Arquivo modrinth.index.json não encontrado no .mrpack da atualização.");
+        }
+      } finally {
+        await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+      }
+      
+      await rm(mrpackPath, { force: true }).catch(() => undefined);
+      
+      await this.setSourceMetadata(instance.id, {
+        provider: "modrinth",
+        projectId: instance.sourceProjectId,
+        versionId: newVersionId,
+        projectSlug: instance.sourceProjectSlug,
+      });
+      
+      
+      return this.getById(instance.id);
+      }
+    } else {
+       throw new Error("Para nova instância, use a rota de importação.");
+    }
   }
 
   async openFolder(id: string) {
@@ -634,21 +986,61 @@ export class InstanceService {
         parsed.minecraftVersion,
         parsed.loaderVersion,
       );
-      if (parsed.loader === "iris" || parsed.loader === "iris-sodium") {
+
+      try {
         await this.installModrinthMod(
+          FABRIC_API_PROJECT_ID,
+          parsed.minecraftVersion,
+          gameDir,
+          "Fabric API",
+        );
+      } catch (error) {
+        console.warn("Failed to install Fabric API automatically:", error);
+      }
+
+      if (parsed.loader === "iris" || parsed.loader === "iris-sodium") {
+        const irisVersion = await this.installModrinthMod(
           IRIS_PROJECT_ID,
           parsed.minecraftVersion,
           gameDir,
           "Iris Shaders",
         );
-      }
-      if (parsed.loader === "iris-sodium") {
-        await this.installModrinthMod(
-          SODIUM_PROJECT_ID,
-          parsed.minecraftVersion,
-          gameDir,
-          "Sodium",
-        );
+
+        if (parsed.loader === "iris-sodium") {
+          const sodiumDep = irisVersion.dependencies?.find(
+            (dep) => dep.project_id === SODIUM_PROJECT_ID && dep.dependency_type === "required",
+          );
+
+          if (sodiumDep && sodiumDep.version_id) {
+            const response = await fetchWithElectronNet(
+              `${MODRINTH_API}/version/${sodiumDep.version_id}`,
+              `Buscar Sodium no Modrinth`,
+            );
+
+            if (response.ok) {
+              const version = modrinthInstallVersionSchema.parse(await response.json());
+              const file = version.files.find((candidate) => candidate.primary) ?? version.files.at(0);
+
+              if (file) {
+                await this.downloads.download({
+                  label: `Sodium (Compatível com Iris) ${parsed.minecraftVersion}`,
+                  url: file.url,
+                  destination: path.join(gameDir, "mods", sanitizeFileName(file.filename)),
+                  sha1: file.hashes?.sha1,
+                });
+              }
+            } else {
+              throw new Error(`Não foi possível buscar a versão obrigatória do Sodium.`);
+            }
+          } else {
+            await this.installModrinthMod(
+              SODIUM_PROJECT_ID,
+              parsed.minecraftVersion,
+              gameDir,
+              "Sodium",
+            );
+          }
+        }
       }
       return;
     }
@@ -707,6 +1099,8 @@ export class InstanceService {
       destination: path.join(gameDir, "mods", sanitizeFileName(file.filename)),
       sha1: file.hashes?.sha1,
     });
+
+    return version;
   }
 
   async importInstance(input: ImportInstanceInput): Promise<LauncherInstance | null> {
@@ -1116,17 +1510,11 @@ export class InstanceService {
     const lockedFiles: z.infer<typeof modpackLockSchema>["files"] = [];
 
     try {
-      await runPool(manifest.files, 8, async (fileRef) => {
+      await runPool(manifest.files, 16, async (fileRef) => {
         this.downloads.throwIfCancelled(taskId);
-        const [file, importedType] = await Promise.all([
-          this.getCurseForgeFile(fileRef.projectID, fileRef.fileID),
-          this.getCurseForgeProjectType(fileRef.projectID),
-        ]);
-        const downloadUrl =
-          file.downloadUrl ??
-          (await this.getCurseForgeDownloadUrl(fileRef.projectID, fileRef.fileID).catch(() =>
-            curseForgeCdnDownloadUrl(file),
-          ));
+        const file = await this.getCurseForgeFile(fileRef.projectID, fileRef.fileID);
+        const importedType: ContentType = "mod";
+        const downloadUrl = file.downloadUrl ?? curseForgeCdnDownloadUrl(file);
         const folder = folderForImportedType(importedType);
         const destination = path.join(
           instance.gameDir,
@@ -1159,7 +1547,7 @@ export class InstanceService {
             });
           },
         });
-        if (importedType !== "datapack") {
+        if ((importedType as string) !== "datapack") {
           this.recordImportedContent({
             instanceId: instance.id,
             provider: "curseforge",
@@ -1322,27 +1710,7 @@ export class InstanceService {
     return curseForgeFileSchema.parse(await response.json()).data;
   }
 
-  private async getCurseForgeProjectType(projectId: number) {
-    const cached = this.curseForgeProjectTypeCache.get(projectId);
 
-    if (cached) {
-      return cached;
-    }
-
-    const response = await this.fetchCurseForge(
-      `/mods/${projectId}`,
-      "Buscar categoria do projeto CurseForge",
-    );
-
-    if (!response.ok) {
-      return "mod" as const;
-    }
-
-    const project = curseForgeProjectClassSchema.parse(await response.json()).data;
-    const type = importedTypeFromCurseForgeClassId(project.classId);
-    this.curseForgeProjectTypeCache.set(projectId, type);
-    return type;
-  }
 
   private async writeModpackLock(
     gameDir: string,
@@ -1509,6 +1877,7 @@ export class InstanceService {
       worldsCount,
       shaderSupport,
       contentManagementEnabled: row.content_management_enabled !== 0,
+      autoUpdateModpack: row.auto_update_modpack !== 0,
       sourceProvider: row.source_provider ?? undefined,
       sourceProjectId: row.source_project_id ?? undefined,
       sourceVersionId: row.source_version_id ?? undefined,
@@ -1699,7 +2068,7 @@ const extractArchive = async (archivePath: string, destination: string) => {
   const extension = path.extname(archivePath).toLowerCase();
 
   if ([".zip", ".mrpack", ".mlultimate"].includes(extension)) {
-    new AdmZip(archivePath).extractAllTo(destination, true);
+    await new AdmZip(archivePath).extractAllToAsync(destination, true, false);
     return;
   }
 
@@ -1930,15 +2299,6 @@ const importedContentTypeFromPath = (filePath: string) => {
   }
 
   return null;
-};
-
-const importedTypeFromCurseForgeClassId = (
-  classId?: number,
-): "mod" | "datapack" | "resourcepack" | "shader" => {
-  if (classId === 12) return "resourcepack";
-  if (classId === 6552) return "shader";
-  if (classId === 6945) return "datapack";
-  return "mod";
 };
 
 const folderForImportedType = (

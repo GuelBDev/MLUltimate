@@ -60,6 +60,34 @@ export type ServerStatusLookupInput = {
   hosts: string[];
 };
 
+export type CustomServer = {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  requiresMicrosoft: boolean;
+  preferredInstanceId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AddCustomServerInput = {
+  name: string;
+  host: string;
+  port?: number;
+  requiresMicrosoft?: boolean;
+  preferredInstanceId?: string;
+};
+
+export type UpdateCustomServerInput = {
+  id: string;
+  name?: string;
+  host?: string;
+  port?: number;
+  requiresMicrosoft?: boolean;
+  preferredInstanceId?: string;
+};
+
 export type ServerStatusResult = {
   host: string;
   online: boolean;
@@ -131,6 +159,7 @@ export type UpdateInstanceInput = {
   iconPath?: string;
   loaderVersion?: string;
   contentManagementEnabled?: boolean;
+  autoUpdateModpack?: boolean;
 };
 
 export type LauncherInstance = {
@@ -158,6 +187,7 @@ export type LauncherInstance = {
   sourceProvider?: ContentProvider;
   sourceProjectId?: string;
   sourceVersionId?: string;
+  autoUpdateModpack?: boolean;
   sourceProjectSlug?: string;
   playTimeSeconds: number;
   lastPlayedAt?: string;
@@ -411,6 +441,7 @@ export type AppLanguage =
   | "hi"
   | "tr";
 export type MinecraftOpenAction = "none" | "minimize" | "background";
+export type MinecraftWindowMode = "fullscreen" | "windowed" | "borderless";
 export type LauncherAppearancePreset =
   | "night-dark"
   | "light-mode"
@@ -424,6 +455,7 @@ export type LauncherSettings = {
   language: AppLanguage;
   languageSelected: boolean;
   minecraftOpenAction: MinecraftOpenAction;
+  minecraftWindowMode: MinecraftWindowMode;
   appearancePreset: LauncherAppearancePreset;
   primaryColor: string;
   secondaryColor: string;
@@ -454,6 +486,7 @@ export type LauncherSettings = {
   backgroundImageName?: string;
   sidebarImageDataUrl?: string;
   sidebarImageName?: string;
+  sidebarNavOrder?: string[];
 };
 
 export type SystemMemoryInfo = {
@@ -464,6 +497,7 @@ export type UpdateLauncherSettingsInput = {
   language?: AppLanguage;
   languageSelected?: boolean;
   minecraftOpenAction?: MinecraftOpenAction;
+  minecraftWindowMode?: MinecraftWindowMode;
   appearancePreset?: LauncherAppearancePreset;
   primaryColor?: string;
   secondaryColor?: string;
@@ -494,6 +528,7 @@ export type UpdateLauncherSettingsInput = {
   backgroundImageName?: string | null;
   sidebarImageDataUrl?: string | null;
   sidebarImageName?: string | null;
+  sidebarNavOrder?: string[];
 };
 
 export type UpdaterStatus =
@@ -595,4 +630,22 @@ export type ToggleInstanceFileInput = InstanceFileActionInput & {
 
 export type ReadInstanceTextFileInput = InstanceFileActionInput & {
   maxBytes?: number;
+};
+
+export type OnlineLibraryServer = {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  version: string;
+  category: "pvp" | "survival" | "minigames" | "anarchy" | "rpg" | "modded";
+  requiresMicrosoft: boolean;
+  hasMods: boolean;
+  allowPirate: boolean;
+  description: string;
+  tags: string[];
+  playersOnline?: number;
+  playersMax?: number;
+  bannerUrl?: string;
+  source: "reishost" | "public_api" | "featured";
 };

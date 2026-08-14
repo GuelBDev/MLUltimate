@@ -21,6 +21,8 @@ export class DownloadManager {
   private hiddenTasks = new Set<string>();
   private inFlightByDestination = new Map<string, Promise<string>>();
   private controllers = new Map<string, AbortController>();
+  private flushTimer: NodeJS.Timeout | null = null;
+  private pendingFlush = false;
 
   constructor(private readonly emit: EmitDownloads) {}
 
@@ -273,7 +275,16 @@ export class DownloadManager {
   }
 
   private flush() {
-    this.emit(this.list());
+    this.pendingFlush = true;
+    if (!this.flushTimer) {
+      this.flushTimer = setTimeout(() => {
+        this.flushTimer = null;
+        if (this.pendingFlush) {
+          this.pendingFlush = false;
+          this.emit(this.list());
+        }
+      }, 150);
+    }
   }
 }
 

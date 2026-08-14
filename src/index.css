@@ -129,13 +129,63 @@ body {
 .app-badge-blue {
   border-color: var(--app-border-color);
   background: rgb(var(--app-primary-rgb) / 0.16);
+  color: var(--app-primary);
+}
+
+[data-appearance-preset="night-dark"] .app-badge-blue,
+[data-appearance-preset="emerald-cave"] .app-badge-blue,
+[data-appearance-preset="red-velt"] .app-badge-blue,
+:root:not([data-appearance-preset="light-mode"]) .app-badge-blue {
   color: var(--app-secondary);
+}
+
+.app-badge-green {
+  border-color: rgb(34 197 94 / 0.35);
+  background-color: rgb(34 197 94 / 0.14);
+  color: #15803d;
+}
+
+[data-appearance-preset="night-dark"] .app-badge-green,
+[data-appearance-preset="emerald-cave"] .app-badge-green,
+[data-appearance-preset="red-velt"] .app-badge-green,
+:root:not([data-appearance-preset="light-mode"]) .app-badge-green {
+  color: #4ade80;
+}
+
+.app-badge-red {
+  border-color: rgb(239 68 68 / 0.35);
+  background-color: rgb(239 68 68 / 0.14);
+  color: #b91c1c;
+}
+
+[data-appearance-preset="night-dark"] .app-badge-red,
+[data-appearance-preset="emerald-cave"] .app-badge-red,
+[data-appearance-preset="red-velt"] .app-badge-red,
+:root:not([data-appearance-preset="light-mode"]) .app-badge-red {
+  color: #f87171;
 }
 
 .app-badge-slate {
   border-color: var(--app-border-color);
   background: var(--app-panel-bg);
   color: var(--app-text-muted);
+}
+
+.app-button-danger {
+  border-color: rgb(239 68 68 / 0.35);
+  background-color: rgb(239 68 68 / 0.1);
+  color: #dc2626;
+}
+
+.app-button-danger:hover {
+  background-color: rgb(239 68 68 / 0.2);
+}
+
+[data-appearance-preset="night-dark"] .app-button-danger,
+[data-appearance-preset="emerald-cave"] .app-button-danger,
+[data-appearance-preset="red-velt"] .app-button-danger,
+:root:not([data-appearance-preset="light-mode"]) .app-button-danger {
+  color: #fca5a5;
 }
 
 .app-progress-indicator {
@@ -190,16 +240,26 @@ body {
 }
 
 .text-white,
-.text-\[\#D8DEE9\] {
+.text-\[\#D8DEE9\],
+.text-gray-100,
+.text-gray-200,
+.text-slate-100,
+.text-slate-200,
+.text-zinc-100,
+.text-zinc-200 {
   color: var(--app-text-primary) !important;
 }
 
-.app-button-primary.text-white {
+.app-button-primary.text-white,
+.app-button-primary .text-white,
+.app-button-primary {
   color: var(--app-button-text) !important;
 }
 
 .bg-\[\#3B82F6\].text-white,
-.bg-\[\#3B82F6\] .text-white {
+.bg-\[\#3B82F6\] .text-white,
+.bg-blue-600.text-white,
+.bg-blue-600 .text-white {
   color: var(--app-button-text) !important;
 }
 
@@ -213,12 +273,22 @@ button:disabled * {
   color: var(--app-button-text) !important;
 }
 
-.text-\[\#94A3B8\] {
+.text-\[\#94A3B8\],
+.text-gray-300,
+.text-gray-400,
+.text-gray-500,
+.text-slate-300,
+.text-slate-400,
+.text-slate-500,
+.text-zinc-300,
+.text-zinc-400,
+.text-zinc-500 {
   color: var(--app-text-muted) !important;
 }
 
 .text-\[\#60A5FA\],
-.text-blue-200 {
+.text-blue-200,
+.text-blue-400 {
   color: var(--app-secondary) !important;
 }
 
@@ -235,6 +305,10 @@ button:disabled * {
 
 .bg-\[\#161B22\]\/82,
 .bg-\[\#161B22\],
+.bg-\[\#161B22\]\/90,
+.bg-\[\#161B22\]\/95,
+.bg-\[\#121824\],
+.bg-\[\#121824\]\/95,
 .bg-\[\#1f1f1f\] {
   background-color: var(--app-card-bg) !important;
 }
@@ -250,6 +324,8 @@ button:disabled * {
 
 .border-white\/8,
 .border-white\/10,
+.border-white\/15,
+.border-white\/20,
 .border-blue-300\/15,
 .border-blue-300\/20,
 .border-\[\#60A5FA\]\/25 {
