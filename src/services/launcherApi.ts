@@ -50,6 +50,7 @@ const defaultSettings: LauncherSettings = {
   encryptionAvailable: false,
   language: "pt-BR",
   languageSelected: false,
+  gpuAcceleration: true,
   minecraftOpenAction: "none",
   minecraftWindowMode: "windowed",
   appearancePreset: "night-dark",

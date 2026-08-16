@@ -330,7 +330,9 @@ const scanLogs = async (gameDir: string) => {
       );
       scannedLogs.push(...items);
     }
-  } catch {}
+  } catch {
+    // ignore
+  }
 
   // 2. Crash Reports em crash-reports/
   try {
@@ -352,7 +354,9 @@ const scanLogs = async (gameDir: string) => {
       );
       scannedLogs.push(...items);
     }
-  } catch {}
+  } catch {
+    // ignore
+  }
 
   // 3. JVM Fatal Errors (hs_err_pid*.log)
   try {
@@ -377,7 +381,9 @@ const scanLogs = async (gameDir: string) => {
         }),
     );
     scannedLogs.push(...items);
-  } catch {}
+  } catch {
+    // ignore
+  }
 
   return scannedLogs.sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
 };

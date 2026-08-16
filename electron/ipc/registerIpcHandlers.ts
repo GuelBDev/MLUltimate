@@ -167,6 +167,7 @@ const updateSettingsSchema = z.object({
     ])
     .optional(),
   languageSelected: z.boolean().optional(),
+  gpuAcceleration: z.boolean().optional(),
   minecraftOpenAction: z.enum(["none", "minimize", "background"]).optional(),
   minecraftWindowMode: z.enum(["fullscreen", "windowed", "borderless"]).optional(),
   appearancePreset: z

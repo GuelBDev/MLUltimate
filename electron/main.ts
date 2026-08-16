@@ -197,14 +197,10 @@ const createWindow = async () => {
   }
 };
 
-const bootstrap = async () => {
-  const database = new LauncherDatabase();
-  await database.initialize();
-
+const bootstrap = async (database: LauncherDatabase, apiKeys: ApiKeyStore) => {
   const tokenStore = new SecureTokenStore(database);
   const authAccounts = new AuthAccountStore(database);
   const avatar = new AvatarService(database);
-  const apiKeys = new ApiKeyStore(database);
   const microsoftAuth = new MicrosoftAuthService(tokenStore, authAccounts);
   const offlineAuth = new OfflineAuthService(database, authAccounts);
   const downloads = new DownloadManager((items) => {
@@ -309,7 +305,22 @@ const bootstrap = async () => {
 };
 
 if (gotSingleInstanceLock) {
-  app.whenReady().then(bootstrap).catch((error: unknown) => {
+  const start = async () => {
+    const database = new LauncherDatabase();
+    await database.initialize();
+    const apiKeys = new ApiKeyStore(database);
+
+    const isGpuEnabled = apiKeys.loadGpuAcceleration();
+    if (!isGpuEnabled) {
+      app.disableHardwareAcceleration();
+      app.commandLine.appendSwitch("disable-gpu");
+    }
+
+    await app.whenReady();
+    await bootstrap(database, apiKeys);
+  };
+
+  start().catch((error: unknown) => {
     console.error("Failed to start MLUltimate Launcher", error);
     app.quit();
   });

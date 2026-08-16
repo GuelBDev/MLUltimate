@@ -293,7 +293,9 @@ const parseMinecraftCrashReport = (
         if (found) {
           culpritFilePath = path.join("mods", found);
         }
-      } catch {}
+      } catch {
+        // ignore
+      }
     }
   }
 

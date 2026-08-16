@@ -1,8 +1,8 @@
 {
   "name": "mlultimate-launcher",
   "private": true,
-  "version": "3.3.6",
-  "description": "MLUltimate Launcher 3.3.6 desktop launcher for Minecraft.",
+  "version": "3.3.7",
+  "description": "MLUltimate Launcher 3.3.7 desktop launcher for Minecraft.",
   "author": "MLUltimate",
   "desktopName": "MLUltimate Launcher",
   "repository": {
@@ -108,18 +108,21 @@
       "priority": "optional",
       "compression": "xz",
       "depends": [
-        "libgtk-3-0",
-        "libnotify4",
+        "libgtk-3-0 | libgtk-3-0t64",
+        "libnotify4 | libnotify4t64",
         "libnss3",
-        "libxss1",
-        "libxtst6",
+        "libxss1 | libxss1t64",
+        "libxtst6 | libxtst6t64",
         "xdg-utils",
-        "libatspi2.0-0",
+        "libatspi2.0-0 | libatspi2.0-0t64 | libatspi0",
         "libuuid1",
-        "libsecret-1-0"
+        "libsecret-1-0",
+        "libasound2 | libasound2t64",
+        "libgbm1",
+        "ca-certificates"
       ],
       "recommends": [
-        "libayatana-appindicator3-1"
+        "libayatana-appindicator3-1 | libappindicator3-1"
       ]
     }
   },

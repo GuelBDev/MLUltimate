@@ -470,6 +470,7 @@ export type LauncherSettings = {
   encryptionAvailable: boolean;
   language: AppLanguage;
   languageSelected: boolean;
+  gpuAcceleration: boolean;
   minecraftOpenAction: MinecraftOpenAction;
   minecraftWindowMode: MinecraftWindowMode;
   appearancePreset: LauncherAppearancePreset;
@@ -512,6 +513,7 @@ export type SystemMemoryInfo = {
 export type UpdateLauncherSettingsInput = {
   language?: AppLanguage;
   languageSelected?: boolean;
+  gpuAcceleration?: boolean;
   minecraftOpenAction?: MinecraftOpenAction;
   minecraftWindowMode?: MinecraftWindowMode;
   appearancePreset?: LauncherAppearancePreset;

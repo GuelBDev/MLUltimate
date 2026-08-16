@@ -11,6 +11,7 @@ import type {
 
 const languageKey = "app.language";
 const languageSelectedKey = "app.language.selected";
+const gpuAccelerationKey = "app.gpuAcceleration";
 const minecraftOpenActionKey = "minecraft.open.action";
 const appearancePresetKey = "appearance.preset";
 const primaryColorKey = "appearance.primaryColor";
@@ -203,6 +204,10 @@ export class ApiKeyStore {
     if (input.sidebarNavOrder !== undefined) {
       this.saveSetting(sidebarNavOrderKey, JSON.stringify(input.sidebarNavOrder));
     }
+
+    if (input.gpuAcceleration !== undefined) {
+      this.saveSetting(gpuAccelerationKey, input.gpuAcceleration ? "true" : "false");
+    }
   }
 
   getPublicSettings(): LauncherSettings {
@@ -210,10 +215,20 @@ export class ApiKeyStore {
       encryptionAvailable: safeStorage.isEncryptionAvailable(),
       language: this.loadLanguage(),
       languageSelected: this.loadLanguageSelected(),
+      gpuAcceleration: this.loadGpuAcceleration(),
       minecraftOpenAction: this.loadMinecraftOpenAction(),
       minecraftWindowMode: this.loadMinecraftWindowMode(),
       ...this.loadAppearanceSettings(),
     };
+  }
+
+  loadGpuAcceleration(): boolean {
+    const record = this.database.get<{ value: string }>(
+      "SELECT value FROM settings WHERE key = ?",
+      [gpuAccelerationKey],
+    );
+
+    return record ? record.value !== "false" : true;
   }
 
   loadMinecraftOpenAction() {
@@ -283,7 +298,7 @@ export class ApiKeyStore {
       sidebarNavOrder: this.loadSidebarNavOrder(),
     } as Omit<
       LauncherSettings,
-      "encryptionAvailable" | "language" | "languageSelected" | "minecraftOpenAction" | "minecraftWindowMode"
+      "encryptionAvailable" | "language" | "languageSelected" | "gpuAcceleration" | "minecraftOpenAction" | "minecraftWindowMode"
     >;
   }
 

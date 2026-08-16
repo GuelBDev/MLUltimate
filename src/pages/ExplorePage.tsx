@@ -70,6 +70,11 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   const [provider, setProvider] = useState<ContentProviderFilter>("all");
   const [type, setType] = useState<ContentType>(initialType);
   const [activeInstanceId, setActiveInstanceId] = useState<string | undefined>(initialInstanceId);
+  const [prevInitialInstanceId, setPrevInitialInstanceId] = useState(initialInstanceId);
+  if (initialInstanceId !== prevInitialInstanceId) {
+    setPrevInitialInstanceId(initialInstanceId);
+    setActiveInstanceId(initialInstanceId);
+  }
   const [query, setQuery] = useState("");
   const [loader, setLoader] = useState<LoaderType | "">("");
   const [version, setVersion] = useState("");
@@ -81,10 +86,6 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   const [loadClicks, setLoadClicks] = useState(0);
   const [activeOperations, setActiveOperations] = useState<string[]>([]);
   const [operationError, setOperationError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setActiveInstanceId(initialInstanceId);
-  }, [initialInstanceId]);
 
   const releaseVersions = useMemo(
     () =>
