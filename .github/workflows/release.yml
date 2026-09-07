@@ -75,9 +75,9 @@ jobs:
 
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --repo $env:GITHUB_REPOSITORY --target "${{ github.sha }}" --title $releaseTitle --notes "Atualização $displayVersion." --prerelease
+            gh release create $tag --repo $env:GITHUB_REPOSITORY --target "${{ github.sha }}" --title $releaseTitle --notes "Atualização $displayVersion." --prerelease --draft=false
           } else {
-            gh release edit $tag --repo $env:GITHUB_REPOSITORY --title $releaseTitle --notes "Atualização $displayVersion." --prerelease
+            gh release edit $tag --repo $env:GITHUB_REPOSITORY --title $releaseTitle --notes "Atualização $displayVersion." --prerelease --draft=false
           }
 
           Write-Host "Uploading release assets:"
