@@ -56,7 +56,6 @@
     ],
     "win": {
       "icon": "build/icon.ico",
-      "publisherName": "MLUltimate",
       "legalTrademarks": "MLUltimate",
       "requestedExecutionLevel": "asInvoker",
       "target": [
