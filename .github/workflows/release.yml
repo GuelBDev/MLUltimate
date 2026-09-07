@@ -58,6 +58,7 @@ jobs:
             "release/MLUltimate-Launcher-$version-win-x64.exe",
             "release/MLUltimate-Launcher-$version-win-x64.exe.blockmap",
             "release/MLUltimate Installer.exe",
+            "release/MLUltimate-Installer-Windows.exe",
             "release/latest.yml"
           )
 

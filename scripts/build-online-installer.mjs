@@ -88,7 +88,14 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
-        ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+        try
+        {
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls | (SecurityProtocolType)12288;
+        }
+        catch
+        {
+            try { ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12; } catch {}
+        }
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new InstallerForm());
@@ -212,6 +219,8 @@ internal sealed class InstallerForm : Form
     private const string ApiUrl = "https://api.github.com/repos/" + Repo + "/releases";
     private const string AtomUrl = "https://github.com/" + Repo + "/releases.atom";
     private const string DownloadBase = "https://github.com/" + Repo + "/releases/download";
+    private const string FallbackTag = "v${packageJson.version}";
+    private const string FallbackVersion = "${packageJson.version}";
 
     private readonly Label title;
     private readonly Label subtitle;
@@ -685,7 +694,12 @@ internal sealed class InstallerForm : Form
             Directory.CreateDirectory(downloadFolder);
             var downloadPath = Path.Combine(downloadFolder, "MLUltimate-" + safeTag + "-Setup.exe");
 
-            using (var client = CreateClient())
+            if (File.Exists(downloadPath))
+            {
+                try { File.Delete(downloadPath); } catch {}
+            }
+
+            using (var client = CreateDownloadClient())
             {
                 client.DownloadProgressChanged += delegate(object sender, DownloadProgressChangedEventArgs args)
                 {
@@ -720,7 +734,11 @@ internal sealed class InstallerForm : Form
             var process = Process.Start(new ProcessStartInfo(downloadPath) { UseShellExecute = true });
             if (process != null)
             {
-                process.WaitForExit();
+                while (!process.HasExited)
+                {
+                    Application.DoEvents();
+                    System.Threading.Thread.Sleep(100);
+                }
             }
 
             progress.Value = 100;
@@ -864,34 +882,61 @@ internal sealed class InstallerForm : Form
     {
         try
         {
-            var json = CreateClient().DownloadString(ApiUrl);
-            var asset = Regex.Match(json, @"""browser_download_url""\\s*:\\s*""([^""]*/releases/download/([^/""]+)/MLUltimate-Launcher-[^""]*-win-x64\\.exe)""");
-            if (asset.Success)
+            using (var client = CreateApiClient())
             {
-                return new ReleaseTarget(asset.Groups[2].Value, asset.Groups[1].Value.Replace(@"\\/", "/"));
+                var json = client.DownloadString(ApiUrl);
+                var asset = Regex.Match(json, @"""browser_download_url""\\s*:\\s*""([^""]*/releases/download/([^/""]+)/MLUltimate-Launcher-[^""]*-win-x64\\.exe)""");
+                if (asset.Success)
+                {
+                    var tag = asset.Groups[2].Value.Trim();
+                    var url = asset.Groups[1].Value.Replace(@"\\/", "/").Trim();
+                    if (!String.IsNullOrWhiteSpace(tag) && !String.IsNullOrWhiteSpace(url))
+                    {
+                        return new ReleaseTarget(tag, url);
+                    }
+                }
             }
         }
         catch
         {
         }
 
-        var xml = CreateClient().DownloadString(AtomUrl);
-        var href = Regex.Match(xml, @"<link[^>]+rel=""alternate""[^>]+href=""([^""]+)""");
-        if (!href.Success)
+        try
         {
-            return new ReleaseTarget(null, null);
+            using (var client = CreateApiClient())
+            {
+                var xml = client.DownloadString(AtomUrl);
+                var tagMatch = Regex.Match(xml, @"href=""https://github\.com/[^""]+/releases/tag/([^""]+)""");
+                if (tagMatch.Success)
+                {
+                    var tag = Uri.UnescapeDataString(tagMatch.Groups[1].Value).Trim();
+                    if (!String.IsNullOrWhiteSpace(tag) && !tag.Equals("releases", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var version = Regex.Replace(tag, "^v", "");
+                        return new ReleaseTarget(tag, DownloadBase + "/" + tag + "/MLUltimate-Launcher-" + version + "-win-x64.exe");
+                    }
+                }
+            }
+        }
+        catch
+        {
         }
 
-        var tag = Uri.UnescapeDataString(WebUtility.HtmlDecode(href.Groups[1].Value).Split('/')[WebUtility.HtmlDecode(href.Groups[1].Value).Split('/').Length - 1]);
-        var version = Regex.Replace(tag, "^v", "");
-        return new ReleaseTarget(tag, DownloadBase + "/" + tag + "/MLUltimate-Launcher-" + version + "-win-x64.exe");
+        return new ReleaseTarget(FallbackTag, DownloadBase + "/" + FallbackTag + "/MLUltimate-Launcher-" + FallbackVersion + "-win-x64.exe");
     }
 
-    private static WebClient CreateClient()
+    private static WebClient CreateApiClient()
     {
         var client = new WebClient();
         client.Headers.Add("Accept", "application/vnd.github+json");
-        client.Headers.Add("User-Agent", "MLUltimate-Installer");
+        client.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MLUltimate-Installer");
+        return client;
+    }
+
+    private static WebClient CreateDownloadClient()
+    {
+        var client = new WebClient();
+        client.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MLUltimate-Installer");
         return client;
     }
 
