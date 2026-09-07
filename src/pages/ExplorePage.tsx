@@ -11,6 +11,7 @@ import { useInstances } from "../hooks/useInstances";
 import { useInstalledContent } from "../hooks/useInstalledContent";
 import { useMinecraftVersions } from "../hooks/useMinecraftVersions";
 import { launcherApi } from "../services/launcherApi";
+import { RichContent } from "../components/common/RichContent";
 import type {
   ContentProjectDetails,
   ContentProvider,
@@ -854,9 +855,7 @@ const ProjectDetails = ({
                 ))}
               </div>
             ) : null}
-            <div className="whitespace-pre-wrap text-sm leading-7 text-[#D8DEE9]">
-              {project?.body ?? current.description}
-            </div>
+            <RichContent content={project?.body ?? current.description} />
             {project?.gallery[0] ? (
               <img
                 src={project.gallery[0].url}
@@ -938,10 +937,10 @@ const ProjectDetails = ({
         ) : null}
 
         {activeTab === "changelog" ? (
-          <div className="whitespace-pre-wrap text-sm leading-7 text-[#D8DEE9]">
-            {latestVersion?.changelog ??
-              "O autor não publicou um changelog para a versão mais recente."}
-          </div>
+          <RichContent
+            content={latestVersion?.changelog}
+            fallback="O autor não publicou um changelog para a versão mais recente."
+          />
         ) : null}
 
         {activeTab === "content" ? (

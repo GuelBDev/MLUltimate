@@ -18,17 +18,19 @@ import {
   ChevronDown,
   Info,
   Check,
+  Swords,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { AppSelect, type AppSelectOption } from "../components/ui/AppSelect";
+import { PvpAreaView } from "../components/pvp/PvpAreaView";
 import { useAuthSession } from "../hooks/useAuthSession";
 import { launcherApi } from "../services/launcherApi";
 import type { AddCustomServerInput, LoaderType, ServerStatusResult } from "../types/launcher";
 
-type ServerCategoryTab = "my-servers" | "library";
+type ServerCategoryTab = "my-servers" | "pvp-area" | "library";
 
 type LibraryServer = {
   id: string;
@@ -734,6 +736,19 @@ export const ServersPage = () => {
 
           <button
             type="button"
+            onClick={() => setActiveTab("pvp-area")}
+            className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition duration-200 ${
+              activeTab === "pvp-area"
+                ? "bg-gradient-to-r from-cyan-500/25 to-blue-600/25 text-cyan-300 ring-1 ring-cyan-500/40 shadow-md shadow-cyan-500/10"
+                : "text-gray-400 hover:bg-white/5 hover:text-white"
+            }`}
+          >
+            <Swords className={`h-4 w-4 ${activeTab === "pvp-area" ? "text-cyan-400" : "text-gray-400"}`} />
+            PvP
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab("library")}
             className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition duration-200 ${
               activeTab === "library"
@@ -915,7 +930,10 @@ export const ServersPage = () => {
         </div>
       )}
 
-      {/* SUB-TAB 2: BIBLIOTECA DE SERVIDORES (TEMPO REAL & INFINITE SCROLL) */}
+      {/* SUB-TAB 2: PVP AREA (LUNAR 1.8.9 CLIENT HUB) */}
+      {activeTab === "pvp-area" && <PvpAreaView />}
+
+      {/* SUB-TAB 3: BIBLIOTECA DE SERVIDORES (TEMPO REAL & INFINITE SCROLL) */}
       {activeTab === "library" && (
         <div className="space-y-5">
           {/* Filters Controls */}

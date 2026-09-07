@@ -1,9 +1,10 @@
 import AdmZip from "adm-zip";
 import { createHash } from "node:crypto";
 import { app } from "electron";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
+import { getLauncherDataSubpath } from "../utils/launcherPaths";
 import { AvatarService } from "../avatar/avatarService";
 import { MicrosoftAuthService } from "../auth/microsoftAuthService";
 import { OfflineAuthService } from "../auth/offlineAuthService";
@@ -13,7 +14,7 @@ import { MinecraftVersionService } from "../minecraft/minecraftVersionService";
 import { ServersDatService } from "../minecraft/serversDatService";
 import { repairLaunchCompatibility } from "./launchCompatibility";
 import { analyzeInstanceCrash } from "./crashAnalyzer";
-import type { LauncherInstance, LaunchEvent, LaunchRequest, MinecraftWindowMode } from "../../src/types/launcher";
+import type { CrashReportDetails, LauncherInstance, LaunchEvent, LaunchRequest, MinecraftWindowMode } from "../../src/types/launcher";
 
 type EmitLaunchEvent = (event: LaunchEvent) => void;
 type LaunchState = {
@@ -23,10 +24,13 @@ type LaunchState = {
   playStartedAt?: number;
   playRecordedAt?: number;
   playTimer?: ReturnType<typeof setInterval>;
+  lastCrashReport?: CrashReportDetails;
 };
 
 export class LauncherService {
   private activeLaunches = new Map<string, LaunchState>();
+  private activeLaunchEvents = new Map<string, LaunchEvent>();
+  private readonly emit: EmitLaunchEvent;
 
   constructor(
     private readonly microsoftAuth: MicrosoftAuthService,
@@ -35,9 +39,21 @@ export class LauncherService {
     private readonly javaRuntimes: JavaRuntimeService,
     private readonly minecraftVersions: MinecraftVersionService,
     private readonly avatar: AvatarService,
-    private readonly emit: EmitLaunchEvent,
+    emit: EmitLaunchEvent,
     private readonly getWindowMode?: () => MinecraftWindowMode,
-  ) {}
+  ) {
+    this.emit = (event: LaunchEvent) => {
+      this.activeLaunchEvents.set(event.id, event);
+      if (["complete", "cancelled", "closed", "killed", "error"].includes(event.type)) {
+        setTimeout(() => {
+          if (this.activeLaunchEvents.get(event.id) === event) {
+            this.activeLaunchEvents.delete(event.id);
+          }
+        }, 3000);
+      }
+      emit(event);
+    };
+  }
 
   async launch(request: LaunchRequest) {
     const activeLaunch = this.activeLaunches.get(request.instanceId);
@@ -100,6 +116,17 @@ export class LauncherService {
           type: "step",
           message: `Reparando Kit PvP: removendo ${removedPvpArtifacts.join(", ")}...`,
           progress: 12,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      const modInstalled = ensureOfficialPvpModInstalled(instance);
+      if (modInstalled) {
+        this.emit({
+          id: request.instanceId,
+          type: "step",
+          message: "Instalando MLUltimate PvP Mod 1.8.9 (CPS, FPS, Custom HUD, Barra de Vida, Crosshair)...",
+          progress: 13,
           createdAt: new Date().toISOString(),
         });
       }
@@ -588,6 +615,7 @@ export class LauncherService {
 
         if (crashAnalysis.hasCrash && crashAnalysis.crashReport) {
           const rep = crashAnalysis.crashReport;
+          launchState.lastCrashReport = rep;
           const culpritInfo = rep.culpritModName ? ` (Mod: ${rep.culpritModName})` : "";
           const header = `Minecraft encerrou inesperadamente${culpritInfo}: ${rep.exceptionType || "Erro"}`;
           const messageWithRecommendation = rep.recommendation
@@ -676,6 +704,7 @@ export class LauncherService {
         message: error instanceof Error ? error.message : "Não foi possível iniciar.",
         progress: launchState.cancelled ? 0 : undefined,
         createdAt: new Date().toISOString(),
+        crashReport: launchState.lastCrashReport,
       });
       throw error;
     }
@@ -734,6 +763,18 @@ export class LauncherService {
     return [...this.activeLaunches.entries()]
       .filter(([, state]) => state.running && state.child && !state.child.killed)
       .map(([instanceId]) => instanceId);
+  }
+
+  getActiveLaunch(instanceId: string): LaunchEvent | null {
+    return this.activeLaunchEvents.get(instanceId) ?? null;
+  }
+
+  getAllActiveLaunches(): Record<string, LaunchEvent> {
+    const result: Record<string, LaunchEvent> = {};
+    for (const [id, event] of this.activeLaunchEvents.entries()) {
+      result[id] = event;
+    }
+    return result;
   }
 
   private flushPlayTime(instanceId: string, state: LaunchState) {
@@ -1317,7 +1358,7 @@ while ($true) {
 const isFabricBasedLoader = (loader: string) =>
   loader === "fabric" || loader === "iris" || loader === "iris-sodium";
 
-const legacyPvpModPattern = /(basichud|oneconfig|togglesneak|betterhurtcam|essential).*\.jar$/i;
+const legacyPvpModPattern = /(basichud|oneconfig|togglesneak|betterhurtcam|essential|cpsdisplay|vanillahud|polysprint|betterfps|hitdelayfix|simpletimechanger).*\.jar$/i;
 const legacyPvpFolders = ["OneConfig", "essential", ".mixin.out"];
 
 const cleanupLegacyPvpKitArtifacts = (instance: LauncherInstance) => {
@@ -1354,6 +1395,72 @@ const cleanupLegacyPvpKitArtifacts = (instance: LauncherInstance) => {
   }
 
   return removed;
+};
+
+const ensureOfficialPvpModInstalled = (instance: LauncherInstance): boolean => {
+  if (
+    instance.minecraftVersion !== "1.8.9" ||
+    instance.loader !== "forge" ||
+    !instance.name.toLowerCase().includes("pvp")
+  ) {
+    return false;
+  }
+
+  const modsDir = path.join(instance.gameDir, "mods");
+  if (!existsSync(modsDir)) {
+    mkdirSync(modsDir, { recursive: true });
+  }
+
+  const targetMod = path.join(modsDir, "MLUltimate-Client-1.8.9.jar");
+  const legacyTargetMod = path.join(modsDir, "MLUltimate-PvP-1.8.9.jar");
+  if (existsSync(legacyTargetMod)) {
+    try {
+      rmSync(legacyTargetMod, { force: true });
+    } catch {
+      // Ignore cleanup error if file cannot be removed
+    }
+  }
+
+  const candidateSources = [
+    path.join(process.cwd(), "dist-mod", "MLUltimate-Client-1.8.9.jar"),
+    path.join(process.cwd(), "dist-mod", "MLUltimate-PvP-1.8.9.jar"),
+    path.join(__dirname, "..", "..", "dist-mod", "MLUltimate-Client-1.8.9.jar"),
+    path.join(__dirname, "..", "..", "dist-mod", "MLUltimate-PvP-1.8.9.jar"),
+    path.join(getLauncherDataSubpath("Minecraft"), "libraries", "net", "mlultimate", "client", "1.8.9", "MLUltimate-Client-1.8.9.jar"),
+    path.join(getLauncherDataSubpath("Minecraft"), "libraries", "dev", "mlultimate", "pvp", "1.8.9", "MLUltimate-PvP-1.8.9.jar"),
+  ];
+
+  if (existsSync(targetMod)) {
+    const targetStat = statSync(targetMod);
+    for (const src of candidateSources) {
+      if (existsSync(src)) {
+        const srcStat = statSync(src);
+        if (srcStat.size !== targetStat.size || srcStat.mtimeMs > targetStat.mtimeMs) {
+          try {
+            copyFileSync(src, targetMod);
+            return true;
+          } catch (err) {
+            console.warn("Falha ao atualizar mod oficial:", err);
+          }
+        }
+        return false;
+      }
+    }
+    return false;
+  }
+
+  for (const src of candidateSources) {
+    if (existsSync(src)) {
+      try {
+        copyFileSync(src, targetMod);
+        return true;
+      } catch (err) {
+        console.warn("Falha ao copiar mod PvP oficial:", err);
+      }
+    }
+  }
+
+  return false;
 };
 
 const removePathInsideGameDir = (gameDir: string, relativePath: string) => {

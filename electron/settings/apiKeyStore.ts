@@ -44,6 +44,8 @@ const backgroundImageNameKey = "appearance.backgroundImageName";
 const sidebarImageDataUrlKey = "appearance.sidebarImageDataUrl";
 const sidebarImageNameKey = "appearance.sidebarImageName";
 const sidebarNavOrderKey = "appearance.sidebarNavOrder";
+const favoritePresetsKey = "appearance.favoritePresets";
+const defaultFavoritePresets = ["night-dark", "blue-sky", "yellow-sun", "light-mode", "emerald-cave"];
 const defaultLanguage: AppLanguage = "pt-BR";
 const appLanguages = new Set<AppLanguage>([
   "pt-BR",
@@ -64,6 +66,7 @@ const appLanguages = new Set<AppLanguage>([
 const minecraftOpenActions = new Set<MinecraftOpenAction>(["none", "minimize", "background"]);
 const minecraftWindowModeKey = "minecraft.windowMode";
 const minecraftWindowModes = new Set<MinecraftWindowMode>(["fullscreen", "windowed", "borderless"]);
+const appearancePresetPattern = /^[a-z0-9-_]{1,64}$/i;
 const appearancePresets = new Set<LauncherAppearancePreset>([
   "night-dark",
   "light-mode",
@@ -162,7 +165,7 @@ export class ApiKeyStore {
 
   saveAppearanceSettings(input: UpdateLauncherSettingsInput) {
     if (input.appearancePreset !== undefined) {
-      if (!appearancePresets.has(input.appearancePreset)) {
+      if (!appearancePresets.has(input.appearancePreset) && !appearancePresetPattern.test(input.appearancePreset)) {
         throw new Error("Tema visual invalido.");
       }
 
@@ -203,6 +206,10 @@ export class ApiKeyStore {
 
     if (input.sidebarNavOrder !== undefined) {
       this.saveSetting(sidebarNavOrderKey, JSON.stringify(input.sidebarNavOrder));
+    }
+
+    if (input.favoritePresets !== undefined) {
+      this.saveSetting(favoritePresetsKey, JSON.stringify(input.favoritePresets.slice(0, 5)));
     }
 
     if (input.gpuAcceleration !== undefined) {
@@ -286,9 +293,10 @@ export class ApiKeyStore {
     );
 
     return {
-      appearancePreset: preset && appearancePresets.has(preset)
-        ? preset
-        : defaultAppearanceSettings.appearancePreset,
+      appearancePreset:
+        preset && (appearancePresets.has(preset) || appearancePresetPattern.test(preset))
+          ? preset
+          : defaultAppearanceSettings.appearancePreset,
       ...colors,
       ...numbers,
       backgroundImageDataUrl: this.loadOptionalString(backgroundImageDataUrlKey),
@@ -296,10 +304,30 @@ export class ApiKeyStore {
       sidebarImageDataUrl: this.loadOptionalString(sidebarImageDataUrlKey),
       sidebarImageName: this.loadOptionalString(sidebarImageNameKey),
       sidebarNavOrder: this.loadSidebarNavOrder(),
+      favoritePresets: this.loadFavoritePresets(),
     } as Omit<
       LauncherSettings,
       "encryptionAvailable" | "language" | "languageSelected" | "gpuAcceleration" | "minecraftOpenAction" | "minecraftWindowMode"
     >;
+  }
+
+  private loadFavoritePresets(): string[] {
+    const raw = this.readSetting(favoritePresetsKey);
+    if (!raw) {
+      return defaultFavoritePresets;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const filtered = parsed.filter(
+          (id) => typeof id === "string" && id.length > 0 && id.length <= 64,
+        ).slice(0, 5);
+        return filtered.length > 0 ? filtered : defaultFavoritePresets;
+      }
+    } catch {
+      // fallback
+    }
+    return defaultFavoritePresets;
   }
 
   private loadSidebarNavOrder(): string[] {

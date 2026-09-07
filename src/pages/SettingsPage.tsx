@@ -33,6 +33,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import type { PageId } from "../components/layout/Sidebar";
 import { languageOptions } from "../constants/languages";
+import {
+  appearancePresets,
+  defaultAppearancePreset,
+  findPresetById,
+  type AppearancePreset,
+} from "../constants/appearancePresets";
+import { applyAppearanceSettings } from "../utils/appearance";
+import { AppearancePresetLibraryModal } from "../components/launcher/AppearancePresetLibraryModal";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -81,190 +89,7 @@ const minecraftWindowModes = [
     description: "O Minecraft abre em janela maximizada mantendo a barra de tarefas acessível.",
   },
 ] as const;
-const appearancePresets = [
-  {
-    id: "night-dark",
-    label: "Night Dark",
-    description: "Escuro classico com azul.",
-    primaryColor: "#3B82F6",
-    secondaryColor: "#60A5FA",
-    backgroundColor: "#0D1117",
-    mainColor: "#0D1117",
-    sidebarColor: "#0A0E14",
-    rightPanelColor: "#0B0F15",
-    cardColor: "#161B22",
-    panelColor: "#0D1117",
-    inputColor: "#0B0F15",
-    borderColor: "#FFFFFF",
-    textColor: "#FFFFFF",
-    mutedTextColor: "#94A3B8",
-    navActiveColor: "#3B82F6",
-    buttonTextColor: "#FFFFFF",
-    backgroundOpacity: 1,
-    mainOpacity: 0.38,
-    surfaceOpacity: 0.82,
-    panelOpacity: 0.7,
-    inputOpacity: 0.92,
-    sidebarOpacity: 0.96,
-    rightPanelOpacity: 0.88,
-    navActiveOpacity: 0.16,
-    borderOpacity: 0.1,
-    backgroundImageOpacity: 0.28,
-    sidebarImageOpacity: 0.22,
-  },
-  {
-    id: "blue-sky",
-    label: "Blue Sky",
-    description: "Azul claro e visual limpo.",
-    primaryColor: "#0EA5E9",
-    secondaryColor: "#38BDF8",
-    backgroundColor: "#07111F",
-    mainColor: "#0B1726",
-    sidebarColor: "#07111F",
-    rightPanelColor: "#081827",
-    cardColor: "#0F2335",
-    panelColor: "#0A1826",
-    inputColor: "#07111F",
-    borderColor: "#7DD3FC",
-    textColor: "#F8FAFC",
-    mutedTextColor: "#B6CEE3",
-    navActiveColor: "#0EA5E9",
-    buttonTextColor: "#FFFFFF",
-    backgroundOpacity: 0.92,
-    mainOpacity: 0.44,
-    surfaceOpacity: 0.78,
-    panelOpacity: 0.72,
-    inputOpacity: 0.9,
-    sidebarOpacity: 0.88,
-    rightPanelOpacity: 0.84,
-    navActiveOpacity: 0.2,
-    borderOpacity: 0.16,
-    backgroundImageOpacity: 0.24,
-    sidebarImageOpacity: 0.3,
-  },
-  {
-    id: "yellow-sun",
-    label: "Yellow Sun",
-    description: "Amarelo quente e destaque forte.",
-    primaryColor: "#F59E0B",
-    secondaryColor: "#FACC15",
-    backgroundColor: "#17120A",
-    mainColor: "#18130B",
-    sidebarColor: "#100D08",
-    rightPanelColor: "#161006",
-    cardColor: "#21190B",
-    panelColor: "#15100A",
-    inputColor: "#100D08",
-    borderColor: "#FDE68A",
-    textColor: "#FFF7ED",
-    mutedTextColor: "#D8C9AE",
-    navActiveColor: "#F59E0B",
-    buttonTextColor: "#120A02",
-    backgroundOpacity: 0.9,
-    mainOpacity: 0.44,
-    surfaceOpacity: 0.76,
-    panelOpacity: 0.72,
-    inputOpacity: 0.9,
-    sidebarOpacity: 0.9,
-    rightPanelOpacity: 0.84,
-    navActiveOpacity: 0.22,
-    borderOpacity: 0.16,
-    backgroundImageOpacity: 0.2,
-    sidebarImageOpacity: 0.26,
-  },
-  {
-    id: "light-mode",
-    label: "Light mode",
-    description: "Cores claras com azul suave.",
-    primaryColor: "#2563EB",
-    secondaryColor: "#0284C7",
-    backgroundColor: "#F1F5F9",
-    mainColor: "#F8FAFC",
-    sidebarColor: "#FFFFFF",
-    rightPanelColor: "#FFFFFF",
-    cardColor: "#FFFFFF",
-    panelColor: "#F8FAFC",
-    inputColor: "#FFFFFF",
-    borderColor: "#CBD5E1",
-    textColor: "#0F172A",
-    mutedTextColor: "#475569",
-    navActiveColor: "#2563EB",
-    buttonTextColor: "#FFFFFF",
-    backgroundOpacity: 1,
-    mainOpacity: 1,
-    surfaceOpacity: 1,
-    panelOpacity: 1,
-    inputOpacity: 1,
-    sidebarOpacity: 1,
-    rightPanelOpacity: 1,
-    navActiveOpacity: 0.15,
-    borderOpacity: 0.9,
-    backgroundImageOpacity: 0.12,
-    sidebarImageOpacity: 0.14,
-  },
-  {
-    id: "emerald-cave",
-    label: "Emerald Cave",
-    description: "Verde frio para contraste.",
-    primaryColor: "#10B981",
-    secondaryColor: "#34D399",
-    backgroundColor: "#07130F",
-    mainColor: "#081914",
-    sidebarColor: "#06100D",
-    rightPanelColor: "#071611",
-    cardColor: "#10231D",
-    panelColor: "#0A1713",
-    inputColor: "#06100D",
-    borderColor: "#6EE7B7",
-    textColor: "#ECFDF5",
-    mutedTextColor: "#A8CDBF",
-    navActiveColor: "#10B981",
-    buttonTextColor: "#06100D",
-    backgroundOpacity: 0.94,
-    mainOpacity: 0.42,
-    surfaceOpacity: 0.78,
-    panelOpacity: 0.72,
-    inputOpacity: 0.9,
-    sidebarOpacity: 0.92,
-    rightPanelOpacity: 0.86,
-    navActiveOpacity: 0.2,
-    borderOpacity: 0.16,
-    backgroundImageOpacity: 0.24,
-    sidebarImageOpacity: 0.24,
-  },
-  {
-    id: "red-velt",
-    label: "Red Velt",
-    description: "Vermelho profundo com contraste premium.",
-    primaryColor: "#DC2626",
-    secondaryColor: "#FB7185",
-    backgroundColor: "#150708",
-    mainColor: "#17090A",
-    sidebarColor: "#100506",
-    rightPanelColor: "#17090A",
-    cardColor: "#241011",
-    panelColor: "#18090A",
-    inputColor: "#120607",
-    borderColor: "#FCA5A5",
-    textColor: "#FFF1F2",
-    mutedTextColor: "#E9B8BD",
-    navActiveColor: "#DC2626",
-    buttonTextColor: "#FFF7F7",
-    backgroundOpacity: 0.94,
-    mainOpacity: 0.44,
-    surfaceOpacity: 0.8,
-    panelOpacity: 0.72,
-    inputOpacity: 0.92,
-    sidebarOpacity: 0.94,
-    rightPanelOpacity: 0.88,
-    navActiveOpacity: 0.22,
-    borderOpacity: 0.18,
-    backgroundImageOpacity: 0.22,
-    sidebarImageOpacity: 0.22,
-  },
-] as const;
 const maxAppearanceImageBytes = 5 * 1024 * 1024;
-type AppearancePreset = (typeof appearancePresets)[number];
 type AppearanceImageTarget = "background" | "sidebar";
 type AppearanceColorKey =
   | "primaryColor"
@@ -356,6 +181,7 @@ export const SettingsPage = () => {
   const [checkingProgress, setCheckingProgress] = useState(0);
   const [installingUpdate, setInstallingUpdate] = useState(false);
   const [advancedAppearanceOpen, setAdvancedAppearanceOpen] = useState(false);
+  const [presetLibraryOpen, setPresetLibraryOpen] = useState(false);
   const settings = useQuery({
     queryKey: settingsKey,
     queryFn: launcherApi.getSettings,
@@ -368,7 +194,53 @@ export const SettingsPage = () => {
   });
   const currentSettings = settings.data;
   const updateAppearance = (input: UpdateLauncherSettingsInput) => {
+    applyAppearanceSettings(input);
     updateSettings.mutate(input);
+  };
+
+  const defaultFavorites = useMemo(
+    () => ["night-dark", "blue-sky", "yellow-sun", "light-mode", "emerald-cave"],
+    [],
+  );
+  const favoritePresetIds = useMemo(() => {
+    const favs = currentSettings?.favoritePresets;
+    if (Array.isArray(favs) && favs.length > 0) {
+      return favs.slice(0, 5);
+    }
+    return defaultFavorites;
+  }, [currentSettings?.favoritePresets, defaultFavorites]);
+
+  const featuredPresets = useMemo(() => {
+    return favoritePresetIds
+      .map((id) => findPresetById(id) ?? appearancePresets.find((p) => p.id === id))
+      .filter((p): p is AppearancePreset => Boolean(p));
+  }, [favoritePresetIds]);
+
+  const handleToggleFavorite = async (presetId: string) => {
+    const isFav = favoritePresetIds.includes(presetId);
+    if (isFav) {
+      if (favoritePresetIds.length <= 1) {
+        await dialog.alert({
+          title: "Mínimo de favoritos",
+          description: "Mantenha ao menos 1 tema favoritado para a capa.",
+          tone: "info",
+        });
+        return;
+      }
+      const updated = favoritePresetIds.filter((id) => id !== presetId);
+      updateAppearance({ favoritePresets: updated });
+    } else {
+      if (favoritePresetIds.length >= 5) {
+        await dialog.alert({
+          title: "Limite de favoritos atingido",
+          description: "Você pode ter no máximo 5 temas favoritos na capa. Desmarque um para adicionar este.",
+          tone: "info",
+        });
+        return;
+      }
+      const updated = [...favoritePresetIds, presetId];
+      updateAppearance({ favoritePresets: updated });
+    }
   };
 
   const currentNavOrder = useMemo(() => {
@@ -416,17 +288,32 @@ export const SettingsPage = () => {
   const applyAppearancePreset = (preset: AppearancePreset) => {
     const payload: UpdateLauncherSettingsInput = {
       appearancePreset: preset.id as LauncherAppearancePreset,
+      primaryColor: preset.primaryColor,
+      secondaryColor: preset.secondaryColor,
+      backgroundColor: preset.backgroundColor,
+      mainColor: preset.mainColor,
+      sidebarColor: preset.sidebarColor,
+      rightPanelColor: preset.rightPanelColor,
+      cardColor: preset.cardColor,
+      panelColor: preset.panelColor,
+      inputColor: preset.inputColor,
+      borderColor: preset.borderColor,
+      textColor: preset.textColor,
+      mutedTextColor: preset.mutedTextColor,
+      navActiveColor: preset.navActiveColor,
+      buttonTextColor: preset.buttonTextColor,
+      backgroundOpacity: preset.backgroundOpacity,
+      mainOpacity: preset.mainOpacity,
+      surfaceOpacity: preset.surfaceOpacity,
+      panelOpacity: preset.panelOpacity,
+      inputOpacity: preset.inputOpacity,
+      sidebarOpacity: preset.sidebarOpacity,
+      rightPanelOpacity: preset.rightPanelOpacity,
+      navActiveOpacity: preset.navActiveOpacity,
+      borderOpacity: preset.borderOpacity,
       backgroundImageOpacity: preset.backgroundImageOpacity,
       sidebarImageOpacity: preset.sidebarImageOpacity,
     };
-
-    for (const item of appearanceColorControls) {
-      (payload as Record<string, string | number>)[item.key] = preset[item.key];
-    }
-
-    for (const item of appearanceOpacityControls) {
-      (payload as Record<string, string | number>)[item.key] = preset[item.key];
-    }
 
     updateAppearance(payload);
   };
@@ -437,9 +324,9 @@ export const SettingsPage = () => {
     updateAppearance({ [key]: value } as UpdateLauncherSettingsInput);
   };
   const readAppearanceColor = (key: AppearanceColorKey) =>
-    currentSettings?.[key] ?? appearancePresets[0][key];
+    currentSettings?.[key] ?? defaultAppearancePreset[key];
   const readAppearanceOpacity = (key: AppearanceOpacityKey) =>
-    currentSettings?.[key] ?? appearancePresets[0][key];
+    currentSettings?.[key] ?? defaultAppearancePreset[key];
   const handleAppearanceImage = async (
     event: ChangeEvent<HTMLInputElement>,
     target: AppearanceImageTarget,
@@ -684,13 +571,14 @@ export const SettingsPage = () => {
               </div>
             </div>
             <Badge tone="blue">
-              {appearancePresets.find((item) => item.id === currentSettings?.appearancePreset)?.label ??
+              {findPresetById(currentSettings?.appearancePreset)?.label ??
+                currentSettings?.appearancePreset ??
                 "Night Dark"}
             </Badge>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-            {appearancePresets.map((preset) => {
+            {featuredPresets.map((preset) => {
               const active = (currentSettings?.appearancePreset ?? "night-dark") === preset.id;
               const swatchColor = preset.id === "light-mode" ? "#FFFFFF" : preset.primaryColor;
 
@@ -700,25 +588,35 @@ export const SettingsPage = () => {
                   type="button"
                   disabled={settings.isLoading || updateSettings.isPending}
                   onClick={() => applyAppearancePreset(preset)}
-                  className={`rounded-xl border p-3 text-left transition ${
+                  className={`flex items-center gap-2.5 rounded-xl border px-3.5 py-3 text-left transition ${
                     active
-                      ? "border-[#60A5FA]/60 bg-[#3B82F6]/12"
-                      : "border-white/10 bg-[#0D1117]/70 hover:border-white/20"
+                      ? "border-[#60A5FA]/60 bg-[#3B82F6]/12 ring-1 ring-[#60A5FA]/30"
+                      : "border-white/10 bg-[#0D1117]/70 hover:border-white/20 hover:bg-white/5"
                   }`}
                 >
-                  <span className="flex items-center gap-2 text-sm font-semibold text-white">
-                    <span
-                      className="h-4 w-4 rounded-full border border-white/20"
-                      style={{ background: swatchColor }}
-                    />
+                  <span
+                    className="h-4 w-4 shrink-0 rounded-full border border-white/20"
+                    style={{ background: swatchColor }}
+                  />
+                  <span className="truncate text-sm font-semibold text-white">
                     {preset.label}
-                  </span>
-                  <span className="mt-1 block text-xs leading-5 text-[#94A3B8]">
-                    {preset.description}
                   </span>
                 </button>
               );
             })}
+
+            {/* Bloco Mais Pré-Definições */}
+            <button
+              type="button"
+              disabled={settings.isLoading || updateSettings.isPending}
+              onClick={() => setPresetLibraryOpen(true)}
+              className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-[#0D1117]/70 px-3.5 py-3 text-left transition hover:border-[#60A5FA]/60 hover:bg-[#3B82F6]/10"
+            >
+              <span className="h-4 w-4 shrink-0 rounded-full border border-white/20 bg-gradient-to-tr from-pink-500 via-purple-500 to-cyan-400 shadow-sm" />
+              <span className="truncate text-sm font-semibold text-white">
+                Mais pré-definições
+              </span>
+            </button>
           </div>
 
           <button
@@ -923,7 +821,7 @@ export const SettingsPage = () => {
                 variant="secondary"
                 className="w-full sm:w-fit"
                 disabled={settings.isLoading || updateSettings.isPending}
-                onClick={() => applyAppearancePreset(appearancePresets[0])}
+                onClick={() => applyAppearancePreset(defaultAppearancePreset)}
               >
                 <RotateCcw className="h-4 w-4" />
                 Restaurar visual padrão
@@ -1085,6 +983,16 @@ export const SettingsPage = () => {
           <span>A alteração entra em vigor ao reiniciar o launcher.</span>
         </div>
       </Card>
+
+      <AppearancePresetLibraryModal
+        open={presetLibraryOpen}
+        activePresetId={currentSettings?.appearancePreset}
+        favoritePresetIds={favoritePresetIds}
+        onClose={() => setPresetLibraryOpen(false)}
+        onSelectPreset={(preset) => applyAppearancePreset(preset)}
+        onToggleFavorite={handleToggleFavorite}
+        disabled={settings.isLoading || updateSettings.isPending}
+      />
     </div>
   );
 };

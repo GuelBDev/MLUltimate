@@ -119,11 +119,13 @@ const contentProjectSchema = z.object({
 
 const importInstanceSchema = z.object({
   source: z.enum(["archive", "code"]),
+  archivePath: z.string().optional(),
   code: z.string().optional(),
 });
 
 const exportInstanceSchema = z.object({
   instanceId: z.string().min(1),
+  format: z.enum(["zip", "mrpack", "mlultimate"]).optional(),
   folders: z
     .array(z.enum(["config", "datapacks", "mods", "resourcepacks", "shaderpacks"]))
     .min(1),
@@ -170,9 +172,7 @@ const updateSettingsSchema = z.object({
   gpuAcceleration: z.boolean().optional(),
   minecraftOpenAction: z.enum(["none", "minimize", "background"]).optional(),
   minecraftWindowMode: z.enum(["fullscreen", "windowed", "borderless"]).optional(),
-  appearancePreset: z
-    .enum(["night-dark", "light-mode", "blue-sky", "yellow-sun", "emerald-cave", "red-velt"])
-    .optional(),
+  appearancePreset: z.string().regex(/^[a-z0-9-_]{1,64}$/i).optional(),
   primaryColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
   secondaryColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
   backgroundColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
@@ -203,6 +203,7 @@ const updateSettingsSchema = z.object({
   sidebarImageDataUrl: z.string().max(7_000_000).nullable().optional(),
   sidebarImageName: z.string().max(160).nullable().optional(),
   sidebarNavOrder: z.array(z.string()).max(10).optional(),
+  favoritePresets: z.array(z.string().regex(/^[a-z0-9-_]{1,64}$/i)).max(5).optional(),
 });
 
 const saveNicknameSkinSchema = z.object({
@@ -377,6 +378,11 @@ export const registerIpcHandlers = ({
     launcher.kill(killInstanceSchema.parse(input)),
   );
   ipcMain.handle("launcher:list-running", async () => launcher.listRunningInstances());
+  ipcMain.handle("launcher:get-active", async (_, instanceId: unknown) => {
+    if (typeof instanceId !== "string") return null;
+    return launcher.getActiveLaunch(instanceId);
+  });
+  ipcMain.handle("launcher:get-all-active", async () => launcher.getAllActiveLaunches());
   ipcMain.handle("minecraft:list-versions", async () => minecraftVersions.listVersions());
   ipcMain.handle("minecraft:install-version", async (_, versionId: unknown) =>
     minecraftVersions.installVersion(z.string().min(1).parse(versionId)),
@@ -394,6 +400,14 @@ export const registerIpcHandlers = ({
   ipcMain.handle("instances:open-folder", async (_, instanceId: unknown) =>
     instances.openFolder(z.string().min(1).parse(instanceId)),
   );
+  ipcMain.handle("instances:list-trash", async () => instances.listTrash());
+  ipcMain.handle("instances:restore-trash", async (_, trashId: unknown) =>
+    instances.restoreTrash(z.string().min(1).parse(trashId)),
+  );
+  ipcMain.handle("instances:delete-trash", async (_, trashIds: unknown) =>
+    instances.deleteTrash(z.array(z.string()).parse(trashIds)),
+  );
+  ipcMain.handle("instances:empty-trash", async () => instances.emptyTrash());
 
   ipcMain.handle("instances.checkModpackUpdate", (_, instanceId) =>
     instances.checkModpackUpdate(z.string().min(1).parse(instanceId)),
@@ -440,6 +454,9 @@ export const registerIpcHandlers = ({
   );
   ipcMain.handle("servers:remove-custom", async (_, id: unknown) =>
     instances.removeCustomServer(z.string().min(1).parse(id)),
+  );
+  ipcMain.handle("instances:select-archive-file", async () =>
+    instances.selectArchiveFile(),
   );
   ipcMain.handle("instances:import", async (_, input: unknown) =>
     instances.importInstance(importInstanceSchema.parse(input)),

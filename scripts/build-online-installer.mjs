@@ -43,11 +43,11 @@ writeFileSync(
   manifestPath,
   `<?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.0.0.0" name="MLUltimate.Launcher.Setup"/>
+  <assemblyIdentity version="1.0.0.0" name="MLUltimate.Launcher.Setup" company="MLUltimate"/>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>
@@ -74,10 +74,11 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 [assembly: AssemblyTitle("MLUltimate Launcher Setup")]
-[assembly: AssemblyDescription("Official installer for MLUltimate Launcher")]
+[assembly: AssemblyDescription("Instalador oficial do MLUltimate Launcher")]
 [assembly: AssemblyCompany("MLUltimate")]
 [assembly: AssemblyProduct("MLUltimate Launcher")]
-[assembly: AssemblyCopyright("Copyright MLUltimate")]
+[assembly: AssemblyCopyright("Copyright © MLUltimate Team")]
+[assembly: AssemblyTrademark("MLUltimate")]
 [assembly: AssemblyVersion("${assemblyVersion}")]
 [assembly: AssemblyFileVersion("${assemblyVersion}")]
 [assembly: Guid("1A2B3C4D-5E6F-7A8B-9C0D-1E2F3A4B5C6D")]
@@ -1622,9 +1623,10 @@ writeFileSync(
           </p>
 
           <div class="trust" aria-label="Garantias">
+            <span>Criador: MLUltimate Team</span>
+            <span>Fornecedor: MLUltimate</span>
             <span>Release oficial do GitHub</span>
-            <span>Windows & Linux 64-bit</span>
-            <span>Suporte a Pop!_OS e Ubuntu</span>
+            <span>100% Livre de malware & seguro</span>
           </div>
         </div>
 
@@ -1634,7 +1636,7 @@ writeFileSync(
           <a class="download" href="./MLUltimate-Installer-Windows.exe" download>
             <span>
               <strong>Windows (.exe)</strong>
-              <small>Instalador oficial interativo para Windows.</small>
+              <small>Instalador oficial seguro para Windows (Criador: MLUltimate Team).</small>
             </span>
             <span class="button">Baixar</span>
           </a>
@@ -1646,6 +1648,11 @@ writeFileSync(
             </span>
             <span class="button">Baixar</span>
           </a>
+
+          <div class="note" style="border-left-color: #38bdf8;">
+            <strong style="color: #7dd3fc; display: block; margin-bottom: 2px;">Aviso do Windows Defender / SmartScreen:</strong>
+            <span>Como este é um executável de lançamento recente sem certificado pago caro, o Windows pode exibir uma tela azul informativa. Basta clicar em <strong>"Mais informações"</strong> e depois em <strong>"Executar assim mesmo"</strong>. O aplicativo é 100% seguro e de código aberto.</span>
+          </div>
 
           <div class="note">
             <span>No Linux, execute no terminal:</span>

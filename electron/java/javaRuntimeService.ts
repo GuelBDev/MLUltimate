@@ -319,7 +319,9 @@ const detectJavaMajor = async (javaPath: string) => {
         resolve(`${stdout}\n${stderr}`);
       });
     });
-    const match = output.match(/version "([^"]+)"/);
+    const match =
+      output.match(/version "([^"]+)"/) ||
+      output.match(/(?:version|openjdk)\s+"?([0-9]+(?:\.[0-9_]+)*)/i);
     const version = match?.[1] ?? "";
     const majorText = version.startsWith("1.") ? version.split(".")[1] : version.split(".")[0];
     const major = Number(majorText);

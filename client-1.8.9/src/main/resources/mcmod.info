@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "mlultimate",
+    "name": "MLUltimate Client",
+    "description": "Next-Generation Minecraft 1.8.9 Client with modular HUD, performance engine, visual customization and QoL enhancements.",
+    "version": "1.0.0",
+    "mcversion": "1.8.9",
+    "url": "https://github.com/GuelBDev/MLUltimate",
+    "updateUrl": "",
+    "authorList": ["MLUltimate Team"],
+    "credits": "Engineered for MLUltimate Launcher",
+    "logoFile": "assets/mlultimate/logo.png",
+    "screenshots": [],
+    "dependencies": []
+  }
+]

@@ -210,6 +210,41 @@ export type LauncherInstance = {
   updatedAt: string;
 };
 
+export type TrashedWorld = {
+  folderName: string;
+  name: string;
+  sizeBytes?: number;
+  lastPlayed?: string;
+};
+
+export type TrashedModManifest = {
+  name: string;
+  fileName: string;
+  provider?: string;
+  projectId?: string;
+  versionId?: string;
+  type?: string;
+};
+
+export type TrashedInstance = {
+  id: string;
+  originalInstanceId: string;
+  name: string;
+  minecraftVersion: string;
+  loader: LoaderType;
+  loaderVersion?: string;
+  ramMb: number;
+  iconDataUrl?: string;
+  deletedAt: string;
+  worlds: TrashedWorld[];
+  mods: TrashedModManifest[];
+  worldsCount: number;
+  modsCount: number;
+  sourceProvider?: ContentProvider;
+  sourceProjectId?: string;
+  sourceVersionId?: string;
+};
+
 export type DownloadStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export type DownloadItem = {
@@ -334,8 +369,11 @@ export type ContentProjectInput = {
 
 export type ImportInstanceInput = {
   source: "archive" | "code";
+  archivePath?: string;
   code?: string;
 };
+
+export type ExportInstanceFormat = "zip" | "mrpack" | "mlultimate";
 
 export type ExportInstanceFolder =
   | "config"
@@ -346,6 +384,7 @@ export type ExportInstanceFolder =
 
 export type ExportInstanceInput = {
   instanceId: string;
+  format?: ExportInstanceFormat;
   folders: ExportInstanceFolder[];
 };
 
@@ -458,13 +497,7 @@ export type AppLanguage =
   | "tr";
 export type MinecraftOpenAction = "none" | "minimize" | "background";
 export type MinecraftWindowMode = "fullscreen" | "windowed" | "borderless";
-export type LauncherAppearancePreset =
-  | "night-dark"
-  | "light-mode"
-  | "blue-sky"
-  | "yellow-sun"
-  | "emerald-cave"
-  | "red-velt";
+export type LauncherAppearancePreset = string;
 
 export type LauncherSettings = {
   encryptionAvailable: boolean;
@@ -504,6 +537,7 @@ export type LauncherSettings = {
   sidebarImageDataUrl?: string;
   sidebarImageName?: string;
   sidebarNavOrder?: string[];
+  favoritePresets?: string[];
 };
 
 export type SystemMemoryInfo = {
@@ -547,6 +581,7 @@ export type UpdateLauncherSettingsInput = {
   sidebarImageDataUrl?: string | null;
   sidebarImageName?: string | null;
   sidebarNavOrder?: string[];
+  favoritePresets?: string[];
 };
 
 export type UpdaterStatus =

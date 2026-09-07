@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import v8 from "node:v8";
 import { LauncherDatabase } from "./database/sqliteDatabase";
 import { AvatarService } from "./avatar/avatarService";
 import { SecureTokenStore } from "./auth/secureTokenStore";
@@ -22,6 +23,28 @@ import { UpdateService } from "./updater/updateService";
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+
+const purgeLauncherMemory = () => {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.session.clearCache().catch(() => {});
+      mainWindow.webContents
+        .executeJavaScript("if (typeof window !== 'undefined' && window.gc) { window.gc(); }", true)
+        .catch(() => {});
+    }
+  } catch {
+    // Ignore cache clear failures
+  }
+
+  try {
+    v8.setFlagsFromString("--expose_gc");
+    if (typeof global.gc === "function") {
+      global.gc();
+    }
+  } catch {
+    // Ignore GC flag failures
+  }
+};
 
 app.setName(launcherAppName);
 app.setPath("userData", getLauncherDataPath());
@@ -154,7 +177,24 @@ const createWindow = async () => {
       contextIsolation: true,
       sandbox: false,
       webSecurity: true,
+      backgroundThrottling: true,
     },
+  });
+
+  mainWindow.on("minimize", () => {
+    purgeLauncherMemory();
+  });
+
+  mainWindow.on("hide", () => {
+    purgeLauncherMemory();
+  });
+
+  mainWindow.on("blur", () => {
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) {
+        purgeLauncherMemory();
+      }
+    }, 1500);
   });
 
   mainWindow.webContents.on("before-input-event", (event, input) => {
@@ -187,6 +227,9 @@ const createWindow = async () => {
 
     if (!allowed) {
       event.preventDefault();
+      if (url.startsWith("https://") || url.startsWith("http://")) {
+        void shell.openExternal(url);
+      }
     }
   });
 
@@ -238,9 +281,11 @@ const bootstrap = async (database: LauncherDatabase, apiKeys: ApiKeyStore) => {
         if (action === "background") {
           mainWindow?.hide();
         }
+
+        purgeLauncherMemory();
       }
 
-      if (event.type === "closed" || event.type === "error") {
+      if (event.type === "closed" || event.type === "error" || event.type === "cancelled") {
         const action = apiKeys.loadMinecraftOpenAction();
         if (action === "background" || action === "minimize") {
           showMainWindow();
@@ -316,8 +361,20 @@ if (gotSingleInstanceLock) {
       app.commandLine.appendSwitch("disable-gpu");
     }
 
+    // Limit memory footprint and enable aggressive background cleanup
+    app.commandLine.appendSwitch("js-flags", "--max-old-space-size=256 --optimize_for_size --expose-gc");
+    app.commandLine.appendSwitch("renderer-process-limit", "2");
+    app.commandLine.appendSwitch("enable-features", "MemorySaverMode,ResourcePrioritizer");
+    app.commandLine.appendSwitch("disable-renderer-backgrounding", "false");
+
     await app.whenReady();
     await bootstrap(database, apiKeys);
+
+    setInterval(() => {
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) {
+        purgeLauncherMemory();
+      }
+    }, 5 * 60 * 1000);
   };
 
   start().catch((error: unknown) => {

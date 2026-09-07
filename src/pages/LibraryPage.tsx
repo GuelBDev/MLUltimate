@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ImagePlus, Plus, Upload, X } from "lucide-react";
+import { ImagePlus, Plus, Trash2, Upload, X } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import instanceDefaultImage from "../assets/instance-default.png";
 import { LaunchErrorNotice } from "../components/launcher/LaunchErrorNotice";
 import { InstanceTile } from "../components/library/InstanceTile";
+import { InstanceTrashModal } from "../components/library/InstanceTrashModal";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -13,8 +14,10 @@ import { useInstances } from "../hooks/useInstances";
 import { useDownloads } from "../hooks/useDownloads";
 import { useMinecraftVersions } from "../hooks/useMinecraftVersions";
 import { useRunningInstances } from "../hooks/useRunningInstances";
+import { useLaunchEvents } from "../hooks/useLaunchEvents";
+import { useTrash } from "../hooks/useTrash";
 import { launcherApi } from "../services/launcherApi";
-import type { ContentType, CrashReportDetails, DownloadItem, LaunchEvent, LauncherInstance, LoaderType } from "../types/launcher";
+import type { ContentType, CrashReportDetails, DownloadItem, LauncherInstance, LoaderType } from "../types/launcher";
 import { InstanceDetailPage } from "./InstanceDetailPage";
 
 type LibraryPageProps = {
@@ -118,7 +121,11 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   const [launchErrorLog, setLaunchErrorLog] = useState<string | null>(null);
   const [activeCrashReport, setActiveCrashReport] = useState<CrashReportDetails | null>(null);
   const [errorInstanceId, setErrorInstanceId] = useState<string | null>(null);
-  const [launchEvents, setLaunchEvents] = useState<Record<string, LaunchEvent>>({});
+  const { launchEvents, cancelLaunch: cancelLaunchProcess } = useLaunchEvents();
+  const { trashList } = useTrash();
+  const [trashOpen, setTrashOpen] = useState(false);
+  const trashedCount = trashList.data?.length ?? 0;
+  const [openMenuInstanceId, setOpenMenuInstanceId] = useState<string | null>(null);
 
   const releaseVersions = useMemo(
     () =>
@@ -229,22 +236,10 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   useEffect(
     () =>
       launcherApi.onLaunchEvent((event) => {
-        setLaunchEvents((current) => ({ ...current, [event.id]: event }));
-
         if (event.type === "error") {
           setActiveCrashReport(event.crashReport ?? null);
           setErrorInstanceId(event.id);
           setLaunchErrorLog(event.message);
-        }
-
-        if (["complete", "cancelled", "closed", "killed"].includes(event.type)) {
-          window.setTimeout(() => {
-            setLaunchEvents((current) => {
-              const next = { ...current };
-              delete next[event.id];
-              return next;
-            });
-          }, 1800);
         }
       }),
     [],
@@ -284,7 +279,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   };
 
   const cancelLaunch = (instance: LauncherInstance) => {
-    void launcherApi.cancel({ instanceId: instance.id });
+    void cancelLaunchProcess(instance.id);
   };
 
   const cancelDownload = (downloadId: string) => {
@@ -306,21 +301,36 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
     });
 
   const importArchive = async () => {
-    const confirmed = await confirmSharedImport("arquivo");
+    try {
+      const file = await launcherApi.selectArchiveFile();
+      if (!file) {
+        return;
+      }
 
-    if (!confirmed) {
-      return;
-    }
+      const confirmed = await dialog.confirm({
+        title: "Importar instância compartilhada?",
+        description: `O launcher vai baixar e preparar a instância compartilhada do arquivo "${file.fileName}". Confirme apenas se você confia nesse pacote.`,
+        confirmLabel: "Baixar instância",
+        cancelLabel: "Cancelar",
+        tone: "info",
+      });
 
-    setImportOpen(false);
-    importInstance.mutate(
-      { source: "archive" },
-      {
-        onSuccess: () => {
-          void queryClient.invalidateQueries({ queryKey: ["instances"] });
+      if (!confirmed) {
+        return;
+      }
+
+      setImportOpen(false);
+      importInstance.mutate(
+        { source: "archive", archivePath: file.filePath },
+        {
+          onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: ["instances"] });
+          },
         },
-      },
-    );
+      );
+    } catch (importException) {
+      console.error("Falha ao selecionar pacote para importação", importException);
+    }
   };
 
   const importByCode = async (event: FormEvent<HTMLFormElement>) => {
@@ -359,6 +369,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
     return (
       <InstanceDetailPage
         instance={selected}
+        initialLaunchEvent={launchEvents[selected.id]}
         onBack={() => setSelected(null)}
         onExplore={(type, instanceId) => onExploreInstance?.(type, instanceId)}
       />
@@ -383,6 +394,19 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
         >
           <Upload className="h-4 w-4" />
           Import
+        </button>
+        <button
+          type="button"
+          className="flex items-center gap-2 text-sm font-semibold text-[#B8C2D0] hover:text-white"
+          onClick={() => setTrashOpen(true)}
+        >
+          <Trash2 className="h-4 w-4" />
+          Lixeira
+          {trashedCount > 0 ? (
+            <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-xs font-bold text-red-300">
+              {trashedCount}
+            </span>
+          ) : null}
         </button>
       </div>
 
@@ -422,6 +446,8 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
             isRunning={runningInstances.isRunning(instance.id)}
             onCancelDownload={cancelDownload}
             onCancelLaunch={cancelLaunch}
+            isMenuOpen={openMenuInstanceId === instance.id}
+            onToggleMenu={(open) => setOpenMenuInstanceId(open ? instance.id : null)}
           />
         ))}
       </section>
@@ -663,47 +689,118 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
       ) : null}
 
       {importOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
           <form
             onSubmit={importByCode}
-            className="w-full max-w-[520px] border border-white/15 bg-[#1f1f1f] p-5 shadow-2xl shadow-black/50 sm:p-7"
+            className="relative w-full max-w-[540px] overflow-hidden rounded-2xl border border-white/12 bg-[#161B22] p-6 shadow-2xl shadow-black/70 sm:p-8"
           >
-            <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-white">Import Profile</h2>
-              <button type="button" onClick={() => setImportOpen(false)}>
-                <X className="h-5 w-5 text-[#94A3B8] hover:text-white" />
+            <div className="mb-6 flex items-start justify-between">
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#60A5FA]">
+                  Instâncias & Modpacks
+                </span>
+                <h2 className="mt-1 text-2xl font-bold text-white">Importar perfil</h2>
+                <p className="mt-1 text-xs text-[#94A3B8]">
+                  Adicione um modpack exportado ou compartilhado por código/link.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="rounded-xl p-1.5 text-[#94A3B8] transition hover:bg-white/10 hover:text-white"
+                onClick={() => setImportOpen(false)}
+              >
+                <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="space-y-4">
-              <Button type="button" className="w-full rounded-sm" onClick={importArchive}>
-                <Upload className="h-4 w-4" />
-                Importar .zip, .json, .mrpack, .mlultimate ou .rar
-              </Button>
-              <label className="block">
-                <span className="text-sm font-semibold text-white">Codigo ou URL</span>
-                <input
-                  value={importCode}
-                  onChange={(event) => setImportCode(event.target.value)}
-                  className="mt-2 h-10 w-full border border-white/30 bg-[#303030] px-3 text-sm text-white outline-none focus:border-[#3B82F6]"
-                  placeholder="CurseForge ID, URL, JSON ou código compartilhado"
-                />
-              </label>
+
+            <div className="space-y-5">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => void importArchive()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    void importArchive();
+                  }
+                }}
+                className="group flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-white/15 bg-white/[0.03] px-6 py-6 text-center transition-all duration-200 hover:border-[#3B82F6]/60 hover:bg-[#3B82F6]/5"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#3B82F6]/10 text-[#60A5FA] transition group-hover:scale-110 group-hover:bg-[#3B82F6]/20">
+                  <Upload className="h-6 w-6" />
+                </div>
+                <p className="mt-3 text-sm font-semibold text-white group-hover:text-[#60A5FA]">
+                  Clique para selecionar o arquivo do pacote
+                </p>
+                <p className="mt-1 text-xs text-[#94A3B8]">
+                  O seletor de arquivos será aberto para você escolher o arquivo no PC.
+                </p>
+                <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+                  {[".ZIP", ".MRPACK", ".JSON", ".MLULTIMATE", ".RAR"].map((ext) => (
+                    <span
+                      key={ext}
+                      className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold text-[#CBD5E1]"
+                    >
+                      {ext}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="relative flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-white/10" />
+                </div>
+                <span className="relative bg-[#161B22] px-3 text-xs font-semibold uppercase tracking-widest text-[#64748B]">
+                  ou por código / link
+                </span>
+              </div>
+
+              <div>
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-[#94A3B8]">
+                    Código, URL ou CurseForge ID
+                  </span>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      value={importCode}
+                      onChange={(event) => setImportCode(event.target.value)}
+                      className="h-11 flex-1 rounded-xl border border-white/10 bg-[#0D1117] px-3.5 text-sm text-white outline-none transition placeholder:text-[#64748B] focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6]"
+                      placeholder="Ex: CurseForge ID, URL do Modrinth ou código..."
+                    />
+                    <Button
+                      type="submit"
+                      className="h-11 shrink-0 rounded-xl bg-[#3B82F6] px-5 font-semibold text-white shadow-lg shadow-blue-500/20 hover:bg-[#60A5FA]"
+                    >
+                      Importar
+                    </Button>
+                  </div>
+                </label>
+              </div>
+
               {error ? (
-                <div className="rounded-sm border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-3.5 py-2.5 text-xs text-red-100">
                   {error}
                 </div>
               ) : null}
             </div>
-            <div className="mt-7 flex justify-end gap-3 border-t border-white/10 pt-5">
-              <Button type="button" variant="secondary" className="rounded-sm" onClick={() => setImportOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" className="rounded-sm bg-[#3B82F6] hover:bg-[#60A5FA]">
-                Importar código
+
+            <div className="mt-7 flex justify-end border-t border-white/10 pt-4">
+              <Button
+                type="button"
+                variant="secondary"
+                className="rounded-xl"
+                onClick={() => setImportOpen(false)}
+              >
+                Fechar
               </Button>
             </div>
           </form>
         </div>
+      ) : null}
+
+      {trashOpen ? (
+        <InstanceTrashModal open={trashOpen} onClose={() => setTrashOpen(false)} />
       ) : null}
 
       <div className="flex flex-wrap gap-2">

@@ -402,3 +402,140 @@ th {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--app-primary);
 }
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Rich Content (Markdown & HTML mod/modpack descriptions) */
+.rich-content {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.rich-content p {
+  margin-bottom: 0.85rem;
+  line-height: 1.7;
+}
+
+.rich-content h1,
+.rich-content h2,
+.rich-content h3,
+.rich-content h4,
+.rich-content h5,
+.rich-content h6 {
+  color: var(--app-text-primary, #ffffff);
+  font-weight: 700;
+  margin-top: 1.35rem;
+  margin-bottom: 0.65rem;
+  line-height: 1.3;
+}
+
+.rich-content h1 { font-size: 1.5rem; }
+.rich-content h2 { font-size: 1.25rem; }
+.rich-content h3 { font-size: 1.1rem; }
+.rich-content h4 { font-size: 0.95rem; }
+
+.rich-content a {
+  color: #60a5fa;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+
+.rich-content a:hover {
+  color: #93c5fd;
+}
+
+.rich-content img,
+.rich-content-img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0.75rem 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: block;
+}
+
+.rich-content ul {
+  list-style-type: disc;
+  margin-left: 1.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.rich-content ol {
+  list-style-type: decimal;
+  margin-left: 1.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.rich-content li {
+  margin-bottom: 0.35rem;
+}
+
+.rich-content blockquote {
+  border-left: 4px solid #3b82f6;
+  padding: 0.5rem 1rem;
+  margin: 1rem 0;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 0 8px 8px 0;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.rich-content code {
+  background: #0d1117;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+  color: #7dd3fc;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.rich-content pre {
+  background: #0d1117;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.85rem 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.rich-content pre code {
+  background: transparent;
+  padding: 0;
+  border: none;
+  color: #e2e8f0;
+}
+
+.rich-content hr {
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  margin: 1.25rem 0;
+}
+
+.rich-content table {
+  width: 100%;
+  margin: 1rem 0;
+  border-collapse: collapse;
+}
+
+.rich-content th,
+.rich-content td {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.rich-content th {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+  color: white;
+}
+

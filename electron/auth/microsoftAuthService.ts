@@ -199,6 +199,10 @@ export class MicrosoftAuthService {
 
   async requireLicensedSession() {
     const active = this.accountStore.getActiveAccount();
+    if (active && active.provider !== "microsoft") {
+      throw new Error("Entre com uma conta Microsoft antes de iniciar esta instância.");
+    }
+
     const secureSession = active?.provider === "microsoft"
       ? this.tokenStore.loadSession(active.id)
       : this.tokenStore.loadSession();

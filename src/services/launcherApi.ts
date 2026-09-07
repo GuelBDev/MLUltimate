@@ -34,6 +34,8 @@ import type {
   UpdateInstanceInput,
   SystemMemoryInfo,
   SwitchAccountInput,
+  LauncherInstance,
+  TrashedInstance,
 } from "../types/launcher";
 
 const desktopOnly = () =>
@@ -79,6 +81,7 @@ const defaultSettings: LauncherSettings = {
   borderOpacity: 0.1,
   backgroundImageOpacity: 0.28,
   sidebarImageOpacity: 0.22,
+  favoritePresets: ["night-dark", "blue-sky", "yellow-sun", "light-mode", "emerald-cave"],
 };
 const browserSettingsKey = "mlultimate:browser-settings";
 
@@ -166,6 +169,16 @@ export const launcherApi = {
     return window.mlultimate.launcher.listRunning();
   },
 
+  getActiveLaunch: async (instanceId: string) => {
+    if (!hasBridge()) return null;
+    return window.mlultimate.launcher.getActive(instanceId);
+  },
+
+  getAllActiveLaunches: async () => {
+    if (!hasBridge()) return {};
+    return window.mlultimate.launcher.getAllActive();
+  },
+
   onLaunchEvent: (callback: (event: LaunchEvent) => void) => {
     if (!hasBridge()) {
       return () => undefined;
@@ -234,6 +247,26 @@ export const launcherApi = {
     return window.mlultimate.instances.openFolder(instanceId);
   },
 
+  listTrash: async (): Promise<TrashedInstance[]> => {
+    if (!hasBridge()) return [];
+    return window.mlultimate.instances.listTrash();
+  },
+
+  restoreTrash: async (trashId: string): Promise<LauncherInstance> => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.restoreTrash(trashId);
+  },
+
+  deleteTrash: async (trashIds: string[]): Promise<void> => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.deleteTrash(trashIds);
+  },
+
+  emptyTrash: async (): Promise<void> => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.emptyTrash();
+  },
+
   checkModpackUpdate: async (instanceId: string): Promise<{ hasUpdate: boolean; newVersionId?: string; newVersionNumber?: string }> => {
     if (!hasBridge()) throw desktopOnly();
     return window.mlultimate.instances.checkModpackUpdate(instanceId);
@@ -247,6 +280,11 @@ export const launcherApi = {
   selectInstanceIcon: async () => {
     if (!hasBridge()) throw desktopOnly();
     return window.mlultimate.instances.selectIcon();
+  },
+
+  selectArchiveFile: async () => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.instances.selectArchiveFile();
   },
 
   importInstance: async (input: ImportInstanceInput) => {

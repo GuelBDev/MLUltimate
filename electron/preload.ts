@@ -47,6 +47,7 @@ import type {
   UpdateLauncherSettingsInput,
   UpdateInstanceInput,
   OnlineLibraryServer,
+  TrashedInstance,
 } from "../src/types/launcher";
 
 const api = {
@@ -72,6 +73,10 @@ const api = {
       ipcRenderer.invoke("launcher:kill", request) as Promise<void>,
     listRunning: () =>
       ipcRenderer.invoke("launcher:list-running") as Promise<string[]>,
+    getActive: (instanceId: string) =>
+      ipcRenderer.invoke("launcher:get-active", instanceId) as Promise<LaunchEvent | null>,
+    getAllActive: () =>
+      ipcRenderer.invoke("launcher:get-all-active") as Promise<Record<string, LaunchEvent>>,
     onEvent: (callback: (event: LaunchEvent) => void) => {
       const listener = (_: Electron.IpcRendererEvent, event: LaunchEvent) => {
         callback(event);
@@ -101,12 +106,22 @@ const api = {
       ipcRenderer.invoke("instances:remove", instanceId) as Promise<void>,
     openFolder: (instanceId: string) =>
       ipcRenderer.invoke("instances:open-folder", instanceId) as Promise<void>,
+    listTrash: () =>
+      ipcRenderer.invoke("instances:list-trash") as Promise<TrashedInstance[]>,
+    restoreTrash: (trashId: string) =>
+      ipcRenderer.invoke("instances:restore-trash", trashId) as Promise<LauncherInstance>,
+    deleteTrash: (trashIds: string[]) =>
+      ipcRenderer.invoke("instances:delete-trash", trashIds) as Promise<void>,
+    emptyTrash: () =>
+      ipcRenderer.invoke("instances:empty-trash") as Promise<void>,
     checkModpackUpdate: (instanceId: string) =>
       ipcRenderer.invoke("instances.checkModpackUpdate", instanceId) as Promise<{ hasUpdate: boolean; newVersionId?: string; newVersionNumber?: string }>,
     updateModpack: (instanceId: string, mode: "in-place" | "new-instance", newVersionId: string) =>
       ipcRenderer.invoke("instances.updateModpack", instanceId, mode, newVersionId) as Promise<LauncherInstance>,
     selectIcon: () =>
       ipcRenderer.invoke("instances:select-icon") as Promise<InstanceIconSelection | null>,
+    selectArchiveFile: () =>
+      ipcRenderer.invoke("instances:select-archive-file") as Promise<{ filePath: string; fileName: string } | null>,
     importInstance: (input: ImportInstanceInput) =>
       ipcRenderer.invoke("instances:import", input) as Promise<LauncherInstance | null>,
     exportInstance: (input: ExportInstanceInput) =>

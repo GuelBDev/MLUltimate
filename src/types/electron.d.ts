@@ -46,6 +46,7 @@ import type {
   UpdateCustomServerInput,
   UpdateLauncherSettingsInput,
   UpdateInstanceInput,
+  TrashedInstance,
 } from "./launcher";
 
 declare global {
@@ -65,6 +66,8 @@ declare global {
         cancel: (request?: LaunchCancelRequest) => Promise<void>;
         kill: (request: { instanceId: string }) => Promise<void>;
         listRunning: () => Promise<string[]>;
+        getActive: (instanceId: string) => Promise<LaunchEvent | null>;
+        getAllActive: () => Promise<Record<string, LaunchEvent>>;
         onEvent: (callback: (event: LaunchEvent) => void) => () => void;
       };
       minecraft: {
@@ -77,9 +80,14 @@ declare global {
         update: (input: UpdateInstanceInput) => Promise<LauncherInstance>;
         remove: (instanceId: string) => Promise<void>;
         openFolder: (instanceId: string) => Promise<void>;
+        listTrash: () => Promise<TrashedInstance[]>;
+        restoreTrash: (trashId: string) => Promise<LauncherInstance>;
+        deleteTrash: (trashIds: string[]) => Promise<void>;
+        emptyTrash: () => Promise<void>;
         checkModpackUpdate: (instanceId: string) => Promise<{ hasUpdate: boolean; newVersionId?: string; newVersionNumber?: string }>;
         updateModpack: (instanceId: string, mode: "in-place" | "new-instance", newVersionId: string) => Promise<LauncherInstance>;
         selectIcon: () => Promise<InstanceIconSelection | null>;
+        selectArchiveFile: () => Promise<{ filePath: string; fileName: string } | null>;
         importInstance: (input: ImportInstanceInput) => Promise<LauncherInstance | null>;
         exportInstance: (input: ExportInstanceInput) => Promise<ExportInstanceResult | null>;
         inspect: (instanceId: string) => Promise<InstanceInspection>;

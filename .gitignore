@@ -28,3 +28,11 @@ installer.log
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch & Temporary
+scratch/
+
+# Gradle & Java build artifacts
+.gradle/
+client-1.8.9/.gradle/
+client-1.8.9/build/

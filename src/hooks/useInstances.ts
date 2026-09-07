@@ -23,6 +23,7 @@ export const useInstances = () => {
     mutationFn: launcherApi.removeInstance,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: instancesKey });
+      void queryClient.invalidateQueries({ queryKey: ["trash-instances"] });
     },
   });
 

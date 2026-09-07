@@ -1435,7 +1435,7 @@ export class ContentService {
     const contentVersions = visibleFiles.map((file) => toCurseForgeContentVersion(file));
     const description =
       descriptionResponse?.ok
-        ? htmlToPlainText(stringResponseSchema.parse(await descriptionResponse.json()).data)
+        ? stringResponseSchema.parse(await descriptionResponse.json()).data
         : project.summary;
     const latestFile = visibleFiles[0];
 
@@ -1446,9 +1446,9 @@ export class ContentService {
       ).catch(() => null);
 
       if (changelogResponse?.ok) {
-        contentVersions[0].changelog = htmlToPlainText(
-          stringResponseSchema.parse(await changelogResponse.json()).data,
-        );
+        contentVersions[0].changelog = stringResponseSchema.parse(
+          await changelogResponse.json(),
+        ).data;
       }
     }
 
@@ -2371,20 +2371,6 @@ const dedupeModpackContent = (entries: ModpackContentEntry[]) => {
   return [...unique.values()];
 };
 
-const htmlToPlainText = (html: string) =>
-  html
-    .replace(/<\s*br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<li[^>]*>/gi, "• ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 
 const chooseMinecraftVersion = (versions: string[]) => {
   const version = latestGameVersion(versions) ?? versions.find(isMinecraftVersion);

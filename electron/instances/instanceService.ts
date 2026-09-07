@@ -11,6 +11,7 @@ import { LauncherDatabase } from "../database/sqliteDatabase";
 import { DownloadManager } from "../downloads/downloadManager";
 import { MinecraftVersionService } from "../minecraft/minecraftVersionService";
 import { getLauncherDataSubpath } from "../utils/launcherPaths";
+import { InstanceTrashService } from "./instanceTrashService";
 import type {
   AddCustomServerInput,
   ContentProvider,
@@ -74,11 +75,13 @@ const updateInstanceSchema = z.object({
 
 const importInstanceSchema = z.object({
   source: z.enum(["archive", "code"]),
+  archivePath: z.string().trim().optional(),
   code: z.string().trim().optional(),
 });
 
 const exportInstanceSchema = z.object({
   instanceId: z.string().min(1),
+  format: z.enum(["zip", "mrpack", "mlultimate"]).optional().default("zip"),
   folders: z
     .array(z.enum(["config", "datapacks", "mods", "resourcepacks", "shaderpacks"]))
     .min(1),
@@ -257,13 +260,15 @@ const rowToCustomServer = (row: CustomServerRow): CustomServer => ({
 
 export class InstanceService {
   private instancesRoot = getLauncherDataSubpath("Instances");
-
+  private trashService: InstanceTrashService;
 
   constructor(
     private readonly database: LauncherDatabase,
     private readonly minecraftVersions: MinecraftVersionService,
     private readonly downloads: DownloadManager,
-  ) {}
+  ) {
+    this.trashService = new InstanceTrashService(this.database);
+  }
 
   async listCustomServers(): Promise<CustomServer[]> {
     const rows = this.database.all<CustomServerRow>(
@@ -418,8 +423,6 @@ export class InstanceService {
   }
 
   async list(): Promise<LauncherInstance[]> {
-    await this.cleanupDeletedInstances();
-
     const rows = this.database.all<InstanceRow>(
       "SELECT * FROM instances ORDER BY updated_at DESC",
     );
@@ -439,16 +442,73 @@ export class InstanceService {
 
   async remove(id: string) {
     const instance = await this.getById(id);
-    const deletedPath = await this.moveInstanceToDeletedArea(instance);
+    await this.trashService.moveToTrash(instance);
+  }
 
-    this.database.run("DELETE FROM installed_content WHERE instance_id = ?", [id]);
-    this.database.run("DELETE FROM instances WHERE id = ?", [id]);
+  async listTrash() {
+    return this.trashService.listTrash();
+  }
 
-    if (deletedPath) {
-      await this.deletePathWithRetries(deletedPath).catch(() => undefined);
+  async deleteTrash(trashIds: string[]) {
+    return this.trashService.deleteFromTrash(trashIds);
+  }
+
+  async emptyTrash() {
+    return this.trashService.emptyTrash();
+  }
+
+  async restoreTrash(trashId: string): Promise<LauncherInstance> {
+    const trashItem = await this.trashService.getTrashItem(trashId);
+    if (!trashItem) {
+      throw new Error("Item não encontrado na lixeira.");
     }
 
-    await this.cleanupDeletedInstances();
+    const restored = await this.create({
+      name: trashItem.name,
+      minecraftVersion: trashItem.minecraftVersion,
+      loader: trashItem.loader,
+      ramMb: trashItem.ramMb,
+      contentManagementEnabled: true,
+    });
+
+    const savesDirInTrash = this.trashService.getTrashItemSavesDir(trashId);
+    if (savesDirInTrash) {
+      const destinationSavesDir = path.join(restored.gameDir, "saves");
+      await cp(savesDirInTrash, destinationSavesDir, { recursive: true, force: true }).catch((err) =>
+        console.warn("[Trash] Falha ao restaurar pasta de saves da instância", err),
+      );
+    }
+
+    if (trashItem.mods && trashItem.mods.length > 0) {
+      const now = new Date().toISOString();
+      for (const mod of trashItem.mods) {
+        if (mod.provider && mod.projectId && mod.versionId) {
+          try {
+            this.database.run(
+              `INSERT OR IGNORE INTO installed_content (id, instance_id, provider, type, project_id, version_id, name, file_name, file_path, installed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                randomUUID(),
+                restored.id,
+                mod.provider,
+                mod.type || "mod",
+                mod.projectId,
+                mod.versionId,
+                mod.name,
+                mod.fileName,
+                path.join(restored.gameDir, "mods", mod.fileName),
+                now,
+              ],
+            );
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+
+    await this.trashService.deleteFromTrash([trashId]);
+    return this.getById(restored.id);
   }
 
   private async nextInstanceGameDir(name: string) {
@@ -467,50 +527,6 @@ export class InstanceService {
     throw new Error("Nao foi possivel encontrar um nome livre para a pasta da instancia.");
   }
 
-  private async moveInstanceToDeletedArea(instance: LauncherInstance) {
-    const resolvedGameDir = this.resolveInstancePathInsideRoot(instance.gameDir);
-
-    if (!existsSync(resolvedGameDir)) {
-      return null;
-    }
-
-    const trashRoot = path.join(this.instancesRoot, DELETED_INSTANCES_DIR);
-    await mkdir(trashRoot, { recursive: true });
-    const deletedPath = path.join(
-      trashRoot,
-      `${new Date().toISOString().replace(/[:.]/g, "-")}-${instance.id}`,
-    );
-
-    try {
-      await rename(resolvedGameDir, deletedPath);
-      return deletedPath;
-    } catch (error) {
-      await this.deletePathWithRetries(resolvedGameDir).catch((deleteError) => {
-        throw new Error(
-          "Nao foi possivel excluir a pasta da instancia. Feche o Minecraft e qualquer pasta aberta dessa instancia e tente novamente.",
-          { cause: deleteError instanceof Error ? deleteError : error },
-        );
-      });
-      return null;
-    }
-  }
-
-  private resolveInstancePathInsideRoot(targetPath: string) {
-    const resolvedTarget = path.resolve(targetPath);
-    const resolvedRoot = path.resolve(this.instancesRoot);
-    const relativePath = path.relative(resolvedRoot, resolvedTarget);
-
-    if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-      throw new Error("Caminho da instancia fora da pasta segura do launcher.");
-    }
-
-    if (relativePath.split(path.sep).includes(DELETED_INSTANCES_DIR)) {
-      throw new Error("Caminho da instancia aponta para a lixeira interna do launcher.");
-    }
-
-    return resolvedTarget;
-  }
-
   private async deletePathWithRetries(targetPath: string) {
     await rm(targetPath, {
       recursive: true,
@@ -518,20 +534,6 @@ export class InstanceService {
       maxRetries: 10,
       retryDelay: 500,
     });
-  }
-
-  private async cleanupDeletedInstances() {
-    const trashRoot = path.join(this.instancesRoot, DELETED_INSTANCES_DIR);
-
-    if (!existsSync(trashRoot)) {
-      return;
-    }
-
-    const entries = await readdir(trashRoot, { withFileTypes: true }).catch(() => []);
-
-    for (const entry of entries) {
-      await this.deletePathWithRetries(path.join(trashRoot, entry.name)).catch(() => undefined);
-    }
   }
 
   async update(input: UpdateInstanceInput): Promise<LauncherInstance> {
@@ -1032,6 +1034,28 @@ export class InstanceService {
     };
   }
 
+  async selectArchiveFile(): Promise<{ filePath: string; fileName: string } | null> {
+    const result = await dialog.showOpenDialog({
+      title: "Selecionar arquivo de perfil para importar",
+      properties: ["openFile"],
+      filters: [
+        {
+          name: "Pacotes Minecraft e manifestos (*.zip, *.mrpack, *.mlultimate, *.rar, *.json)",
+          extensions: ["zip", "mrpack", "mlultimate", "rar", "json"],
+        },
+      ],
+    });
+
+    if (result.canceled || !result.filePaths[0]) {
+      return null;
+    }
+
+    return {
+      filePath: result.filePaths[0],
+      fileName: path.basename(result.filePaths[0]),
+    };
+  }
+
   private async prepareInstance(
     parsed: z.infer<typeof createInstanceSchema>,
     gameDir: string,
@@ -1220,6 +1244,10 @@ export class InstanceService {
       return this.importFromCode(parsed.code ?? "");
     }
 
+    if (parsed.archivePath) {
+      return this.importFile(parsed.archivePath);
+    }
+
     const result = await dialog.showOpenDialog({
       title: "Importar instância",
       properties: ["openFile"],
@@ -1248,11 +1276,22 @@ export class InstanceService {
   async exportInstance(input: ExportInstanceInput): Promise<ExportInstanceResult | null> {
     const parsed = exportInstanceSchema.parse(input);
     const instance = await this.getById(parsed.instanceId);
-    const suggestedName = `${sanitizeFileName(instance.name)}-${sanitizeFileName(instance.minecraftVersion)}.zip`;
+    const format = parsed.format ?? "zip";
+    const extension = format === "mrpack" ? "mrpack" : format === "mlultimate" ? "mlultimate" : "zip";
+    const formatName =
+      format === "mrpack"
+        ? "Modpack Modrinth (*.mrpack)"
+        : format === "mlultimate"
+          ? "Pacote MLUltimate (*.mlultimate)"
+          : "Pacote CurseForge (*.zip)";
+    const suggestedName = `${sanitizeFileName(instance.name)}-${sanitizeFileName(instance.minecraftVersion)}.${extension}`;
     const result = await dialog.showSaveDialog({
       title: "Compartilhar modpack",
       defaultPath: path.join(app.getPath("downloads"), suggestedName),
-      filters: [{ name: "Pacote CurseForge", extensions: ["zip"] }],
+      filters: [
+        { name: formatName, extensions: [extension] },
+        { name: "Todos os arquivos", extensions: ["*"] },
+      ],
     });
 
     if (result.canceled || !result.filePath) {
@@ -1268,6 +1307,85 @@ export class InstanceService {
   ): Promise<ExportInstanceResult> {
     const parsed = exportInstanceSchema.parse(input);
     const instance = await this.getById(parsed.instanceId);
+    const format = parsed.format ?? "zip";
+
+    if (format === "mrpack") {
+      const modrinthIndex = {
+        formatVersion: 1,
+        game: "minecraft",
+        versionId: "1.0.0",
+        name: instance.name,
+        summary: `Modpack exportado de ${instance.name} via MLUltimate Launcher`,
+        files: [],
+        dependencies: {
+          minecraft: instance.minecraftVersion,
+          ...(instance.loader && instance.loader !== "vanilla"
+            ? { [`${instance.loader}-loader`]: instance.loaderVersion || "latest" }
+            : {}),
+        },
+      };
+
+      const zip = new AdmZip();
+      zip.addFile(
+        "modrinth.index.json",
+        Buffer.from(JSON.stringify(modrinthIndex, null, 2), "utf8"),
+      );
+
+      let overrideFiles = 0;
+      for (const folder of parsed.folders) {
+        const source = path.join(instance.gameDir, folder);
+        overrideFiles += await addFolderToZip(zip, source, `overrides/${folder}`, new Set());
+      }
+
+      const normalizedDestination = destination.toLowerCase().endsWith(".mrpack")
+        ? destination
+        : `${destination}.mrpack`;
+      await mkdir(path.dirname(normalizedDestination), { recursive: true });
+      zip.writeZip(normalizedDestination);
+
+      return {
+        filePath: normalizedDestination,
+        manifestFiles: 0,
+        overrideFiles,
+      };
+    }
+
+    if (format === "mlultimate") {
+      const manifest = {
+        name: instance.name,
+        minecraftVersion: instance.minecraftVersion,
+        loader: instance.loader,
+        loaderVersion: instance.loaderVersion,
+        ramMb: instance.ramMb,
+        contentManagementEnabled: instance.contentManagementEnabled,
+      };
+
+      const zip = new AdmZip();
+      zip.addFile(
+        "mlultimate-instance.json",
+        Buffer.from(JSON.stringify(manifest, null, 2), "utf8"),
+      );
+
+      let overrideFiles = 0;
+      for (const folder of parsed.folders) {
+        const source = path.join(instance.gameDir, folder);
+        overrideFiles += await addFolderToZip(zip, source, folder, new Set());
+      }
+
+      const normalizedDestination = destination.toLowerCase().endsWith(".mlultimate")
+        ? destination
+        : `${destination}.mlultimate`;
+      await mkdir(path.dirname(normalizedDestination), { recursive: true });
+      zip.writeZip(normalizedDestination);
+
+      return {
+        filePath: normalizedDestination,
+        manifestFiles: 0,
+        overrideFiles,
+      };
+    }
+
+    // Default format: "zip" (CurseForge package)
     const selectedFolders = new Set<ExportInstanceFolder>(parsed.folders);
     const installedRows = this.database.all<InstalledContentRow>(
       "SELECT * FROM installed_content WHERE instance_id = ? ORDER BY installed_at ASC",
@@ -1279,9 +1397,6 @@ export class InstanceService {
       const folder = relativePath.split("/")[0] as ExportInstanceFolder;
       return selectedFolders.has(folder) && existsSync(row.file_path);
     });
-    const trackedPaths = new Set(
-      trackedFiles.map((row) => path.resolve(row.file_path).toLowerCase()),
-    );
     const manifestFiles = Array.from(
       new Map(
         trackedFiles.map((row) => [
@@ -1313,7 +1428,7 @@ export class InstanceService {
 
     for (const folder of parsed.folders) {
       const source = path.join(instance.gameDir, folder);
-      overrideFiles += await addFolderToZip(zip, source, `overrides/${folder}`, trackedPaths);
+      overrideFiles += await addFolderToZip(zip, source, `overrides/${folder}`, new Set());
     }
 
     const normalizedDestination = destination.toLowerCase().endsWith(".zip")

@@ -1,5 +1,5 @@
-import { Clock3, FolderOpen, MoreVertical, Pencil, Play, Power, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { Clock3, FolderOpen, Loader2, MoreVertical, Pencil, Play, Power, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import instanceDefaultImage from "../../assets/instance-default.png";
 import type { DownloadItem, LaunchEvent, LauncherInstance } from "../../types/launcher";
 import { Button } from "../ui/button";
@@ -21,6 +21,8 @@ type InstanceTileProps = {
   onCancelDownload?: (downloadId: string) => void;
   onCancelLaunch?: (instance: LauncherInstance) => void;
   compact?: boolean;
+  isMenuOpen?: boolean;
+  onToggleMenu?: (open: boolean) => void;
 };
 
 export const InstanceTile = ({
@@ -37,8 +39,34 @@ export const InstanceTile = ({
   onCancelDownload,
   onCancelLaunch,
   compact = false,
+  isMenuOpen,
+  onToggleMenu,
 }: InstanceTileProps) => {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [localMenuOpen, setLocalMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuOpen = isMenuOpen !== undefined ? isMenuOpen : localMenuOpen;
+  const toggleMenu = useCallback((open: boolean) => {
+    if (onToggleMenu) {
+      onToggleMenu(open);
+    } else {
+      setLocalMenuOpen(open);
+    }
+  }, [onToggleMenu]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        toggleMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [menuOpen, toggleMenu]);
   const activeLaunch =
     launchEvent && ["step", "console", "security"].includes(launchEvent.type)
       ? launchEvent
@@ -74,7 +102,7 @@ export const InstanceTile = ({
             className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-sm bg-black/70 text-white transition hover:bg-[#3B82F6]"
             onClick={(event) => {
               event.stopPropagation();
-              setMenuOpen((value) => !value);
+              toggleMenu(!menuOpen);
             }}
             aria-label="Ações da instância"
           >
@@ -138,6 +166,15 @@ export const InstanceTile = ({
             <Power className="h-4 w-4" />
             Kill Instance
           </Button>
+        ) : activeLaunch ? (
+          <Button
+            type="button"
+            className="h-9 w-full rounded-sm bg-amber-600 hover:bg-amber-500"
+            onClick={() => onCancelLaunch?.(instance)}
+          >
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Cancelar
+          </Button>
         ) : (
           <Button
             type="button"
@@ -151,42 +188,48 @@ export const InstanceTile = ({
       </div>
 
       {menuOpen ? (
-        <div className="absolute right-2 top-11 z-10 w-36 overflow-hidden rounded-sm border border-white/10 bg-[#2b2b2b] shadow-2xl">
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/10"
-            onClick={() => {
-              setMenuOpen(false);
-              onEdit(instance);
-            }}
-          >
-            <Pencil className="h-4 w-4" />
-            Editar
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/10"
-            onClick={() => {
-              setMenuOpen(false);
-              onOpenFolder?.(instance);
-            }}
-          >
-            <FolderOpen className="h-4 w-4" />
-            Pasta
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-200 hover:bg-red-500/20"
-            onClick={() => {
-              setMenuOpen(false);
-              onDelete(instance);
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-            Excluir
-          </button>
-        </div>
-      ) : null}
+        <div
+          ref={menuRef}
+          className="absolute right-2 top-11 z-30 w-36 overflow-hidden rounded-sm border border-white/10 bg-[#2b2b2b] shadow-2xl"
+        >
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/10"
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleMenu(false);
+                onEdit(instance);
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+              Editar
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/10"
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleMenu(false);
+                onOpenFolder?.(instance);
+              }}
+            >
+              <FolderOpen className="h-4 w-4" />
+              Pasta
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-200 hover:bg-red-500/20"
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleMenu(false);
+                onDelete(instance);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+              Excluir
+            </button>
+          </div>
+        ) : null}
     </div>
   );
 };

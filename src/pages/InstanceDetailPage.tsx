@@ -6,6 +6,7 @@ import {
   HardDrive,
   History,
   Images,
+  Loader2,
   Map as MapIcon,
   MoreVertical,
   Package,
@@ -33,7 +34,9 @@ import { Progress } from "../components/ui/progress";
 import { useAppDialog } from "../components/ui/appDialogContext";
 import { useDownloads } from "../hooks/useDownloads";
 import { useInstances } from "../hooks/useInstances";
+import { RichContent } from "../components/common/RichContent";
 import { useRunningInstances } from "../hooks/useRunningInstances";
+import { useLaunchEvents } from "../hooks/useLaunchEvents";
 import { launcherApi } from "../services/launcherApi";
 import { formatDownloadEta, formatDownloadSize, formatDownloadSpeed } from "../utils/downloadFormat";
 import type {
@@ -41,6 +44,7 @@ import type {
   CrashReportDetails,
   DownloadItem,
   ExportInstanceFolder,
+  ExportInstanceFormat,
   InstanceContentCategory,
   InstanceContentEntry,
   LaunchEvent,
@@ -49,6 +53,7 @@ import type {
 
 type InstanceDetailPageProps = {
   instance: LauncherInstance;
+  initialLaunchEvent?: LaunchEvent | null;
   onBack: () => void;
   onExplore: (type: ContentType, instanceId: string) => void;
 };
@@ -102,14 +107,17 @@ const exportFolderLabels: Record<ExportInstanceFolder, string> = {
 
 export const InstanceDetailPage = ({
   instance,
+  initialLaunchEvent,
   onBack,
   onExplore,
 }: InstanceDetailPageProps) => {
   const queryClient = useQueryClient();
   const dialog = useAppDialog();
   const { instances, openFolder } = useInstances();
+  const { getLaunchEvent, cancelLaunch, isLaunching } = useLaunchEvents();
   const current =
     instances.data?.find((candidate) => candidate.id === instance.id) ?? instance;
+  const activeLaunchEvent = getLaunchEvent(current.id) ?? initialLaunchEvent ?? null;
   const inspection = useQuery({
     queryKey: ["instance-inspection", current.id],
     queryFn: () => launcherApi.inspectInstance(current.id),
@@ -146,11 +154,11 @@ export const InstanceDetailPage = ({
   const [logQuery, setLogQuery] = useState("");
   const [launchErrorLog, setLaunchErrorLog] = useState<string | null>(null);
   const [activeCrashReport, setActiveCrashReport] = useState<CrashReportDetails | null>(null);
-  const [launchEvent, setLaunchEvent] = useState<LaunchEvent | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [updateTargetVersion, setUpdateTargetVersion] = useState<{ id: string; name: string } | null>(null);
   const [exportFolders, setExportFolders] =
     useState<ExportInstanceFolder[]>(defaultExportFolders);
+  const [exportFormat, setExportFormat] = useState<ExportInstanceFormat>("zip");
   const effectiveSelectedLog =
     selectedLog ??
     inspection.data?.logs.find((log) => log.name.toLowerCase().startsWith("[crash]"))
@@ -218,14 +226,19 @@ export const InstanceDetailPage = ({
     mutationFn: () =>
       launcherApi.exportInstance({
         instanceId: current.id,
+        format: exportFormat,
         folders: exportFolders,
       }),
     onSuccess: async (result) => {
       if (!result) return;
       setShareOpen(false);
       await dialog.alert({
-        title: "Modpack exportado",
-        description: `Pacote salvo em ${result.filePath}. O manifest.json possui ${result.manifestFiles} arquivo(s) da CurseForge e ${result.overrideFiles} arquivo(s) em overrides.`,
+        title: "Perfil exportado com sucesso",
+        description: `Pacote salvo em ${result.filePath}.${
+          result.manifestFiles > 0
+            ? ` O pacote possui ${result.manifestFiles} arquivo(s) em manifesto e ${result.overrideFiles} arquivo(s) em overrides.`
+            : ` O pacote contém ${result.overrideFiles} arquivo(s) incluídos.`
+        }`,
         confirmLabel: "Concluir",
         tone: "success",
       });
@@ -269,10 +282,10 @@ export const InstanceDetailPage = ({
     () => findInstanceDownload(downloads.data ?? [], current),
     [current, downloads.data],
   );
-  const activity = launchEvent ?? activeDownload;
+  const activity = activeLaunchEvent ?? activeDownload;
   const activityLabel =
-    launchEvent?.message ?? activeDownload?.currentStep ?? activeDownload?.label;
-  const activityProgress = launchEvent?.progress ?? activeDownload?.progress ?? 0;
+    activeLaunchEvent?.message ?? activeDownload?.currentStep ?? activeDownload?.label;
+  const activityProgress = activeLaunchEvent?.progress ?? activeDownload?.progress ?? 0;
   const selectedVersion =
     project.data?.versions.find((version) => version.id === current.sourceVersionId) ??
     project.data?.versions[0];
@@ -294,7 +307,6 @@ export const InstanceDetailPage = ({
     () =>
       launcherApi.onLaunchEvent((event) => {
         if (event.id !== current.id) return;
-        setLaunchEvent(event);
 
         if (event.type === "error") {
           setActiveCrashReport(event.crashReport ?? null);
@@ -303,10 +315,6 @@ export const InstanceDetailPage = ({
 
         if (["closed", "killed", "cancelled", "error"].includes(event.type)) {
           refresh();
-        }
-
-        if (["complete", "cancelled", "closed", "killed"].includes(event.type)) {
-          window.setTimeout(() => setLaunchEvent(null), 1800);
         }
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -435,8 +443,8 @@ export const InstanceDetailPage = ({
                     type="button"
                     className="flex h-7 w-7 items-center justify-center text-[#94A3B8] hover:text-red-100"
                     onClick={() =>
-                      launchEvent
-                        ? void launcherApi.cancel({ instanceId: current.id })
+                      activeLaunchEvent
+                        ? void cancelLaunch(current.id)
                         : activeDownload
                           ? void launcherApi.cancelDownload(activeDownload.id)
                           : undefined
@@ -510,6 +518,14 @@ export const InstanceDetailPage = ({
                 <Power className="h-4 w-4" />
                 Encerrar
               </Button>
+            ) : isLaunching(current.id) ? (
+              <Button
+                onClick={() => void cancelLaunch(current.id)}
+                className="rounded-sm bg-amber-600 hover:bg-amber-500"
+              >
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Cancelar
+              </Button>
             ) : (
               <Button onClick={play} className="rounded-sm bg-[#3B82F6] hover:bg-[#60A5FA]">
                 <Play className="h-4 w-4 fill-white" />
@@ -529,7 +545,6 @@ export const InstanceDetailPage = ({
           onClear={() => {
             setLaunchErrorLog(null);
             setActiveCrashReport(null);
-            setLaunchEvent(null);
           }}
         />
       ) : null}
@@ -540,12 +555,19 @@ export const InstanceDetailPage = ({
             <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#60A5FA]">
-                  Pacote CurseForge
+                  {exportFormat === "mrpack"
+                    ? "Modpack Modrinth (.mrpack)"
+                    : exportFormat === "mlultimate"
+                      ? "Pacote MLUltimate (.mlultimate)"
+                      : "Pacote CurseForge (.zip)"}
                 </p>
                 <h2 className="mt-2 text-xl font-semibold text-white">Compartilhar perfil</h2>
                 <p className="mt-2 text-sm leading-6 text-[#94A3B8]">
-                  Cria um ZIP com manifest.json e overrides, pronto para importar no MLUltimate
-                  e compatível com o padrão de modpacks da CurseForge.
+                  {exportFormat === "mrpack"
+                    ? "Cria um arquivo .mrpack compatível com o Modrinth com índice e pasta overrides."
+                    : exportFormat === "mlultimate"
+                      ? "Cria um pacote nativo .mlultimate com configuração completa para restauração direta."
+                      : "Cria um arquivo .zip com manifest.json e overrides, compatível com CurseForge e MLUltimate."}
                 </p>
               </div>
               <button
@@ -556,11 +578,34 @@ export const InstanceDetailPage = ({
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="space-y-4 p-5">
-              <div className="rounded-xl border border-blue-300/15 bg-blue-500/8 px-4 py-3 text-sm leading-6 text-blue-100">
-                Arquivos reconhecidos da CurseForge serão baixados pelo manifest.json. Mods
-                locais ou de outros catálogos serão incluídos em overrides para não se perderem.
+            <div className="space-y-5 p-5">
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#94A3B8]">
+                  Escolha o formato do arquivo
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: "zip" as const, label: ".zip", desc: "CurseForge / Geral" },
+                    { id: "mrpack" as const, label: ".mrpack", desc: "Modrinth" },
+                    { id: "mlultimate" as const, label: ".mlultimate", desc: "Nativo MLUltimate" },
+                  ].map((fmt) => (
+                    <button
+                      key={fmt.id}
+                      type="button"
+                      onClick={() => setExportFormat(fmt.id)}
+                      className={`flex flex-col items-center rounded-xl border p-3 text-center transition ${
+                        exportFormat === fmt.id
+                          ? "border-[#3B82F6] bg-[#3B82F6]/15 text-white shadow-md shadow-blue-500/10"
+                          : "border-white/10 bg-[#161B22] text-[#94A3B8] hover:border-white/20 hover:text-white"
+                      }`}
+                    >
+                      <span className="font-mono text-sm font-bold text-white">{fmt.label}</span>
+                      <span className="mt-1 text-[11px] text-[#94A3B8]">{fmt.desc}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
+
               <div>
                 <p className="mb-3 text-sm font-semibold text-white">
                   Selecione os arquivos e pastas do pacote
@@ -810,9 +855,11 @@ export const InstanceDetailPage = ({
       ) : null}
 
       {section === "changelog" ? (
-        <Card className="whitespace-pre-wrap rounded-sm border-white/10 bg-[#1f1f1f] p-5 text-sm leading-7 text-[#D8DEE9]">
-          {selectedVersion?.changelog ??
-            "Não há changelog publicado para a versão instalada deste modpack."}
+        <Card className="rounded-sm border-white/10 bg-[#1f1f1f] p-5 text-sm leading-7 text-[#D8DEE9]">
+          <RichContent
+            content={selectedVersion?.changelog}
+            fallback="Não há changelog publicado para a versão instalada deste modpack."
+          />
         </Card>
       ) : null}
 
@@ -1002,10 +1049,10 @@ const Overview = ({
       {heroUrl ? (
         <img src={heroUrl} alt="" className="mb-5 max-h-[520px] w-full rounded-sm object-cover" />
       ) : null}
-      <div className="whitespace-pre-wrap text-sm leading-7 text-[#D8DEE9]">
-        {projectBody ??
-          "Instância local do MLUltimate. Use as abas para gerenciar conteúdo, conferir logs, versões e screenshots."}
-      </div>
+      <RichContent
+        content={projectBody}
+        fallback="Instância local do MLUltimate. Use as abas para gerenciar conteúdo, conferir logs, versões e screenshots."
+      />
       <div className="mt-5 grid gap-3 border-t border-white/10 pt-4 text-sm text-[#94A3B8] sm:grid-cols-3">
         <span>{inspection?.configFilesCount ?? 0} arquivos de configuração</span>
         <span>{instance.dataPacksCount} data packs</span>
