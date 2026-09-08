@@ -15,7 +15,6 @@ import { InstanceTrashService } from "./instanceTrashService";
 import type {
   AddCustomServerInput,
   ContentProvider,
-  ContentType,
   CreateInstanceInput,
   CustomServer,
   ExportInstanceFolder,
@@ -1882,15 +1881,15 @@ export class InstanceService {
       await runPool(manifest.files, 16, async (fileRef) => {
         this.downloads.throwIfCancelled(taskId);
         const file = await this.getCurseForgeFile(fileRef.projectID, fileRef.fileID);
-        const importedType: ContentType = "mod";
+        let importedType: "mod" | "shader" | "resourcepack" | "datapack" = "mod";
         const downloadUrl = file.downloadUrl ?? curseForgeCdnDownloadUrl(file);
-        const folder = folderForImportedType(importedType);
-        const destination = path.join(
+        let folder = folderForImportedType(importedType);
+        let destination = path.join(
           instance.gameDir,
           folder,
           sanitizeFileName(file.fileName),
         );
-        const relativePath = path.posix.join(folder, sanitizeFileName(file.fileName));
+        let relativePath = path.posix.join(folder, sanitizeFileName(file.fileName));
         let fileTotalBytes = file.fileLength ?? 0;
         aggregateTotalBytes += fileTotalBytes;
         this.downloads.updateTask(taskId, {
@@ -1917,7 +1916,48 @@ export class InstanceService {
             });
           },
         });
-        if ((importedType as string) !== "datapack") {
+
+        if (file.fileName.toLowerCase().endsWith(".zip")) {
+          try {
+            const zip = new AdmZip(destination);
+            const isFabric = !!zip.getEntry("fabric.mod.json");
+            const isForge = !!zip.getEntry("META-INF/mods.toml");
+            const isShader = zip.getEntries().some((e) => e.entryName.startsWith("shaders/"));
+            const hasAssets = zip.getEntries().some((e) => e.entryName.startsWith("assets/"));
+            const hasData = zip.getEntries().some((e) => e.entryName.startsWith("data/"));
+
+            if (!isFabric && !isForge) {
+              if (isShader) {
+                importedType = "shader";
+                folder = "shaderpacks";
+              } else if (hasAssets) {
+                importedType = "resourcepack";
+                folder = "resourcepacks";
+              } else if (hasData) {
+                importedType = "datapack";
+                const paxiDatapacksDir = path.join(instance.gameDir, "config", "paxi", "datapacks");
+                folder = existsSync(paxiDatapacksDir)
+                  ? path.posix.join("config", "paxi", "datapacks")
+                  : "datapacks";
+              }
+
+              if (folder !== "mods") {
+                const newDestination = path.join(
+                  instance.gameDir,
+                  folder,
+                  sanitizeFileName(file.fileName),
+                );
+                await mkdir(path.dirname(newDestination), { recursive: true });
+                await rename(destination, newDestination);
+                destination = newDestination;
+                relativePath = path.posix.join(folder, sanitizeFileName(file.fileName));
+              }
+            }
+          } catch {
+            // Ignora falhas ao inspecionar o zip e mantém o destino padrão
+          }
+        }
+        if (importedType !== "datapack") {
           this.recordImportedContent({
             instanceId: instance.id,
             provider: "curseforge",
