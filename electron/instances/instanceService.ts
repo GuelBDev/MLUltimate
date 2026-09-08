@@ -732,6 +732,7 @@ export class InstanceService {
               }
 
               await this.downloadCurseForgeManifestFiles(manifest, instance, taskId);
+              await this.sanitizeInstanceStructure(instance);
             } else {
               throw new Error("manifest.json não encontrado na raiz da atualização CurseForge.");
             }
@@ -817,6 +818,7 @@ export class InstanceService {
               }
 
               await this.downloadModrinthManifestFiles(index, instance, taskId);
+              await this.sanitizeInstanceStructure(instance);
             } else {
               throw new Error("Arquivo modrinth.index.json não encontrado no .mrpack da atualização.");
             }
@@ -928,6 +930,176 @@ export class InstanceService {
     return this.getById(id);
   }
 
+  async sanitizeInstanceStructure(instance: LauncherInstance): Promise<number> {
+    const gameDir = instance.gameDir;
+    const modsDir = path.join(gameDir, "mods");
+    const resourcepacksDir = path.join(gameDir, "resourcepacks");
+    const shaderpacksDir = path.join(gameDir, "shaderpacks");
+    const paxiDatapacksDir = path.join(gameDir, "config", "paxi", "datapacks");
+    const defaultDatapacksDir = path.join(gameDir, "datapacks");
+
+    let movedCount = 0;
+    const movedFilesMap = new Map<
+      string,
+      { newRelativePath: string; newType: "mod" | "shader" | "resourcepack" | "datapack" }
+    >();
+
+    if (existsSync(modsDir)) {
+      const modFiles = await readdir(modsDir).catch(() => [] as string[]);
+
+      for (const fileName of modFiles) {
+        if (!fileName.toLowerCase().endsWith(".zip")) {
+          continue;
+        }
+
+        const filePath = path.join(modsDir, fileName);
+        try {
+          const zip = new AdmZip(filePath);
+          const entries = zip.getEntries();
+          const isMod = entries.some(
+            (e) =>
+              e.entryName === "fabric.mod.json" ||
+              e.entryName === "META-INF/mods.toml" ||
+              e.entryName === "mcmod.info" ||
+              e.entryName === "quilt.mod.json" ||
+              e.entryName === "neoforge.mods.toml",
+          );
+
+          if (isMod) {
+            continue;
+          }
+
+          const isShader = entries.some((e) => e.entryName.startsWith("shaders/"));
+          const hasAssets = entries.some((e) => e.entryName.startsWith("assets/"));
+          const hasData = entries.some((e) => e.entryName.startsWith("data/"));
+          const hasPackMcMeta = entries.some((e) => e.entryName === "pack.mcmeta");
+
+          let targetFolder: string | null = null;
+          let newType: "shader" | "resourcepack" | "datapack" = "resourcepack";
+
+          if (isShader) {
+            targetFolder = shaderpacksDir;
+            newType = "shader";
+          } else if (hasAssets || hasPackMcMeta) {
+            targetFolder = resourcepacksDir;
+            newType = "resourcepack";
+          } else if (hasData) {
+            targetFolder = existsSync(paxiDatapacksDir) ? paxiDatapacksDir : defaultDatapacksDir;
+            newType = "datapack";
+          }
+
+          if (targetFolder) {
+            await mkdir(targetFolder, { recursive: true });
+            const destination = path.join(targetFolder, fileName);
+            if (existsSync(destination)) {
+              await rm(destination, { force: true });
+            }
+            await rename(filePath, destination);
+            movedCount += 1;
+
+            const relativeFolder = path.relative(gameDir, targetFolder).replace(/\\/g, "/");
+            const newRelativePath = path.posix.join(relativeFolder, fileName);
+            movedFilesMap.set(fileName, { newRelativePath, newType });
+          }
+        } catch {
+          // Ignora arquivos ilegíveis
+        }
+      }
+    }
+
+    try {
+      const lock = await this.readModpackLock(gameDir);
+      if (lock) {
+        let lockChanged = false;
+        for (const file of lock.files) {
+          const moved = movedFilesMap.get(file.fileName);
+          if (moved) {
+            file.relativePath = moved.newRelativePath;
+            file.type = moved.newType;
+            lockChanged = true;
+          } else if (
+            file.relativePath.startsWith("mods/") ||
+            file.relativePath.startsWith("mods\\")
+          ) {
+            const checkPaths: Array<{ p: string; t: "resourcepack" | "shader" | "datapack" }> = [
+              { p: path.join(gameDir, "resourcepacks", file.fileName), t: "resourcepack" },
+              { p: path.join(gameDir, "shaderpacks", file.fileName), t: "shader" },
+              { p: path.join(paxiDatapacksDir, file.fileName), t: "datapack" },
+              { p: path.join(defaultDatapacksDir, file.fileName), t: "datapack" },
+            ];
+            for (const check of checkPaths) {
+              if (existsSync(check.p)) {
+                file.relativePath = path.relative(gameDir, check.p).replace(/\\/g, "/");
+                file.type = check.t;
+                lockChanged = true;
+                break;
+              }
+            }
+          }
+        }
+        if (lockChanged) {
+          await this.writeModpackLock(gameDir, lock);
+        }
+      }
+    } catch {
+      // Ignora erros de atualização do lock
+    }
+
+    if (movedFilesMap.size > 0) {
+      for (const [fileName, moved] of movedFilesMap.entries()) {
+        try {
+          const absNewPath = path.join(gameDir, moved.newRelativePath);
+          this.database.run(
+            `UPDATE installed_content SET file_path = ?, type = ? WHERE instance_id = ? AND file_name = ?`,
+            [absNewPath, moved.newType === "datapack" ? "mod" : moved.newType, instance.id, fileName],
+          );
+        } catch {
+          // Ignora erros no banco SQLite
+        }
+      }
+    }
+
+    try {
+      const optionsPath = path.join(gameDir, "options.txt");
+      const yosbrOptionsPath = path.join(gameDir, "config", "yosbr", "options.txt");
+      const defaultOptionsPath = path.join(gameDir, "defaultoptions", "options.txt");
+      const configDefaultOptionsPath = path.join(gameDir, "config", "defaultoptions", "options.txt");
+
+      const sourceOptionsPath = existsSync(yosbrOptionsPath)
+        ? yosbrOptionsPath
+        : existsSync(defaultOptionsPath)
+          ? defaultOptionsPath
+          : existsSync(configDefaultOptionsPath)
+            ? configDefaultOptionsPath
+            : null;
+
+      if (sourceOptionsPath) {
+        if (!existsSync(optionsPath)) {
+          await cp(sourceOptionsPath, optionsPath, { force: true });
+        } else {
+          const optionsContent = await readFile(optionsPath, "utf8");
+          const isRpEmpty = /resourcePacks:\s*\[\s*\]/.test(optionsContent);
+
+          if (isRpEmpty) {
+            const sourceContent = await readFile(sourceOptionsPath, "utf8");
+            const sourceRpMatch = sourceContent.match(/resourcePacks:\s*(\[[^\]]*\])/);
+            if (sourceRpMatch && sourceRpMatch[1] && sourceRpMatch[1] !== "[]") {
+              const updated = optionsContent.replace(
+                /resourcePacks:\s*\[\s*\]/,
+                `resourcePacks:${sourceRpMatch[1]}`,
+              );
+              await writeFile(optionsPath, updated, "utf8");
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignora erro ao restaurar options.txt
+    }
+
+    return movedCount;
+  }
+
   async repairLockedModpackFiles(instance: LauncherInstance) {
     const lock = await this.readModpackLock(instance.gameDir);
 
@@ -938,11 +1110,31 @@ export class InstanceService {
     const repaired: string[] = [];
 
     for (const file of lock.files.filter((lockedFile) => lockedFile.required !== false)) {
-      const targetPath = resolveLockedRelativePath(instance.gameDir, file.relativePath);
+      let targetPath = resolveLockedRelativePath(instance.gameDir, file.relativePath);
       const userDisabledPath = `${targetPath}.disabled`;
-      const targetExists = existsSync(targetPath) && statSync(targetPath).size > 0;
+      let targetExists = existsSync(targetPath) && statSync(targetPath).size > 0;
       const userDisabledExists =
         existsSync(userDisabledPath) && statSync(userDisabledPath).size > 0;
+
+      if (!targetExists && !userDisabledExists) {
+        const altCandidates = [
+          path.join(instance.gameDir, "resourcepacks", file.fileName),
+          path.join(instance.gameDir, "shaderpacks", file.fileName),
+          path.join(instance.gameDir, "config", "paxi", "datapacks", file.fileName),
+          path.join(instance.gameDir, "datapacks", file.fileName),
+        ];
+        const found = altCandidates.find((c) => existsSync(c) && statSync(c).size > 0);
+        if (found) {
+          const newRel = path.relative(instance.gameDir, found).replace(/\\/g, "/");
+          file.relativePath = newRel;
+          if (found.includes("resourcepacks")) file.type = "resourcepack";
+          else if (found.includes("shaderpacks")) file.type = "shader";
+          else if (found.includes("datapacks")) file.type = "datapack";
+          await this.writeModpackLock(instance.gameDir, lock);
+          targetPath = found;
+          targetExists = true;
+        }
+      }
 
       if (targetExists || userDisabledExists) {
         continue;
@@ -1520,6 +1712,7 @@ export class InstanceService {
       }
 
       await this.downloadCurseForgeManifestFiles(manifest, instance, options?.parentTaskId);
+      await this.sanitizeInstanceStructure(instance);
       return instance;
     } catch (error) {
       await this.remove(instance.id).catch(() => undefined);
@@ -1573,6 +1766,7 @@ export class InstanceService {
           "modrinth.index.json",
           "manifest.json",
         ]);
+        await this.sanitizeInstanceStructure(instance);
         if (isOwnTask) {
           this.downloads.completeTask(taskId);
         }
@@ -1609,6 +1803,7 @@ export class InstanceService {
           }
 
           await this.downloadModrinthManifestFiles(index, instance, taskId);
+          await this.sanitizeInstanceStructure(instance);
 
           if (isOwnTask) {
             this.downloads.completeTask(taskId);

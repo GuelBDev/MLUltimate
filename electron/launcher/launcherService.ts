@@ -131,6 +131,17 @@ export class LauncherService {
         });
       }
 
+      const sanitizedCount = await this.instances.sanitizeInstanceStructure(instance);
+      if (sanitizedCount > 0) {
+        this.emit({
+          id: request.instanceId,
+          type: "step",
+          message: `Estrutura da instância verificada e organizada (${sanitizedCount} arquivo(s) ajustado(s))...`,
+          progress: 13,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
       const lockedFileRepairs = await this.instances.repairLockedModpackFiles(instance);
 
       if (lockedFileRepairs.length > 0) {
