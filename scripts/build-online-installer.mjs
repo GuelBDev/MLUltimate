@@ -43,7 +43,7 @@ writeFileSync(
   manifestPath,
   `<?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.0.0.0" name="MLUltimate.Launcher.Setup" company="MLUltimate"/>
+  <assemblyIdentity version="${assemblyVersion}" name="MLUltimate.Launcher.Setup" type="win32" processorArchitecture="*" />
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
@@ -53,7 +53,14 @@ writeFileSync(
   </trustInfo>
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>
+      <!-- Windows 10 and Windows 11 -->
       <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />
+      <!-- Windows 8 -->
+      <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}" />
+      <!-- Windows 7 -->
+      <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}" />
     </application>
   </compatibility>
 </assembly>
@@ -850,6 +857,23 @@ internal sealed class InstallerForm : Form
     private static string FindInstalledApp()
     {
         var names = new[] { "MLUltimate Launcher.exe", "mlultimate-launcher.exe" };
+        var candidatePaths = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "MLUltimate Launcher", "MLUltimate Launcher.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "mlultimate-launcher", "MLUltimate Launcher.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "MLUltimate Launcher", "MLUltimate Launcher.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "MLUltimate Launcher", "MLUltimate Launcher.exe")
+        };
+
+        foreach (var p in candidatePaths)
+        {
+            try
+            {
+                if (File.Exists(p)) return p;
+            }
+            catch {}
+        }
+
         var roots = new[]
         {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
@@ -861,8 +885,12 @@ internal sealed class InstallerForm : Form
             if (String.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) continue;
             foreach (var name in names)
             {
-                var files = Directory.GetFiles(root, name, SearchOption.AllDirectories);
-                if (files.Length > 0) return files[0];
+                try
+                {
+                    var files = Directory.GetFiles(root, name, SearchOption.AllDirectories);
+                    if (files.Length > 0) return files[0];
+                }
+                catch {}
             }
         }
         return null;
