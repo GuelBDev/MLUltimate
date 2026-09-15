@@ -1,4 +1,4 @@
-import { useState, useMemo, type FormEvent, useEffect } from "react";
+import { useState, useMemo, type FormEvent } from "react";
 import { ImagePlus, X } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import instanceDefaultImage from "../../assets/instance-default.png";
@@ -90,7 +90,15 @@ export const InstanceEditModal = ({
     [systemMemory.data?.totalMb],
   );
 
-  useEffect(() => {
+  const [prevInstanceKey, setPrevInstanceKey] = useState<string | null>(null);
+  const currentInstanceKey = isOpen
+    ? instance
+      ? `${instance.id}:${instance.name}:${instance.minecraftVersion}:${instance.loader}:${instance.ramMb}:${instance.contentManagementEnabled}:${instance.updatedAt ?? ""}`
+      : "__new__"
+    : null;
+
+  if (currentInstanceKey !== prevInstanceKey) {
+    setPrevInstanceKey(currentInstanceKey);
     if (isOpen) {
       if (instance) {
         setName(instance.name);
@@ -112,7 +120,7 @@ export const InstanceEditModal = ({
         setSelectedIconPreview("");
       }
     }
-  }, [isOpen, instance, maxRamMb]);
+  }
 
   const releaseVersions = useMemo(
     () =>

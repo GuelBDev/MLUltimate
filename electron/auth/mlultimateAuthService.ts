@@ -56,7 +56,7 @@ export class MlultimateAuthService {
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`Não foi possível conectar ao servidor MLUltimate (${msg}).`);
+      throw new Error(`Não foi possível conectar ao servidor MLUltimate (${msg}).`, { cause: err });
     }
 
     if (!response.ok) {

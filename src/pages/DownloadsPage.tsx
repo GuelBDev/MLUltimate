@@ -358,7 +358,6 @@ type DownloadDisplayEntry =
 
 export const DownloadsPage = () => {
   const downloads = useDownloads();
-  const items = downloads.data ?? [];
   const [selectedInfoItem, setSelectedInfoItem] = useState<DownloadItem | null>(null);
   const [openTrays, setOpenTrays] = useState<Record<string, boolean>>({});
 
@@ -372,6 +371,7 @@ export const DownloadsPage = () => {
   const isTrayOpen = (key: string) => openTrays[key] !== false;
 
   const displayEntries: DownloadDisplayEntry[] = useMemo(() => {
+    const items = downloads.data ?? [];
     const groupMap = new Map<string, GroupedDownload>();
     const singles: DownloadItem[] = [];
 
@@ -451,7 +451,7 @@ export const DownloadsPage = () => {
     }
 
     return entries;
-  }, [items]);
+  }, [downloads.data]);
 
   return (
     <div className="space-y-4">
