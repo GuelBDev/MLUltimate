@@ -228,7 +228,7 @@ export function WindowTitleBar({
             <div className="absolute right-0 top-8 z-50 w-64 rounded-xl border border-white/10 bg-[#161B22] p-3 text-xs shadow-2xl shadow-black/70 backdrop-blur-md">
               <div className="flex items-center justify-between border-b border-white/10 pb-2">
                 <p className="font-semibold text-white">Notificações</p>
-                <span className="text-[10px] text-[#94A3B8]">Launcher 4.0.0</span>
+                <span className="text-[10px] text-[#94A3B8]">Launcher 4.0.1</span>
               </div>
               <div className="py-3 text-center text-[#94A3B8]">
                 <p className="text-xs">Tudo atualizado e pronto para jogar!</p>

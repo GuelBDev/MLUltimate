@@ -40,7 +40,7 @@ export class LauncherService {
     private readonly instances: InstanceService,
     private readonly javaRuntimes: JavaRuntimeService,
     private readonly minecraftVersions: MinecraftVersionService,
-    private readonly avatar: AvatarService,
+    _avatar: AvatarService,
     emit: EmitLaunchEvent,
     private readonly getWindowMode?: () => MinecraftWindowMode,
   ) {
@@ -167,20 +167,6 @@ export class LauncherService {
       }
 
       const session = await this.getLaunchSession();
-
-      if (session.provider === "offline") {
-        const syncedSkin = this.avatar.syncEquippedSkinForPlayer(instance.gameDir, session.name);
-
-        if (syncedSkin) {
-          this.emit({
-            id: request.instanceId,
-            type: "step",
-            message: `Skin offline aplicada: ${syncedSkin.skinName}.`,
-            progress: 15,
-            createdAt: new Date().toISOString(),
-          });
-        }
-      }
 
       if (request.server?.requiresMicrosoft && session.provider !== "microsoft") {
         throw new Error(
