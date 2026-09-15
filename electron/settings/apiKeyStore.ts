@@ -44,6 +44,7 @@ const backgroundImageNameKey = "appearance.backgroundImageName";
 const sidebarImageDataUrlKey = "appearance.sidebarImageDataUrl";
 const sidebarImageNameKey = "appearance.sidebarImageName";
 const sidebarNavOrderKey = "appearance.sidebarNavOrder";
+const sidebarCollapsedKey = "appearance.sidebarCollapsed";
 const favoritePresetsKey = "appearance.favoritePresets";
 const defaultFavoritePresets = ["night-dark", "blue-sky", "yellow-sun", "light-mode", "emerald-cave"];
 const defaultLanguage: AppLanguage = "pt-BR";
@@ -208,6 +209,10 @@ export class ApiKeyStore {
       this.saveSetting(sidebarNavOrderKey, JSON.stringify(input.sidebarNavOrder));
     }
 
+    if (input.sidebarCollapsed !== undefined) {
+      this.saveSetting(sidebarCollapsedKey, input.sidebarCollapsed ? "true" : "false");
+    }
+
     if (input.favoritePresets !== undefined) {
       this.saveSetting(favoritePresetsKey, JSON.stringify(input.favoritePresets.slice(0, 5)));
     }
@@ -304,6 +309,7 @@ export class ApiKeyStore {
       sidebarImageDataUrl: this.loadOptionalString(sidebarImageDataUrlKey),
       sidebarImageName: this.loadOptionalString(sidebarImageNameKey),
       sidebarNavOrder: this.loadSidebarNavOrder(),
+      sidebarCollapsed: this.readSetting(sidebarCollapsedKey) !== "false",
       favoritePresets: this.loadFavoritePresets(),
     } as Omit<
       LauncherSettings,

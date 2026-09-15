@@ -1,12 +1,13 @@
 import AdmZip from "adm-zip";
 import { createHash } from "node:crypto";
-import { app } from "electron";
+import { app, net } from "electron";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { getLauncherDataSubpath } from "../utils/launcherPaths";
 import { AvatarService } from "../avatar/avatarService";
 import { MicrosoftAuthService } from "../auth/microsoftAuthService";
+import { MlultimateAuthService } from "../auth/mlultimateAuthService";
 import { OfflineAuthService } from "../auth/offlineAuthService";
 import { InstanceService } from "../instances/instanceService";
 import { JavaRuntimeService } from "../java/javaRuntimeService";
@@ -35,6 +36,7 @@ export class LauncherService {
   constructor(
     private readonly microsoftAuth: MicrosoftAuthService,
     private readonly offlineAuth: OfflineAuthService,
+    private readonly mlultimateAuth: MlultimateAuthService,
     private readonly instances: InstanceService,
     private readonly javaRuntimes: JavaRuntimeService,
     private readonly minecraftVersions: MinecraftVersionService,
@@ -404,6 +406,28 @@ export class LauncherService {
     ]);
     const customJvmArgs = readInstanceJvmArgs(instance.gameDir);
     const jvmArgs = [...buildMemoryJvmArgs(instance.ramMb), ...customJvmArgs, ...loaderJvmArgs];
+
+    if (session.provider === "mlultimate") {
+      const runtimesDir = path.join(minecraftRoot, "runtimes");
+      const authlibInjectorPath = path.join(runtimesDir, "authlib-injector.jar");
+
+      if (!existsSync(authlibInjectorPath)) {
+        this.emit({
+          id: request.instanceId,
+          type: "step",
+          message: "Baixando authlib-injector para Conta MLUltimate...",
+          progress: 69,
+          createdAt: new Date().toISOString(),
+        });
+        await this.ensureAuthlibInjector(authlibInjectorPath);
+      }
+
+      const yggdrasilApiUrl = this.mlultimateAuth.getYggdrasilUrl();
+      jvmArgs.push(
+        `-javaagent:${authlibInjectorPath}=${yggdrasilApiUrl}`,
+        `-Dauthlibinjector.side=client`,
+      );
+    }
     const vanillaGameArgs = versionJson.arguments?.game
       ? resolveArguments(versionJson.arguments.game, replacements)
       : splitMinecraftArguments(versionJson.minecraftArguments ?? "").map((argument) =>
@@ -827,7 +851,44 @@ export class LauncherService {
     throw new Error("Inicializacao cancelada.");
   }
 
+  private async ensureAuthlibInjector(targetPath: string): Promise<void> {
+    const parentDir = path.dirname(targetPath);
+    if (!existsSync(parentDir)) {
+      mkdirSync(parentDir, { recursive: true });
+    }
+    if (existsSync(targetPath)) {
+      return;
+    }
+
+    const downloadUrl =
+      "https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.5/authlib-injector-1.2.5.jar";
+    const fetchFn = typeof net !== "undefined" && net.fetch ? net.fetch.bind(net) : globalThis.fetch;
+    const response = await fetchFn(downloadUrl);
+    if (!response.ok) {
+      throw new Error(
+        `Falha ao baixar authlib-injector (${response.status}): ${response.statusText || "Erro no download"}`,
+      );
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    writeFileSync(targetPath, Buffer.from(arrayBuffer));
+  }
+
   private async getLaunchSession() {
+    const mlultimateProfile = this.mlultimateAuth.getActiveProfile();
+    const mlultimateSession = this.mlultimateAuth.getLastSession();
+
+    if (mlultimateProfile && mlultimateSession && mlultimateSession.status === "signed-in") {
+      return {
+        provider: "mlultimate" as const,
+        name: mlultimateProfile.username,
+        uuid: mlultimateProfile.uuid,
+        accessToken: mlultimateProfile.accessToken,
+        userType: "mojang",
+        clientId: mlultimateProfile.id,
+        xuid: "mlultimate",
+      };
+    }
+
     const microsoftSession = this.microsoftAuth.getStoredSession();
 
     if (microsoftSession) {
@@ -847,7 +908,7 @@ export class LauncherService {
 
     if (!offlineSession || offlineSession.status !== "signed-in") {
       throw new Error(
-        "Escolha um nick offline ou entre com Microsoft antes de iniciar uma instância.",
+        "Escolha um nick offline, entre com Conta MLUltimate ou com Microsoft antes de iniciar uma instância.",
       );
     }
 

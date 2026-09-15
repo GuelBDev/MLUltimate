@@ -3,9 +3,11 @@ import {
   AlertTriangle,
   CheckSquare,
   Globe,
+  Layers,
   Loader2,
   Package,
   RotateCcw,
+  Sparkles,
   Square,
   Trash2,
   X,
@@ -46,6 +48,13 @@ export const InstanceTrashModal = ({ open, onClose }: InstanceTrashModalProps) =
   const { trashList, restoreTrash, deleteTrash, emptyTrash } = useTrash();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [restoreModalTarget, setRestoreModalTarget] = useState<TrashedInstance | null>(null);
+  const [restoreOptions, setRestoreOptions] = useState({
+    worlds: true,
+    mods: true,
+    resourcepacks: true,
+    shaders: true,
+  });
 
   const items = useMemo(() => trashList.data ?? [], [trashList.data]);
 
@@ -74,31 +83,32 @@ export const InstanceTrashModal = ({ open, onClose }: InstanceTrashModalProps) =
     });
   };
 
-  const handleRestoreSelected = async () => {
-    if (selectedIds.size === 0) return;
-    const ids = Array.from(selectedIds);
-    setActionInProgress("Restaurando instâncias...");
-
-    try {
-      for (const id of ids) {
-        await restoreTrash.mutateAsync(id);
-      }
-      setSelectedIds(new Set());
-    } catch (err) {
-      await dialog.alert({
-        title: "Erro ao restaurar",
-        description: err instanceof Error ? err.message : "Falha ao restaurar as instâncias selecionadas.",
-        tone: "danger",
-      });
-    } finally {
-      setActionInProgress(null);
-    }
+  const handleOpenRestoreModal = (item: TrashedInstance) => {
+    setRestoreOptions({
+      worlds: true,
+      mods: true,
+      resourcepacks: true,
+      shaders: true,
+    });
+    setRestoreModalTarget(item);
   };
 
-  const handleRestoreOne = async (item: TrashedInstance) => {
+  const handleConfirmRestore = async () => {
+    if (!restoreModalTarget) return;
+    const item = restoreModalTarget;
+    setRestoreModalTarget(null);
     setActionInProgress(`Restaurando "${item.name}"...`);
     try {
-      await restoreTrash.mutateAsync(item.id);
+      await restoreTrash.mutateAsync({
+        trashId: item.id,
+        options: {
+          worlds: restoreOptions.worlds,
+          mods: restoreOptions.mods,
+          resourcepacks: restoreOptions.resourcepacks,
+          shaders: restoreOptions.shaders,
+          config: true,
+        },
+      });
       setSelectedIds((current) => {
         const next = new Set(current);
         next.delete(item.id);
@@ -108,6 +118,36 @@ export const InstanceTrashModal = ({ open, onClose }: InstanceTrashModalProps) =
       await dialog.alert({
         title: "Erro ao restaurar",
         description: err instanceof Error ? err.message : "Falha ao restaurar a instância.",
+        tone: "danger",
+      });
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleRestoreSelected = async () => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    setActionInProgress("Restaurando instâncias...");
+
+    try {
+      for (const id of ids) {
+        await restoreTrash.mutateAsync({
+          trashId: id,
+          options: {
+            worlds: true,
+            mods: true,
+            resourcepacks: true,
+            shaders: true,
+            config: true,
+          },
+        });
+      }
+      setSelectedIds(new Set());
+    } catch (err) {
+      await dialog.alert({
+        title: "Erro ao restaurar",
+        description: err instanceof Error ? err.message : "Falha ao restaurar as instâncias selecionadas.",
         tone: "danger",
       });
     } finally {
@@ -386,6 +426,20 @@ export const InstanceTrashModal = ({ open, onClose }: InstanceTrashModalProps) =
                           <Package className="h-3.5 w-3.5 text-[#60A5FA]" />
                           <span>{item.modsCount} mods no manifesto</span>
                         </div>
+
+                        {item.resourcepacksCount && item.resourcepacksCount > 0 ? (
+                          <div className="flex items-center gap-1.5 rounded-md bg-purple-500/10 px-2 py-1 text-xs text-purple-300">
+                            <Layers className="h-3.5 w-3.5 text-purple-400" />
+                            <span>{item.resourcepacksCount} texturas</span>
+                          </div>
+                        ) : null}
+
+                        {item.shaderpacksCount && item.shaderpacksCount > 0 ? (
+                          <div className="flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-300">
+                            <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                            <span>{item.shaderpacksCount} shaders</span>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 
@@ -394,7 +448,7 @@ export const InstanceTrashModal = ({ open, onClose }: InstanceTrashModalProps) =
                       <Button
                         type="button"
                         size="sm"
-                        onClick={() => handleRestoreOne(item)}
+                        onClick={() => handleOpenRestoreModal(item)}
                         disabled={Boolean(actionInProgress)}
                         className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
                       >
@@ -424,7 +478,7 @@ export const InstanceTrashModal = ({ open, onClose }: InstanceTrashModalProps) =
         <div className="flex items-center justify-between border-t border-white/10 bg-[#12161D] px-6 py-3 text-xs text-[#94A3B8]">
           <span>
             {items.length > 0
-              ? `${items.length} perfil(is) na lixeira · Os arquivos pesados foram descartados para economizar espaço.`
+              ? `${items.length} perfil(is) na lixeira · Os itens podem ser restaurados seletivamente a qualquer momento.`
               : "Lixeira vazia."}
           </span>
           <Button
@@ -438,6 +492,143 @@ export const InstanceTrashModal = ({ open, onClose }: InstanceTrashModalProps) =
           </Button>
         </div>
       </div>
+
+      {/* Popup de Restauração Seletiva */}
+      {restoreModalTarget ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-4 backdrop-blur-md">
+          <div className="w-full max-w-lg rounded-2xl border border-white/12 bg-[#161B22] p-6 shadow-2xl shadow-black/80">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
+                  Restauração da Instância
+                </p>
+                <h3 className="mt-1 text-lg font-bold text-white">
+                  Restaurar &quot;{restoreModalTarget.name}&quot;
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRestoreModalTarget(null)}
+                className="rounded-lg p-1.5 text-[#94A3B8] hover:bg-white/5 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="mt-4 text-xs leading-5 text-[#94A3B8]">
+              Selecione o que deseja restaurar para esta instância (todos marcados por padrão):
+            </p>
+
+            <div className="mt-4 space-y-2.5">
+              <label className="flex cursor-pointer items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3.5 transition hover:border-white/20 hover:bg-white/[0.05]">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-emerald-500/10 text-emerald-400">
+                    <Globe className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Mundos / Saves</p>
+                    <p className="text-xs text-[#94A3B8]">
+                      {restoreModalTarget.worldsCount} mundo(s) salvo(s)
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={restoreOptions.worlds}
+                  onChange={(e) =>
+                    setRestoreOptions((prev) => ({ ...prev, worlds: e.target.checked }))
+                  }
+                  className="h-5 w-5 rounded border-white/20 bg-[#0D1117] text-emerald-500 focus:ring-emerald-500"
+                />
+              </label>
+
+              <label className="flex cursor-pointer items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3.5 transition hover:border-white/20 hover:bg-white/[0.05]">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-blue-500/10 text-blue-400">
+                    <Package className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Mods</p>
+                    <p className="text-xs text-[#94A3B8]">
+                      {restoreModalTarget.modsCount} mod(s) preservados
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={restoreOptions.mods}
+                  onChange={(e) =>
+                    setRestoreOptions((prev) => ({ ...prev, mods: e.target.checked }))
+                  }
+                  className="h-5 w-5 rounded border-white/20 bg-[#0D1117] text-blue-500 focus:ring-blue-500"
+                />
+              </label>
+
+              <label className="flex cursor-pointer items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3.5 transition hover:border-white/20 hover:bg-white/[0.05]">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-purple-500/10 text-purple-400">
+                    <Layers className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Texturas / Resource Packs</p>
+                    <p className="text-xs text-[#94A3B8]">
+                      {restoreModalTarget.resourcepacksCount ?? (restoreModalTarget.resourcepacks?.length ?? 0)} pacote(s)
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={restoreOptions.resourcepacks}
+                  onChange={(e) =>
+                    setRestoreOptions((prev) => ({ ...prev, resourcepacks: e.target.checked }))
+                  }
+                  className="h-5 w-5 rounded border-white/20 bg-[#0D1117] text-purple-500 focus:ring-purple-500"
+                />
+              </label>
+
+              <label className="flex cursor-pointer items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3.5 transition hover:border-white/20 hover:bg-white/[0.05]">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-amber-500/10 text-amber-400">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Shaders</p>
+                    <p className="text-xs text-[#94A3B8]">
+                      {restoreModalTarget.shaderpacksCount ?? (restoreModalTarget.shaderpacks?.length ?? 0)} pacote(s) de shaders
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={restoreOptions.shaders}
+                  onChange={(e) =>
+                    setRestoreOptions((prev) => ({ ...prev, shaders: e.target.checked }))
+                  }
+                  className="h-5 w-5 rounded border-white/20 bg-[#0D1117] text-amber-500 focus:ring-amber-500"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3 border-t border-white/10 pt-4">
+              <Button
+                type="button"
+                variant="secondary"
+                className="rounded-xl"
+                onClick={() => setRestoreModalTarget(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                className="rounded-xl bg-emerald-600 px-5 font-semibold text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-500"
+                onClick={handleConfirmRestore}
+              >
+                Restaurar Instância
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

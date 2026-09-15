@@ -19,7 +19,7 @@ type JarMetadata = {
   filePath: string;
   modIds: string[];
   displayName?: string;
-  loader: "forge" | "fabric" | "quilt" | "unknown";
+  loader: "forge" | "neoforge" | "fabric" | "quilt" | "unknown";
   loaderVersionRange?: string;
   dependencies: ModDependency[];
   reason?: string;
@@ -39,6 +39,38 @@ type RepairAction = {
 const disabledSuffix = ".disabled-by-mlultimate";
 const modpackLockFile = path.join("modpacks", "mlultimate-modpack-lock.json");
 
+export const restoreAllQuarantinedDisabledMods = (gameDir: string) => {
+  const disabledModsDir = path.join(gameDir, "modpacks", ".mlultimate-disabled", "mods");
+  const modsDir = path.join(gameDir, "mods");
+
+  if (!existsSync(disabledModsDir)) {
+    return;
+  }
+
+  try {
+    const entries = readdirSync(disabledModsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const cleanName = entry.name
+        .replace(/-\d+(?=\.disabled-by-mlultimate$)/i, "")
+        .replace(/\.disabled-by-mlultimate$/i, "");
+      if (!cleanName.toLowerCase().endsWith(".jar")) continue;
+
+      const targetPath = path.join(modsDir, cleanName);
+      const sourcePath = path.join(disabledModsDir, entry.name);
+
+      if (!existsSync(targetPath)) {
+        mkdirSync(modsDir, { recursive: true });
+        renameSync(sourcePath, targetPath);
+      } else {
+        rmSync(sourcePath, { force: true });
+      }
+    }
+  } catch (err) {
+    console.warn("Falha ao restaurar mods em quarentena:", err);
+  }
+};
+
 export const repairLaunchCompatibility = ({ instance, loaderVersion }: RepairInput) => {
   const modsDir = path.join(instance.gameDir, "mods");
 
@@ -47,6 +79,7 @@ export const repairLaunchCompatibility = ({ instance, loaderVersion }: RepairInp
   }
 
   migrateLegacyDisabledFiles(instance.gameDir, "mods");
+  restoreAllQuarantinedDisabledMods(instance.gameDir);
 
   const report: {
     checkedAt: string;
@@ -284,12 +317,21 @@ const readLockedModpackFiles = (gameDir: string) => {
 
 const normalizeRelativePath = (value: string) => value.replaceAll("\\", "/").toLowerCase();
 
+const cleanLoaderVersion = (version?: string): string | undefined => {
+  if (!version) return undefined;
+  let cleaned = version.replace(/^.*(?:neoforge|forge|fabric-loader|quilt)[-_]/i, "");
+  cleaned = cleaned.replace(/^\d+\.\d+(?:\.\d+)?[-_]/, "");
+  return cleaned.trim() || version;
+};
+
 const readJarMetadata = (filePath: string, minecraftVersion: string): JarMetadata => {
   const fileName = path.basename(filePath);
 
   try {
     const zip = new AdmZip(filePath);
-    const modsToml = zip.getEntry("META-INF/mods.toml");
+    const neoforgeModsToml =
+      zip.getEntry("META-INF/neoforge.mods.toml") ?? zip.getEntry("neoforge.mods.toml");
+    const modsToml = zip.getEntry("META-INF/mods.toml") ?? zip.getEntry("mods.toml");
     const mcmodInfo = zip.getEntry("mcmod.info");
     const fabricJson = zip.getEntry("fabric.mod.json");
     const quiltJson = zip.getEntry("quilt.mod.json");
@@ -301,8 +343,24 @@ const readJarMetadata = (filePath: string, minecraftVersion: string): JarMetadat
       return metadata;
     }
 
+    if (neoforgeModsToml) {
+      const metadata = parseForgeToml(
+        fileName,
+        filePath,
+        neoforgeModsToml.getData().toString("utf8"),
+        "neoforge",
+      );
+      metadata.modIds = uniqueStrings([...metadata.modIds, ...embeddedModIds]);
+      return metadata;
+    }
+
     if (modsToml) {
-      const metadata = parseForgeToml(fileName, filePath, modsToml.getData().toString("utf8"));
+      const metadata = parseForgeToml(
+        fileName,
+        filePath,
+        modsToml.getData().toString("utf8"),
+        "forge",
+      );
       metadata.modIds = uniqueStrings([...metadata.modIds, ...embeddedModIds]);
       return metadata;
     }
@@ -366,12 +424,28 @@ const readEmbeddedModIds = (zip: AdmZip) =>
 const readNestedJarModIds = (buffer: Buffer) => {
   try {
     const zip = new AdmZip(buffer);
-    const modsToml = zip.getEntry("META-INF/mods.toml");
+    const neoforgeModsToml =
+      zip.getEntry("META-INF/neoforge.mods.toml") ?? zip.getEntry("neoforge.mods.toml");
+    const modsToml = zip.getEntry("META-INF/mods.toml") ?? zip.getEntry("mods.toml");
     const fabricJson = zip.getEntry("fabric.mod.json");
     const quiltJson = zip.getEntry("quilt.mod.json");
 
+    if (neoforgeModsToml) {
+      return parseForgeToml(
+        "embedded.jar",
+        "embedded.jar",
+        neoforgeModsToml.getData().toString("utf8"),
+        "neoforge",
+      ).modIds;
+    }
+
     if (modsToml) {
-      return parseForgeToml("embedded.jar", "embedded.jar", modsToml.getData().toString("utf8")).modIds;
+      return parseForgeToml(
+        "embedded.jar",
+        "embedded.jar",
+        modsToml.getData().toString("utf8"),
+        "forge",
+      ).modIds;
     }
 
     if (fabricJson) {
@@ -388,13 +462,19 @@ const readNestedJarModIds = (buffer: Buffer) => {
   return [];
 };
 
-const parseForgeToml = (fileName: string, filePath: string, text: string): JarMetadata => {
+const parseForgeToml = (
+  fileName: string,
+  filePath: string,
+  text: string,
+  forcedLoader: "forge" | "neoforge" = "forge",
+): JarMetadata => {
   const modIds: string[] = [];
   const dependencies: ModDependency[] = [];
   let current: Record<string, string | boolean> | null = null;
   let currentType: "mod" | "dependency" | null = null;
   let loaderVersionRange: string | undefined;
   let displayName: string | undefined;
+  let detectedLoader: "forge" | "neoforge" = forcedLoader;
 
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.replace(/\s+#.*$/, "").trim();
@@ -403,14 +483,14 @@ const parseForgeToml = (fileName: string, filePath: string, text: string): JarMe
       continue;
     }
 
-    if (/^\[\[mods\]\]/.test(line)) {
+    if (/^\[\[mods\]\]/i.test(line)) {
       current = {};
       currentType = "mod";
       continue;
     }
 
-    if (/^\[\[dependencies[.\]"'\w-]*\]\]/.test(line)) {
-      current = {};
+    if (/^\[\[dependencies[.\]"'\w-]*\]\]/i.test(line)) {
+      current = { mandatory: true };
       currentType = "dependency";
       dependencies.push(current as ModDependency);
       continue;
@@ -425,6 +505,12 @@ const parseForgeToml = (fileName: string, filePath: string, text: string): JarMe
     const key = pair[1]!;
     const value = parseTomlValue(pair[2]!);
 
+    if (key === "modLoader" && typeof value === "string") {
+      if (value.toLowerCase().includes("neoforge")) {
+        detectedLoader = "neoforge";
+      }
+    }
+
     if (key === "loaderVersion" && typeof value === "string") {
       loaderVersionRange = value;
     }
@@ -435,6 +521,15 @@ const parseForgeToml = (fileName: string, filePath: string, text: string): JarMe
 
     current[key] = value;
 
+    if (currentType === "dependency") {
+      if (key === "type" && typeof value === "string") {
+        current.mandatory = value.toLowerCase() === "required";
+      }
+      if (key === "mandatory" && typeof value === "boolean") {
+        current.mandatory = value;
+      }
+    }
+
     if (currentType === "mod" && key === "modId" && typeof value === "string") {
       modIds.push(value);
     }
@@ -444,12 +539,18 @@ const parseForgeToml = (fileName: string, filePath: string, text: string): JarMe
     }
   }
 
+  for (const dep of dependencies) {
+    if (dep.mandatory === undefined) {
+      dep.mandatory = true;
+    }
+  }
+
   return {
     fileName,
     filePath,
     modIds,
     displayName,
-    loader: "forge",
+    loader: detectedLoader,
     loaderVersionRange,
     dependencies,
   };
@@ -560,6 +661,11 @@ const getIncompatibilityReason = (
     return item.reason;
   }
 
+  // If loader is unknown, do not disable it automatically (it may be a library, java-agent, or custom mod)
+  if (item.loader === "unknown") {
+    return null;
+  }
+
   if (item.loader === "fabric" && !["fabric", "iris", "iris-sodium"].includes(instance.loader)) {
     return "Mod Fabric em instancia que nao usa Fabric.";
   }
@@ -570,6 +676,14 @@ const getIncompatibilityReason = (
 
   if (item.loader === "forge" && !["forge", "neoforge"].includes(instance.loader)) {
     return "Mod Forge em instancia que nao usa Forge/NeoForge.";
+  }
+
+  if (item.loader === "neoforge") {
+    if (instance.loader !== "neoforge") {
+      if (!(instance.loader === "forge" && instance.minecraftVersion === "1.20.1")) {
+        return "Mod NeoForge em instancia que nao usa NeoForge.";
+      }
+    }
   }
 
   const minecraftDependency = item.dependencies.find(
@@ -583,23 +697,14 @@ const getIncompatibilityReason = (
     return `Exige Minecraft ${minecraftDependency.versionRange}, mas a instancia usa ${instance.minecraftVersion}.`;
   }
 
-  const fileMinecraftVersion = extractMinecraftVersionFromFileName(item.fileName);
-
-  if (
-    !minecraftDependency?.versionRange &&
-    fileMinecraftVersion &&
-    !sameMinecraftFamily(fileMinecraftVersion, instance.minecraftVersion)
-  ) {
-    return `Arquivo parece ser para Minecraft ${fileMinecraftVersion}, mas a instancia usa ${instance.minecraftVersion}.`;
-  }
-
   const loaderDependency = item.dependencies.find(
     (dependency) =>
       dependency.mandatory &&
       ["forge", "neoforge"].includes(dependency.modId.toLowerCase()) &&
       ["forge", "neoforge"].includes(instance.loader),
   );
-  const expectedLoaderVersion = loaderVersion ?? instance.loaderVersion;
+  const rawExpectedLoaderVersion = loaderVersion ?? instance.loaderVersion;
+  const expectedLoaderVersion = cleanLoaderVersion(rawExpectedLoaderVersion);
   const loaderRange = loaderDependency?.versionRange ?? item.loaderVersionRange;
 
   if (
@@ -713,24 +818,6 @@ const isVirtualDependency = (modId: string) =>
   ].includes(modId.toLowerCase());
 
 const isVersionRangeExpression = (range: string) => /[()[\],]/.test(range);
-
-const extractMinecraftVersionFromFileName = (fileName: string) => {
-  const normalized = fileName.replace(/\.jar$/i, "");
-  const match =
-    normalized.match(/(?:^|[-_+ ])(?:mc|minecraft)[-_]?v?_?(\d+\.\d+(?:\.\d+)?)(?:[-_+ ]|$)/i) ??
-    normalized.match(/(?:^|[-_ ])MC[_-]?(\d+\.\d+(?:\.\d+)?)(?:[-_ ]|$)/) ??
-    normalized.match(/\+(\d+\.\d+(?:\.\d+)?)(?:[-_+ ]|$)/);
-
-  return match?.[1];
-};
-
-const sameMinecraftFamily = (left: string, right: string) => {
-  const leftParts = left.split(".");
-  const precision = leftParts.length >= 3 ? 3 : 2;
-  const normalize = (version: string) => version.split(".").slice(0, precision).join(".");
-
-  return normalize(left) === normalize(right);
-};
 
 const isLegacyForgeMinecraft = (version: string) => {
   const [major = 0, minor = 0] = numericParts(version);

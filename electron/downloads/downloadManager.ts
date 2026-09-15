@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createWriteStream, existsSync } from "node:fs";
+import { createWriteStream, existsSync, statSync } from "node:fs";
 import { mkdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { net } from "electron";
@@ -12,6 +12,11 @@ type DownloadOptions = {
   sha1?: string;
   visible?: boolean;
   onProgress?: (progress: { deltaBytes: number; bytesReceived: number; totalBytes?: number }) => void;
+  groupId?: string;
+  groupTitle?: string;
+  contentType?: DownloadItem["contentType"];
+  contentVersion?: string;
+  contentName?: string;
 };
 
 type EmitDownloads = (items: DownloadItem[]) => void;
@@ -32,22 +37,15 @@ export class DownloadManager {
       .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
   }
 
-  async download({ label, url, destination, sha1, visible = true, onProgress }: DownloadOptions) {
-    const normalizedDestination = path.resolve(destination).toLowerCase();
+  async download(options: DownloadOptions) {
+    const normalizedDestination = path.resolve(options.destination).toLowerCase();
     const running = this.inFlightByDestination.get(normalizedDestination);
 
     if (running) {
       return running;
     }
 
-    const downloadPromise = this.downloadOnce({
-      label,
-      url,
-      destination,
-      sha1,
-      visible,
-      onProgress,
-    }).finally(() => {
+    const downloadPromise = this.downloadOnce(options).finally(() => {
       this.inFlightByDestination.delete(normalizedDestination);
     });
 
@@ -75,7 +73,21 @@ export class DownloadManager {
     }
   }
 
-  private async downloadOnce({ label, url, destination, sha1, visible = true, onProgress }: DownloadOptions) {
+  private async downloadOnce(options: DownloadOptions) {
+    const {
+      label,
+      url,
+      destination,
+      sha1,
+      visible = true,
+      onProgress,
+      groupId,
+      groupTitle,
+      contentType,
+      contentVersion,
+      contentName,
+    } = options;
+
     if (existsSync(destination) && sha1) {
       const currentSha1 = await hashFile(destination);
 
@@ -85,7 +97,15 @@ export class DownloadManager {
     }
 
     if (existsSync(destination) && !sha1) {
-      return destination;
+      try {
+        const stats = statSync(destination);
+        if (stats.size > 0) {
+          return destination;
+        }
+        await rm(destination, { force: true });
+      } catch {
+        // Se falhar ao ler stats, continua para download
+      }
     }
 
     const id = randomUUID();
@@ -101,6 +121,11 @@ export class DownloadManager {
       bytesReceived: 0,
       speedBytesPerSecond: 0,
       startedAt,
+      groupId,
+      groupTitle,
+      contentType,
+      contentVersion,
+      contentName,
     };
 
     if (visible) {
@@ -110,104 +135,125 @@ export class DownloadManager {
     }
 
     const tempDestination = `${destination}.${id}.part`;
+    const maxAttempts = 3;
+    let attempt = 0;
 
-    try {
-      await mkdir(path.dirname(destination), { recursive: true });
-      await rm(tempDestination, { force: true });
+    while (attempt < maxAttempts) {
+      attempt += 1;
 
-      const response = await fetchWithElectronNet(url, `Download ${label}`, controller.signal);
+      try {
+        await mkdir(path.dirname(destination), { recursive: true });
+        await rm(tempDestination, { force: true });
 
-      if (!response.ok || !response.body) {
-        throw new Error(`Download falhou (${response.status}) para ${label}`);
-      }
+        const response = await fetchWithElectronNet(url, `Download ${label}`, controller.signal);
 
-      const totalBytes = Number(response.headers.get("content-length") ?? 0) || undefined;
-      const reader = response.body.getReader();
-      const file = createWriteStream(tempDestination);
-      const hash = createHash("sha1");
-      const startTime = Date.now();
-
-      item.totalBytes = totalBytes;
-      if (visible) this.flush();
-
-      while (true) {
-        if (item.status === "cancelled") {
-          throw new DownloadCancelledError();
+        if (!response.ok || !response.body) {
+          throw new Error(`Download falhou (${response.status}) para ${label}`);
         }
 
-        const { done, value } = await reader.read();
+        const totalBytes = Number(response.headers.get("content-length") ?? 0) || undefined;
+        const reader = response.body.getReader();
+        const file = createWriteStream(tempDestination);
+        const hash = createHash("sha1");
+        const startTime = Date.now();
 
-        if (done) {
-          break;
-        }
-
-        const chunk = Buffer.from(value);
-        hash.update(chunk);
-        item.bytesReceived += chunk.byteLength;
-        item.progress = totalBytes
-          ? Math.min(100, Math.round((item.bytesReceived / totalBytes) * 100))
-          : 0;
-        item.speedBytesPerSecond =
-          item.bytesReceived / Math.max(1, (Date.now() - startTime) / 1000);
-        onProgress?.({
-          deltaBytes: chunk.byteLength,
-          bytesReceived: item.bytesReceived,
-          totalBytes,
-        });
-
-        if (!file.write(chunk)) {
-          await new Promise<void>((resolve) => file.once("drain", resolve));
-        }
-
+        item.totalBytes = totalBytes;
         if (visible) this.flush();
-      }
 
-      await new Promise<void>((resolve, reject) => {
-        file.end((error?: Error | null) => {
-          if (error) reject(error);
-          else resolve();
+        while (true) {
+          if (item.status === "cancelled") {
+            throw new DownloadCancelledError();
+          }
+
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          const chunk = Buffer.from(value);
+          hash.update(chunk);
+          item.bytesReceived += chunk.byteLength;
+          item.progress = totalBytes
+            ? Math.min(100, Math.round((item.bytesReceived / totalBytes) * 100))
+            : 0;
+          item.speedBytesPerSecond =
+            item.bytesReceived / Math.max(1, (Date.now() - startTime) / 1000);
+          onProgress?.({
+            deltaBytes: chunk.byteLength,
+            bytesReceived: item.bytesReceived,
+            totalBytes,
+          });
+
+          if (!file.write(chunk)) {
+            await new Promise<void>((resolve) => file.once("drain", resolve));
+          }
+
+          if (visible) this.flush();
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          file.end((error?: Error | null) => {
+            if (error) reject(error);
+            else resolve();
+          });
         });
-      });
 
-      const actualSha1 = hash.digest("hex");
+        const actualSha1 = hash.digest("hex");
 
-      if (sha1 && actualSha1 !== sha1) {
-        throw new Error(`SHA-1 invalido para ${label}. Esperado ${sha1}, obtido ${actualSha1}.`);
-      }
+        if (sha1 && actualSha1 !== sha1) {
+          throw new Error(`SHA-1 invalido para ${label}. Esperado ${sha1}, obtido ${actualSha1}.`);
+        }
 
-      if (existsSync(destination)) {
-        if (!sha1 || (await hashFile(destination)) === sha1) {
-          await rm(tempDestination, { force: true });
+        if (existsSync(destination)) {
+          if (!sha1 || (await hashFile(destination)) === sha1) {
+            await rm(tempDestination, { force: true });
+          } else {
+            await rm(destination, { force: true });
+            await rename(tempDestination, destination);
+          }
         } else {
-          await rm(destination, { force: true });
           await rename(tempDestination, destination);
         }
-      } else {
-        await rename(tempDestination, destination);
-      }
 
-      item.status = "completed";
-      item.progress = 100;
-      item.completedAt = new Date().toISOString();
-      item.speedBytesPerSecond = 0;
-      if (visible) this.flush();
+        item.status = "completed";
+        item.progress = 100;
+        item.completedAt = new Date().toISOString();
+        item.speedBytesPerSecond = 0;
+        if (visible) this.flush();
 
-      return destination;
-    } catch (error) {
-      await rm(tempDestination, { force: true });
-      if (item.status === "cancelled" || error instanceof DownloadCancelledError) {
-        item.status = "cancelled";
-        item.error = undefined;
-      } else {
+        return destination;
+      } catch (error) {
+        await rm(tempDestination, { force: true });
+        if (item.status === "cancelled" || error instanceof DownloadCancelledError) {
+          item.status = "cancelled";
+          item.error = undefined;
+          item.completedAt = new Date().toISOString();
+          if (visible) this.flush();
+          throw error;
+        }
+
+        if (attempt < maxAttempts) {
+          item.bytesReceived = 0;
+          item.progress = 0;
+          if (visible) this.flush();
+          await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+          continue;
+        }
+
         item.status = "failed";
         item.error = error instanceof Error ? error.message : "Download falhou.";
+        item.completedAt = new Date().toISOString();
+        if (visible) this.flush();
+        throw error;
+      } finally {
+        if (attempt >= maxAttempts || item.status === "completed" || item.status === "cancelled") {
+          this.controllers.delete(id);
+        }
       }
-      item.completedAt = new Date().toISOString();
-      if (visible) this.flush();
-      throw error;
-    } finally {
-      this.controllers.delete(id);
     }
+
+    throw new Error(`Download falhou para ${label} após ${maxAttempts} tentativas.`);
   }
 
   createTask(label: string, destination: string, sourceUrl = "internal://task", visible = true) {

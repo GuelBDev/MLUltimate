@@ -1,8 +1,11 @@
 import { totalmem } from "node:os";
 import { createHash } from "node:crypto";
-import { BrowserWindow, ipcMain, net } from "electron";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { BrowserWindow, ipcMain, net, shell } from "electron";
 import { z } from "zod";
 import { MicrosoftAuthService } from "../auth/microsoftAuthService";
+import { MlultimateAuthService } from "../auth/mlultimateAuthService";
 import { AvatarService } from "../avatar/avatarService";
 import { ContentService } from "../content/contentService";
 import { DownloadManager } from "../downloads/downloadManager";
@@ -19,8 +22,13 @@ const offlineLoginSchema = z.object({
   username: z.string(),
 });
 
+const mlultimateLoginSchema = z.object({
+  login: z.string().min(1, "Informe o login"),
+  password: z.string().min(1, "Informe a senha"),
+});
+
 const switchAccountSchema = z.object({
-  provider: z.enum(["microsoft", "offline"]),
+  provider: z.enum(["microsoft", "offline", "mlultimate"]),
   id: z.string().min(1),
 });
 
@@ -203,6 +211,7 @@ const updateSettingsSchema = z.object({
   sidebarImageDataUrl: z.string().max(7_000_000).nullable().optional(),
   sidebarImageName: z.string().max(160).nullable().optional(),
   sidebarNavOrder: z.array(z.string()).max(10).optional(),
+  sidebarCollapsed: z.boolean().optional(),
   favoritePresets: z.array(z.string().regex(/^[a-z0-9-_]{1,64}$/i)).max(5).optional(),
 });
 
@@ -236,6 +245,7 @@ const serverStatusSchema = z.object({
 
 type IpcDeps = {
   microsoftAuth: MicrosoftAuthService;
+  mlultimateAuth: MlultimateAuthService;
   offlineAuth: OfflineAuthService;
   launcher: LauncherService;
   downloads: DownloadManager;
@@ -250,6 +260,7 @@ type IpcDeps = {
 
 export const registerIpcHandlers = ({
   microsoftAuth,
+  mlultimateAuth,
   offlineAuth,
   launcher,
   downloads,
@@ -261,27 +272,35 @@ export const registerIpcHandlers = ({
   avatar,
   updater,
 }: IpcDeps) => {
-  ipcMain.handle("auth:get-session", async () => {
-    const microsoftSession = await microsoftAuth.getSession();
+  const getCombinedSession = async () => {
+    const mlultimateSession = mlultimateAuth.getLastSession();
+    if (mlultimateSession && mlultimateSession.status === "signed-in") {
+      return mlultimateSession;
+    }
 
+    const microsoftSession = await microsoftAuth.getSession();
     if (microsoftSession.status === "signed-in") {
       return microsoftSession;
     }
 
-    return offlineAuth.getLastOfflineSession() ?? microsoftSession;
+    const offlineSession = offlineAuth.getLastOfflineSession();
+    if (offlineSession && offlineSession.status === "signed-in") {
+      return offlineSession;
+    }
+
+    return microsoftSession;
+  };
+
+  ipcMain.handle("auth:get-session", async () => {
+    return getCombinedSession();
   });
+
   ipcMain.handle("auth:list-accounts", async () => {
-    const activeSession = await microsoftAuth.getSession();
-    const activeOfflineSession = activeSession.status === "signed-in"
-      ? null
-      : offlineAuth.getLastOfflineSession();
-    const activeAccount = activeSession.status === "signed-in"
-      ? activeSession.account
-      : activeOfflineSession?.status === "signed-in"
-        ? activeOfflineSession.account
-        : null;
+    const activeSession = await getCombinedSession();
+    const activeAccount = activeSession.status === "signed-in" ? activeSession.account : null;
     const accounts = [
       ...microsoftAuth.listAccounts(),
+      ...mlultimateAuth.listAccounts(),
       ...offlineAuth.listAccounts(),
     ];
     const mergedAccounts = activeAccount
@@ -299,13 +318,16 @@ export const registerIpcHandlers = ({
       active: account.provider === activeAccount?.provider && account.id === activeAccount?.id,
     }));
   });
+
   ipcMain.handle("auth:login-microsoft", async () =>
-    microsoftAuth.login(offlineAuth.countAccounts()),
+    microsoftAuth.login(offlineAuth.countAccounts() + mlultimateAuth.countAccounts()),
   );
+
   ipcMain.handle("auth:login-offline", async (_, input: unknown) => {
     const parsed = offlineLoginSchema.parse(input);
     const existingAccounts = [
       ...microsoftAuth.listAccounts(),
+      ...mlultimateAuth.listAccounts(),
       ...offlineAuth.listAccounts(),
     ];
     const offlineId = `offline-${createHash("sha256")
@@ -322,29 +344,67 @@ export const registerIpcHandlers = ({
 
     return offlineAuth.login(parsed);
   });
+
+  const handleMlultimateLogin = async (_: unknown, input: unknown) => {
+    const parsed = mlultimateLoginSchema.parse(input);
+    const existingAccounts = [
+      ...microsoftAuth.listAccounts(),
+      ...mlultimateAuth.listAccounts(),
+      ...offlineAuth.listAccounts(),
+    ];
+
+    const cleanNick = parsed.login.trim().toLowerCase();
+    const replacingExisting = existingAccounts.some(
+      (account) =>
+        account.provider === "mlultimate" &&
+        account.displayName.trim().toLowerCase() === cleanNick,
+    );
+
+    if (!replacingExisting && existingAccounts.length >= 3) {
+      throw new Error("Limite de 3 perfis atingido. Remova uma conta antes de adicionar outra.");
+    }
+
+    return mlultimateAuth.login(parsed);
+  };
+
+  ipcMain.handle("auth:login-mlultimate", handleMlultimateLogin);
+  ipcMain.handle("auth:mlultimate:login", handleMlultimateLogin);
+
+  ipcMain.handle("auth:mlultimate:list", async () => mlultimateAuth.listAccounts());
+
+  ipcMain.handle("auth:mlultimate:switch", async (_, input: unknown) => {
+    const parsed = z.object({ id: z.string().min(1) }).parse(input);
+    return mlultimateAuth.switchAccount(parsed.id);
+  });
+
+  ipcMain.handle("auth:mlultimate:remove", async (_, input: unknown) => {
+    const parsed = z.object({ id: z.string().min(1) }).parse(input);
+    mlultimateAuth.removeAccount(parsed.id);
+    return getCombinedSession();
+  });
+
   ipcMain.handle("auth:switch-account", async (_, input: unknown) => {
     const parsed = switchAccountSchema.parse(input);
 
     if (parsed.provider === "microsoft") {
       return microsoftAuth.switchAccount(parsed.id);
     }
+    if (parsed.provider === "mlultimate") {
+      return mlultimateAuth.switchAccount(parsed.id);
+    }
 
     return offlineAuth.switchAccount(parsed.id);
   });
+
   ipcMain.handle("auth:logout", async () => {
-    const activeSession = await microsoftAuth.getSession();
-    const activeOfflineSession = activeSession.status === "signed-in"
-      ? null
-      : offlineAuth.getLastOfflineSession();
-    const activeAccount = activeSession.status === "signed-in"
-      ? activeSession.account
-      : activeOfflineSession?.status === "signed-in"
-        ? activeOfflineSession.account
-        : null;
+    const activeSession = await getCombinedSession();
+    const activeAccount = activeSession.status === "signed-in" ? activeSession.account : null;
 
     if (activeAccount) {
       if (activeAccount.provider === "microsoft") {
         microsoftAuth.removeAccount(activeAccount.id);
+      } else if (activeAccount.provider === "mlultimate") {
+        mlultimateAuth.removeAccount(activeAccount.id);
       } else {
         offlineAuth.removeAccount(activeAccount.id);
       }
@@ -352,6 +412,7 @@ export const registerIpcHandlers = ({
 
     const remainingAccounts = [
       ...microsoftAuth.listAccounts(),
+      ...mlultimateAuth.listAccounts(),
       ...offlineAuth.listAccounts(),
     ];
 
@@ -360,6 +421,8 @@ export const registerIpcHandlers = ({
       if (nextAccount) {
         if (nextAccount.provider === "microsoft") {
           return microsoftAuth.switchAccount(nextAccount.id);
+        } else if (nextAccount.provider === "mlultimate") {
+          return mlultimateAuth.switchAccount(nextAccount.id);
         } else {
           return offlineAuth.switchAccount(nextAccount.id);
         }
@@ -367,6 +430,40 @@ export const registerIpcHandlers = ({
     }
 
     return microsoftAuth.signedOutSession();
+  });
+
+  ipcMain.handle("auth:remove-account", async (_, input: unknown) => {
+    const parsed = switchAccountSchema.parse(input);
+    if (parsed.provider === "microsoft") {
+      microsoftAuth.removeAccount(parsed.id);
+    } else if (parsed.provider === "mlultimate") {
+      mlultimateAuth.removeAccount(parsed.id);
+    } else {
+      offlineAuth.removeAccount(parsed.id);
+    }
+
+    const activeSession = await getCombinedSession();
+    const activeAccount = activeSession.status === "signed-in" ? activeSession.account : null;
+
+    if (!activeAccount || (activeAccount.provider === parsed.provider && activeAccount.id === parsed.id)) {
+      const remainingAccounts = [
+        ...microsoftAuth.listAccounts(),
+        ...mlultimateAuth.listAccounts(),
+        ...offlineAuth.listAccounts(),
+      ];
+      if (remainingAccounts.length > 0 && remainingAccounts[0]) {
+        if (remainingAccounts[0].provider === "microsoft") {
+          return microsoftAuth.switchAccount(remainingAccounts[0].id);
+        } else if (remainingAccounts[0].provider === "mlultimate") {
+          return mlultimateAuth.switchAccount(remainingAccounts[0].id);
+        } else {
+          return offlineAuth.switchAccount(remainingAccounts[0].id);
+        }
+      }
+      return microsoftAuth.signedOutSession();
+    }
+
+    return activeSession.status === "signed-in" ? activeSession : microsoftAuth.signedOutSession();
   });
   ipcMain.handle("launcher:launch", async (_, input: unknown) =>
     launcher.launch(launchRequestSchema.parse(input)),
@@ -401,9 +498,30 @@ export const registerIpcHandlers = ({
     instances.openFolder(z.string().min(1).parse(instanceId)),
   );
   ipcMain.handle("instances:list-trash", async () => instances.listTrash());
-  ipcMain.handle("instances:restore-trash", async (_, trashId: unknown) =>
-    instances.restoreTrash(z.string().min(1).parse(trashId)),
-  );
+  ipcMain.handle("instances:restore-trash", async (_, input: unknown) => {
+    const parsed = z
+      .union([
+        z.string().min(1),
+        z.object({
+          trashId: z.string().min(1),
+          options: z
+            .object({
+              worlds: z.boolean().optional(),
+              mods: z.boolean().optional(),
+              resourcepacks: z.boolean().optional(),
+              shaders: z.boolean().optional(),
+              config: z.boolean().optional(),
+            })
+            .optional(),
+        }),
+      ])
+      .parse(input);
+
+    if (typeof parsed === "string") {
+      return instances.restoreTrash(parsed);
+    }
+    return instances.restoreTrash(parsed.trashId, parsed.options);
+  });
   ipcMain.handle("instances:delete-trash", async (_, trashIds: unknown) =>
     instances.deleteTrash(z.array(z.string()).parse(trashIds)),
   );
@@ -513,6 +631,18 @@ export const registerIpcHandlers = ({
   ipcMain.handle("downloads:cancel", async (_, downloadId: unknown) =>
     downloads.cancel(downloadIdSchema.parse(downloadId)),
   );
+  ipcMain.handle("downloads:open-folder", async (_, destination: unknown) => {
+    const rawPath = z.string().min(1).parse(destination);
+    const targetPath = path.resolve(rawPath);
+    if (existsSync(targetPath)) {
+      shell.showItemInFolder(targetPath);
+      return;
+    }
+    const dir = path.dirname(targetPath);
+    if (existsSync(dir)) {
+      await shell.openPath(dir);
+    }
+  });
   ipcMain.handle("settings:get", async () => apiKeys.getPublicSettings());
   ipcMain.handle("settings:update", async (_, input: unknown) => {
     const parsed = updateSettingsSchema.parse(input);

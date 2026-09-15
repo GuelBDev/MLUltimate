@@ -590,7 +590,11 @@ const readModPreview = async (absolutePath: string) => {
       }
     }
 
-    const forgeMetadata = zip.getEntry("META-INF/mods.toml");
+    const forgeMetadata =
+      zip.getEntry("META-INF/neoforge.mods.toml") ??
+      zip.getEntry("neoforge.mods.toml") ??
+      zip.getEntry("META-INF/mods.toml") ??
+      zip.getEntry("mods.toml");
 
     if (forgeMetadata) {
       const text = forgeMetadata.getData().toString("utf8");

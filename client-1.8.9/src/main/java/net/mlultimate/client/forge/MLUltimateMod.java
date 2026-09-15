@@ -1,5 +1,6 @@
 package net.mlultimate.client.forge;
 
+import net.minecraftforge.client.event.GuiOpenEvent;
 import net.minecraftforge.client.event.GuiScreenEvent;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
@@ -38,6 +39,7 @@ public class MLUltimateMod {
     private int lastScaledWidth = 800;
     private int lastScaledHeight = 500;
     private boolean wasFullscreen = false;
+    private boolean windowResizableInitialized = false;
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
@@ -315,9 +317,37 @@ public class MLUltimateMod {
     }
 
     @SubscribeEvent
+    public void onGuiOpen(GuiOpenEvent event) {
+        if (event.gui != null) {
+            // Guarantee that whenever ANY GUI screen opens (Inventory, Chest, Settings, Pause menu, etc.),
+            // the mouse cursor is immediately ungrabbed and camera focus is released.
+            MinecraftBridge.ensureCursorVisible();
+        }
+    }
+
+    @SubscribeEvent
+    public void onDrawScreenPre(GuiScreenEvent.DrawScreenEvent.Pre event) {
+        // Continuous per-frame recovery: if any screen is being drawn and mouse is grabbed, ungrab immediately!
+        if (event.gui != null && MinecraftBridge.isCursorGrabbed()) {
+            MinecraftBridge.ensureCursorVisible();
+        }
+    }
+
+    @SubscribeEvent
+    public void onGuiMouseInputPre(GuiScreenEvent.MouseInputEvent.Pre event) {
+        if (event.gui != null && MinecraftBridge.isCursorGrabbed()) {
+            MinecraftBridge.ensureCursorVisible();
+        }
+    }
+
+    @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase == TickEvent.Phase.START) {
-            if (MLUltimate.getInstance() != null) {
+            if (MinecraftBridge.isAnyGuiOpen()) {
+                if (MinecraftBridge.isCursorGrabbed()) {
+                    MinecraftBridge.ensureCursorVisible();
+                }
+            } else if (MLUltimate.getInstance() != null) {
                 boolean isMenu = MLUltimate.getInstance().isModMenuOpen();
                 boolean isEditor = MLUltimate.getInstance().isHudEditorOpen();
                 if (isMenu || isEditor) {
@@ -329,7 +359,11 @@ public class MLUltimateMod {
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
-        if (MLUltimate.getInstance() != null) {
+        if (MinecraftBridge.isAnyGuiOpen()) {
+            if (MinecraftBridge.isCursorGrabbed()) {
+                MinecraftBridge.ensureCursorVisible();
+            }
+        } else if (MLUltimate.getInstance() != null) {
             boolean isMenu = MLUltimate.getInstance().isModMenuOpen();
             boolean isEditor = MLUltimate.getInstance().isHudEditorOpen();
             if (isMenu || isEditor) {
@@ -344,8 +378,9 @@ public class MLUltimateMod {
             }
             wasFullscreen = currentFullscreen;
 
-            if (!currentFullscreen && !Display.isResizable()) {
+            if (!currentFullscreen && !windowResizableInitialized) {
                 fixWindowResizable();
+                windowResizableInitialized = true;
             }
 
             if (MLUltimate.getInstance() != null && MLUltimate.getInstance().getTickManager() != null) {
@@ -379,6 +414,7 @@ public class MLUltimateMod {
     @SubscribeEvent
     public void onInitGui(GuiScreenEvent.InitGuiEvent.Post event) {
         if (event.gui == null) return;
+        MinecraftBridge.ensureCursorVisible();
         String name = event.gui.getClass().getSimpleName();
 
         // 1. Clean Title Screen (GuiMainMenu): Remove Forge mod counters and "Mods" button

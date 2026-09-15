@@ -24,6 +24,17 @@ type LibraryPageProps = {
   onExploreInstance?: (type: ContentType, instanceId: string) => void;
 };
 
+const isNeoForgeSupportedVersion = (minecraftVersion: string) => {
+  if (!minecraftVersion) return true;
+  if (minecraftVersion === "1.20.1") return true;
+  const parts = minecraftVersion.split(".").map(Number);
+  if (parts.length >= 2 && parts[0] === 1 && parts[1] !== undefined) {
+    if (parts[1] > 20) return true;
+    if (parts[1] === 20 && parts.length >= 3 && (parts[2] ?? 0) >= 2) return true;
+  }
+  return false;
+};
+
 const loaderOptions: Array<{
   id: LoaderType;
   title: string;
@@ -126,6 +137,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
   const [trashOpen, setTrashOpen] = useState(false);
   const trashedCount = trashList.data?.length ?? 0;
   const [openMenuInstanceId, setOpenMenuInstanceId] = useState<string | null>(null);
+  const [instanceToDelete, setInstanceToDelete] = useState<LauncherInstance | null>(null);
 
   const releaseVersions = useMemo(
     () =>
@@ -438,7 +450,7 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
             onOpen={setSelected}
             onPlay={play}
             onEdit={openEdit}
-            onDelete={(item) => removeInstance.mutate(item.id)}
+            onDelete={(item) => setInstanceToDelete(item)}
             onOpenFolder={(item) => openFolder.mutate(item.id)}
             onKill={killInstance}
             download={activeDownloadsByInstance[instance.id]}
@@ -528,7 +540,12 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                   <div className="mt-2">
                     <AppSelect
                       value={selectedVersion}
-                      onChange={(val) => setMinecraftVersion(val)}
+                      onChange={(val) => {
+                        setMinecraftVersion(val);
+                        if (!isNeoForgeSupportedVersion(val) && loader === "neoforge") {
+                          setLoader("forge");
+                        }
+                      }}
                       disabled={Boolean(editing)}
                       options={releaseVersions.map((version) => ({
                         value: version.id,
@@ -542,31 +559,44 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
                 <div>
                   <span className="text-sm font-semibold text-white">Modloader</span>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {loaderOptions.map((item) => (
-                      <label
-                        key={item.id}
-                        className={`rounded-xl border p-3 transition ${
-                          loader === item.id
-                            ? "border-[#60A5FA] bg-[#3B82F6]/15 shadow-lg shadow-blue-500/10"
-                            : "border-white/10 bg-white/[0.04] hover:border-white/20"
-                        } ${editing ? "opacity-60" : "cursor-pointer"}`}
-                      >
-                        <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                        <input
-                          type="radio"
-                          name="loader"
-                          checked={loader === item.id}
-                          onChange={() => setLoader(item.id)}
-                          disabled={Boolean(editing)}
-                          className="h-4 w-4 accent-[#3B82F6]"
-                        />
-                          {item.title}
-                        </div>
-                        <p className="mt-1 pl-6 text-xs leading-5 text-[#94A3B8]">
-                          {item.description}
-                        </p>
-                      </label>
-                    ))}
+                    {loaderOptions.map((item) => {
+                      const isSupported =
+                        item.id !== "neoforge" || isNeoForgeSupportedVersion(selectedVersion);
+                      const isItemDisabled = Boolean(editing) || !isSupported;
+
+                      return (
+                        <label
+                          key={item.id}
+                          className={`rounded-xl border p-3 transition ${
+                            loader === item.id
+                              ? "border-[#60A5FA] bg-[#3B82F6]/15 shadow-lg shadow-blue-500/10"
+                              : "border-white/10 bg-white/[0.04] hover:border-white/20"
+                          } ${isItemDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+                        >
+                          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                            <input
+                              type="radio"
+                              name="loader"
+                              checked={loader === item.id}
+                              onChange={() => isSupported && setLoader(item.id)}
+                              disabled={isItemDisabled}
+                              className="h-4 w-4 accent-[#3B82F6]"
+                            />
+                            {item.title}
+                            {!isSupported && (
+                              <span className="rounded bg-yellow-500/20 px-1.5 py-0.5 text-[10px] font-medium text-yellow-300">
+                                MC 1.20.1+
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 pl-6 text-xs leading-5 text-[#94A3B8]">
+                            {!isSupported && item.id === "neoforge"
+                              ? "Disponível a partir do Minecraft 1.20.1."
+                              : item.description}
+                          </p>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -796,6 +826,81 @@ export const LibraryPage = ({ onExploreInstance }: LibraryPageProps) => {
               </Button>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {instanceToDelete ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-md">
+          <div className="w-full max-w-lg rounded-2xl border border-red-500/30 bg-[#161B22] p-6 shadow-2xl shadow-black/80">
+            <div className="flex items-center gap-3 text-red-400">
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-red-400/90">
+                  Confirmação de Exclusão
+                </p>
+                <h3 className="text-lg font-bold text-white">
+                  Deseja realmente excluir a instância?
+                </h3>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-5 text-center">
+              <span className="text-xs uppercase tracking-wider text-[#94A3B8]">Instância</span>
+              <h2 className="mt-1 break-words text-2xl font-black text-white sm:text-3xl">
+                {instanceToDelete.name}
+              </h2>
+
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <Badge tone="slate">
+                  {instanceToDelete.minecraftVersion} • {instanceToDelete.loader}
+                </Badge>
+                {instanceToDelete.modsCount > 0 ? (
+                  <Badge tone="slate" className="border-yellow-500/30 bg-yellow-500/10 text-yellow-300">
+                    {instanceToDelete.modsCount} {instanceToDelete.modsCount === 1 ? "mod instalado" : "mods instalados"}
+                  </Badge>
+                ) : (
+                  <Badge tone="slate">Nenhum mod instalado</Badge>
+                )}
+                {instanceToDelete.worldsCount > 0 && (
+                  <Badge tone="blue">
+                    {instanceToDelete.worldsCount} {instanceToDelete.worldsCount === 1 ? "mundo salvo" : "mundos salvos"}
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-blue-500/20 bg-blue-500/[0.07] p-3.5 text-xs leading-5 text-[#94A3B8]">
+              <p>
+                <strong className="text-blue-300">Não se preocupe:</strong> a instância será movida para a{" "}
+                <strong className="text-white">Lixeira</strong>. Seus mundos salvos, mods, texturas e configurações
+                serão preservados e você poderá restaurá-los a qualquer momento.
+              </p>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                className="rounded-xl"
+                onClick={() => setInstanceToDelete(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                className="rounded-xl bg-red-600 px-5 font-semibold text-white shadow-lg shadow-red-600/30 hover:bg-red-500"
+                onClick={() => {
+                  const id = instanceToDelete.id;
+                  setInstanceToDelete(null);
+                  removeInstance.mutate(id);
+                }}
+              >
+                Excluir Instância
+              </Button>
+            </div>
+          </div>
         </div>
       ) : null}
 

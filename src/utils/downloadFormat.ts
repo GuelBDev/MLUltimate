@@ -47,7 +47,11 @@ export const formatDuration = (seconds: number) => {
   return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}min` : `${hours}h`;
 };
 
-export const formatDownloadSize = (item: DownloadItem) => {
+export const formatDownloadSize = (item: {
+  bytesReceived: number;
+  totalBytes?: number;
+  status?: DownloadItem["status"];
+}) => {
   if (item.status === "running" && item.bytesReceived === 0 && !item.totalBytes) {
     return "Iniciando download...";
   }

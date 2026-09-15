@@ -14,8 +14,6 @@ const releaseDir = path.join(root, "release");
 const workDir = path.join(releaseDir, "online-installer");
 const manifestPath = path.join(workDir, "app.manifest");
 const csharpPath = path.join(workDir, "MLUltimateInstaller.cs");
-const heroPath = path.join(workDir, "launcher-hero.png");
-const iconPath = path.join(workDir, "mlultimate-icon.png");
 const outputPath = path.join(releaseDir, "MLUltimate Installer.exe");
 const windowsSiteOutputPath = path.join(releaseDir, "MLUltimate-Installer-Windows.exe");
 const linuxOutputPath = path.join(releaseDir, "MLUltimate-Installer-Linux.sh");
@@ -31,8 +29,6 @@ const buildLinux = args.includes("--linux") || args.length === 0;
 
 if (buildWin) {
   mkdirSync(workDir, { recursive: true });
-  copyFileSync(path.join(root, "src/assets/launcher-hero.png"), heroPath);
-  copyFileSync(path.join(root, "src/assets/mlultimate-icon.png"), iconPath);
 }
 
 copyFileSync(path.join(root, "src/assets/mlultimate-icon.png"), downloadLogoPath);
@@ -72,23 +68,20 @@ writeFileSync(
   `using System;
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.IO;
 using System.Net;
 using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 [assembly: AssemblyTitle("MLUltimate Launcher Setup")]
 [assembly: AssemblyDescription("Instalador oficial do MLUltimate Launcher")]
-[assembly: AssemblyCompany("MLUltimate")]
+[assembly: AssemblyCompany("MLUltimate Team")]
 [assembly: AssemblyProduct("MLUltimate Launcher")]
 [assembly: AssemblyCopyright("Copyright © MLUltimate Team")]
 [assembly: AssemblyTrademark("MLUltimate")]
 [assembly: AssemblyVersion("${assemblyVersion}")]
 [assembly: AssemblyFileVersion("${assemblyVersion}")]
-[assembly: Guid("1A2B3C4D-5E6F-7A8B-9C0D-1E2F3A4B5C6D")]
+[assembly: System.Runtime.InteropServices.Guid("6B1D2A4C-9F3E-4B7D-8C2A-1E3F5A7B9C0D")]
 
 internal static class Program
 {
@@ -97,886 +90,316 @@ internal static class Program
     {
         try
         {
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls | (SecurityProtocolType)12288;
+            ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
         }
         catch
         {
             try { ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12; } catch {}
         }
+
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new InstallerForm());
+        Application.Run(new SetupForm());
     }
 }
 
-internal class RoundedButton : Control
+internal sealed class SetupForm : Form
 {
-    private int _cornerRadius = 12;
-    public int CornerRadius { get { return _cornerRadius; } set { _cornerRadius = value; Invalidate(); } }
-    private Color _buttonColor = Color.FromArgb(34, 197, 94);
-    public Color ButtonColor { get { return _buttonColor; } set { _buttonColor = value; Invalidate(); } }
-    private Color _disabledColor = Color.FromArgb(35, 42, 56);
-    public Color DisabledColor { get { return _disabledColor; } set { _disabledColor = value; Invalidate(); } }
+    private const string AppTitle = "MLUltimate Launcher";
+    private const string PublisherName = "MLUltimate Team";
+    private const string CurrentVersion = "${packageJson.version}";
+    private const string DownloadBase = "https://github.com/GuelBDev/MLUltimate/releases/download";
 
-    public RoundedButton()
+    private readonly PictureBox iconBox;
+    private readonly Label titleLabel;
+    private readonly Label publisherLabel;
+    private readonly Panel headerSeparator;
+    private readonly Label infoLabel;
+    private readonly Label statusLabel;
+    private readonly ProgressBar progressBar;
+    private readonly Panel footerSeparator;
+    private readonly Button btnInstall;
+    private readonly Button btnCancel;
+
+    private WebClient downloadClient;
+    private string targetDownloadUrl;
+    private string tempSetupPath;
+    private bool isInstalling;
+
+    public SetupForm()
     {
-        SetStyle(ControlStyles.SupportsTransparentBackColor |
-                 ControlStyles.Opaque |
-                 ControlStyles.ResizeRedraw |
-                 ControlStyles.UserPaint |
-                 ControlStyles.AllPaintingInWmPaint, true);
-        BackColor = Color.Transparent;
-        Cursor = Cursors.Hand;
-        Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
-        ForeColor = Color.White;
-    }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        if (Parent != null)
-        {
-            using (var bgBrush = new SolidBrush(Parent.BackColor))
-            {
-                e.Graphics.FillRectangle(bgBrush, ClientRectangle);
-            }
-        }
-        var rect = new RectangleF(0, 0, Width - 1, Height - 1);
-        using (var path = GetRoundedPath(rect, CornerRadius))
-        {
-            this.Region = new Region(path);
-            var fill = Enabled ? ButtonColor : DisabledColor;
-            using (var brush = new SolidBrush(fill))
-            {
-                e.Graphics.FillPath(brush, path);
-            }
-            var textColor = Enabled ? ForeColor : Color.FromArgb(100, 116, 139);
-            TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, textColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-        }
-    }
-
-    private static GraphicsPath GetRoundedPath(RectangleF rect, float radius)
-    {
-        var path = new GraphicsPath();
-        float diameter = radius * 2;
-        path.AddArc(rect.X, rect.Y, diameter, diameter, 180, 90);
-        path.AddArc(rect.Right - diameter, rect.Y, diameter, diameter, 270, 90);
-        path.AddArc(rect.Right - diameter, rect.Bottom - diameter, diameter, diameter, 0, 90);
-        path.AddArc(rect.X, rect.Bottom - diameter, diameter, diameter, 90, 90);
-        path.CloseFigure();
-        return path;
-    }
-}
-
-internal class RoundedPanel : Panel
-{
-    private int _cornerRadius = 16;
-    public int CornerRadius { get { return _cornerRadius; } set { _cornerRadius = value; } }
-    private Color _borderColor = Color.Transparent;
-    public Color BorderColor { get { return _borderColor; } set { _borderColor = value; } }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        base.OnPaint(e);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        var rect = new RectangleF(0, 0, Width - 1, Height - 1);
-        using (var path = GetRoundedPath(rect, CornerRadius))
-        {
-            this.Region = new Region(path);
-            using (var brush = new SolidBrush(BackColor))
-            {
-                e.Graphics.FillPath(brush, path);
-            }
-            if (BorderColor != Color.Transparent)
-            {
-                using (var pen = new Pen(BorderColor, 1))
-                {
-                    e.Graphics.DrawPath(pen, path);
-                }
-            }
-        }
-    }
-
-    private static GraphicsPath GetRoundedPath(RectangleF rect, float radius)
-    {
-        var path = new GraphicsPath();
-        float diameter = radius * 2;
-        path.AddArc(rect.X, rect.Y, diameter, diameter, 180, 90);
-        path.AddArc(rect.Right - diameter, rect.Y, diameter, diameter, 270, 90);
-        path.AddArc(rect.Right - diameter, rect.Bottom - diameter, diameter, diameter, 0, 90);
-        path.AddArc(rect.X, rect.Bottom - diameter, diameter, diameter, 90, 90);
-        path.CloseFigure();
-        return path;
-    }
-}
-
-internal sealed class InstallerForm : Form
-{
-    [DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
-    private static extern IntPtr CreateRoundRectRgn(
-        int nLeftRect, int nTopRect, int nRightRect, int nBottomRect, int nWidthEllipse, int nHeightEllipse);
-
-    [DllImport("user32.dll")]
-    public static extern bool ReleaseCapture();
-
-    [DllImport("user32.dll")]
-    public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
-
-    private const string Repo = "GuelBDev/MLUltimate";
-    private const string ApiUrl = "https://api.github.com/repos/" + Repo + "/releases";
-    private const string AtomUrl = "https://github.com/" + Repo + "/releases.atom";
-    private const string DownloadBase = "https://github.com/" + Repo + "/releases/download";
-    private const string FallbackTag = "v${packageJson.version}";
-    private const string FallbackVersion = "${packageJson.version}";
-
-    private readonly Label title;
-    private readonly Label subtitle;
-    private readonly ProgressBar progress;
-    private readonly Label status;
-    private readonly Label step1;
-    private readonly Label step2;
-    private readonly Label step3;
-    private readonly RoundedButton primaryButton;
-    private readonly RoundedButton secondaryButton;
-    private readonly RoundedPanel contentCard;
-    private readonly RichTextBox termsBox;
-    private readonly CheckBox acceptTerms;
-    private readonly Label folderLabel;
-    private readonly TextBox folderText;
-    private readonly Label folderNote;
-    private readonly Label downloadLabel;
-    private readonly Label finalLabel;
-    private readonly CheckBox desktopShortcut;
-    private readonly CheckBox openNow;
-    private string downloadFolder;
-    private int stage;
-
-    public InstallerForm()
-    {
-        Text = "MLUltimate Launcher Setup";
-        Width = 960;
-        Height = 600;
-        FormBorderStyle = FormBorderStyle.None;
+        Text = "Instalação do " + AppTitle;
         StartPosition = FormStartPosition.CenterScreen;
-        BackColor = Color.FromArgb(13, 16, 23);
-        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-        Font = new Font("Segoe UI", 9);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = true;
+        ClientSize = new Size(500, 240);
+        Font = new Font("Segoe UI", 9f, FontStyle.Regular);
+        BackColor = SystemColors.Control;
+        ForeColor = SystemColors.ControlText;
 
-        MouseDown += Form_MouseDown;
-
-        // Custom Close Button
-        var closeBtn = new Label();
-        closeBtn.Text = "✕";
-        closeBtn.AutoSize = false;
-        closeBtn.Width = 32;
-        closeBtn.Height = 32;
-        closeBtn.Location = new Point(915, 12);
-        closeBtn.Font = new Font("Segoe UI", 11, FontStyle.Bold);
-        closeBtn.ForeColor = Color.FromArgb(148, 163, 184);
-        closeBtn.TextAlign = ContentAlignment.MiddleCenter;
-        closeBtn.Cursor = Cursors.Hand;
-        closeBtn.MouseEnter += delegate { closeBtn.ForeColor = Color.FromArgb(239, 68, 68); };
-        closeBtn.MouseLeave += delegate { closeBtn.ForeColor = Color.FromArgb(148, 163, 184); };
-        closeBtn.Click += delegate { Close(); };
-        Controls.Add(closeBtn);
-
-        // Left Panel (Hero Card with Rounded Corners)
-        var leftCard = new RoundedPanel();
-        leftCard.Location = new Point(20, 20);
-        leftCard.Size = new Size(330, 560);
-        leftCard.CornerRadius = 20;
-        leftCard.BackColor = Color.FromArgb(20, 25, 35);
-        leftCard.MouseDown += Form_MouseDown;
-        Controls.Add(leftCard);
-
-        var hero = new PictureBox();
-        hero.Dock = DockStyle.Fill;
-        hero.SizeMode = PictureBoxSizeMode.StretchImage;
-        hero.Image = LoadImage("launcher-hero.png");
-        hero.MouseDown += Form_MouseDown;
-        leftCard.Controls.Add(hero);
-
-        var brand = new Panel();
-        brand.Dock = DockStyle.Bottom;
-        brand.Height = 210;
-        brand.Padding = new Padding(24);
-        brand.BackColor = Color.FromArgb(235, 13, 16, 23);
-        brand.MouseDown += Form_MouseDown;
-        leftCard.Controls.Add(brand);
-        brand.BringToFront();
-
-        var logo = new PictureBox();
-        logo.Width = 64;
-        logo.Height = 64;
-        logo.SizeMode = PictureBoxSizeMode.Zoom;
-        logo.Image = LoadImage("mlultimate-icon.png");
-        logo.Location = new Point(24, 20);
-        logo.MouseDown += Form_MouseDown;
-        brand.Controls.Add(logo);
-
-        var brandTitle = new Label();
-        brandTitle.Text = "MLUltimate Launcher";
-        brandTitle.AutoSize = false;
-        brandTitle.Width = 280;
-        brandTitle.Height = 32;
-        brandTitle.Location = new Point(24, 98);
-        brandTitle.Font = new Font("Segoe UI", 16, FontStyle.Bold);
-        brandTitle.ForeColor = Color.White;
-        brandTitle.MouseDown += Form_MouseDown;
-        brand.Controls.Add(brandTitle);
-
-        var brandCopy = new Label();
-        brandCopy.Text = "Instalador oficial para manter seu launcher sempre atualizado.";
-        brandCopy.AutoSize = false;
-        brandCopy.Width = 280;
-        brandCopy.Height = 44;
-        brandCopy.Location = new Point(24, 134);
-        brandCopy.Font = new Font("Segoe UI", 8);
-        brandCopy.ForeColor = Color.FromArgb(161, 161, 170);
-        brandCopy.MouseDown += Form_MouseDown;
-        brand.Controls.Add(brandCopy);
-
-        // Right Content Area
-        var badge = new Label();
-        badge.Text = "  INSTALADOR OFICIAL  ";
-        badge.AutoSize = true;
-        badge.Font = new Font("Segoe UI", 8, FontStyle.Bold);
-        badge.ForeColor = Color.FromArgb(34, 197, 94);
-        badge.BackColor = Color.FromArgb(20, 45, 30);
-        badge.Location = new Point(370, 36);
-        Controls.Add(badge);
-
-        title = new Label();
-        title.Text = "Preparando o MLUltimate";
-        title.AutoSize = false;
-        title.Width = 530;
-        title.Height = 40;
-        title.Location = new Point(370, 68);
-        title.Font = new Font("Segoe UI", 20, FontStyle.Bold);
-        title.ForeColor = Color.White;
-        Controls.Add(title);
-
-        subtitle = new Label();
-        subtitle.Text = "Este instalador baixa a versao mais recente publicada no GitHub oficial e conclui a instalacao automaticamente.";
-        subtitle.AutoSize = false;
-        subtitle.Width = 530;
-        subtitle.Height = 44;
-        subtitle.Location = new Point(370, 114);
-        subtitle.Font = new Font("Segoe UI", 9);
-        subtitle.ForeColor = Color.FromArgb(161, 161, 170);
-        Controls.Add(subtitle);
-
-        // Clean Steps Indicator
-        step1 = CreateStep("1. Termos", 370, true);
-        step2 = CreateStep("2. Pasta", 480, false);
-        step3 = CreateStep("3. Download", 590, false);
-
-        // Main Card Container
-        contentCard = new RoundedPanel();
-        contentCard.Location = new Point(370, 205);
-        contentCard.Size = new Size(540, 250);
-        contentCard.CornerRadius = 14;
-        contentCard.BackColor = Color.FromArgb(20, 25, 35);
-        contentCard.BorderColor = Color.FromArgb(35, 42, 56);
-        Controls.Add(contentCard);
-
-        // Step 0 Controls (Terms)
-        termsBox = new RichTextBox();
-        termsBox.ReadOnly = true;
-        termsBox.ScrollBars = RichTextBoxScrollBars.Vertical;
-        termsBox.Width = 510;
-        termsBox.Height = 220;
-        termsBox.Location = new Point(15, 15);
-        termsBox.BackColor = Color.FromArgb(20, 25, 35);
-        termsBox.ForeColor = Color.FromArgb(161, 161, 170);
-        termsBox.BorderStyle = BorderStyle.None;
-        termsBox.Font = new Font("Segoe UI", 9);
-        termsBox.TabStop = false;
-        termsBox.DetectUrls = false;
-        termsBox.Text = TermsText();
-        termsBox.VScroll += TermsBox_VScroll;
-        contentCard.Controls.Add(termsBox);
-
-        acceptTerms = new CheckBox();
-        acceptTerms.Text = "Li e aceito os termos de uso";
-        acceptTerms.AutoSize = true;
-        acceptTerms.Location = new Point(370, 466);
-        acceptTerms.Font = new Font("Segoe UI", 9.5f);
-        acceptTerms.Enabled = false;
-        acceptTerms.ForeColor = Color.FromArgb(100, 116, 139);
-        acceptTerms.BackColor = Color.Transparent;
-        acceptTerms.FlatStyle = FlatStyle.Standard;
-        acceptTerms.CheckedChanged += delegate { StylePrimaryButton(); };
-        Controls.Add(acceptTerms);
-
-        // Step 1 Controls (Folder)
-        folderLabel = new Label();
-        folderLabel.Text = "Pasta de destino para o instalador:";
-        folderLabel.AutoSize = false;
-        folderLabel.Width = 490;
-        folderLabel.Height = 24;
-        folderLabel.Location = new Point(20, 30);
-        folderLabel.Font = new Font("Segoe UI", 10, FontStyle.Bold);
-        folderLabel.ForeColor = Color.White;
-        folderLabel.Visible = false;
-        contentCard.Controls.Add(folderLabel);
-
-        folderText = new TextBox();
-        folderText.Width = 360;
-        folderText.Height = 34;
-        folderText.Location = new Point(20, 65);
-        folderText.BackColor = Color.FromArgb(13, 16, 23);
-        folderText.ForeColor = Color.White;
-        folderText.BorderStyle = BorderStyle.FixedSingle;
-        folderText.Font = new Font("Segoe UI", 9.5f);
-        folderText.Visible = false;
-        contentCard.Controls.Add(folderText);
-
-        secondaryButton = new RoundedButton();
-        secondaryButton.Text = "Procurar";
-        secondaryButton.Width = 110;
-        secondaryButton.Height = 34;
-        secondaryButton.Location = new Point(395, 64);
-        secondaryButton.CornerRadius = 8;
-        secondaryButton.ButtonColor = Color.FromArgb(35, 42, 56);
-        secondaryButton.ForeColor = Color.White;
-        secondaryButton.Visible = false;
-        secondaryButton.Click += delegate { BrowseFolder(); };
-        contentCard.Controls.Add(secondaryButton);
-
-        folderNote = new Label();
-        folderNote.Text = "Esta pasta armazenara os arquivos temporarios necessarios durante a instalacao.";
-        folderNote.AutoSize = false;
-        folderNote.Width = 490;
-        folderNote.Height = 40;
-        folderNote.Location = new Point(20, 115);
-        folderNote.Font = new Font("Segoe UI", 9);
-        folderNote.ForeColor = Color.FromArgb(161, 161, 170);
-        folderNote.Visible = false;
-        contentCard.Controls.Add(folderNote);
-
-        // Step 2 Controls (Download / Progress)
-        downloadLabel = new Label();
-        downloadLabel.Text = "Baixando e preparando arquivos...";
-        downloadLabel.AutoSize = false;
-        downloadLabel.Width = 490;
-        downloadLabel.Height = 26;
-        downloadLabel.Location = new Point(20, 35);
-        downloadLabel.Font = new Font("Segoe UI", 10, FontStyle.Bold);
-        downloadLabel.ForeColor = Color.White;
-        downloadLabel.Visible = false;
-        contentCard.Controls.Add(downloadLabel);
-
-        progress = new ProgressBar();
-        progress.Minimum = 0;
-        progress.Maximum = 100;
-        progress.Value = 6;
-        progress.Width = 490;
-        progress.Height = 16;
-        progress.Location = new Point(20, 75);
-        progress.Visible = false;
-        contentCard.Controls.Add(progress);
-
-        status = new Label();
-        status.Text = "Conectando ao GitHub oficial...";
-        status.AutoSize = false;
-        status.Width = 490;
-        status.Height = 45;
-        status.Location = new Point(20, 105);
-        status.Font = new Font("Segoe UI", 9);
-        status.ForeColor = Color.FromArgb(161, 161, 170);
-        contentCard.Controls.Add(status);
-
-        // Step 3 Controls (Final)
-        finalLabel = new Label();
-        finalLabel.Text = "Instalacao concluida com sucesso!";
-        finalLabel.AutoSize = false;
-        finalLabel.Width = 490;
-        finalLabel.Height = 28;
-        finalLabel.Location = new Point(20, 30);
-        finalLabel.Font = new Font("Segoe UI", 11, FontStyle.Bold);
-        finalLabel.ForeColor = Color.FromArgb(34, 197, 94);
-        finalLabel.Visible = false;
-        contentCard.Controls.Add(finalLabel);
-
-        desktopShortcut = new CheckBox();
-        desktopShortcut.Text = "Criar atalho na area de trabalho";
-        desktopShortcut.Checked = true;
-        desktopShortcut.AutoSize = true;
-        desktopShortcut.Location = new Point(20, 75);
-        desktopShortcut.Font = new Font("Segoe UI", 9.5f);
-        desktopShortcut.ForeColor = Color.White;
-        desktopShortcut.BackColor = Color.Transparent;
-        desktopShortcut.FlatStyle = FlatStyle.Standard;
-        desktopShortcut.Visible = false;
-        contentCard.Controls.Add(desktopShortcut);
-
-        openNow = new CheckBox();
-        openNow.Text = "Abrir o MLUltimate agora";
-        openNow.Checked = true;
-        openNow.AutoSize = true;
-        openNow.Location = new Point(20, 115);
-        openNow.Font = new Font("Segoe UI", 9.5f);
-        openNow.ForeColor = Color.White;
-        openNow.BackColor = Color.Transparent;
-        openNow.FlatStyle = FlatStyle.Standard;
-        openNow.Visible = false;
-        contentCard.Controls.Add(openNow);
-
-        primaryButton = new RoundedButton();
-        primaryButton.Text = "Aceitar e continuar";
-        primaryButton.Width = 200;
-        primaryButton.Height = 46;
-        primaryButton.Location = new Point(370, 510);
-        primaryButton.CornerRadius = 12;
-        primaryButton.Click += delegate { PrimaryAction(); };
-        Controls.Add(primaryButton);
-
-        downloadFolder = Path.Combine(Path.GetTempPath(), "MLUltimate", "Installer");
-        ShowTermsStep();
-    }
-
-    protected override void OnHandleCreated(EventArgs e)
-    {
-        base.OnHandleCreated(e);
-        Region = Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 24, 24));
-    }
-
-    private void Form_MouseDown(object sender, MouseEventArgs e)
-    {
-        if (e.Button == MouseButtons.Left)
+        try
         {
-            ReleaseCapture();
-            SendMessage(Handle, 0xA1, 0x2, 0);
+            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            ShowIcon = true;
         }
-    }
+        catch {}
 
-    private Label CreateStep(string text, int left, bool active)
-    {
-        var label = new Label();
-        label.Text = text;
-        label.AutoSize = false;
-        label.Width = 100;
-        label.Height = 24;
-        label.Location = new Point(left, 168);
-        label.Font = new Font("Segoe UI", 9, FontStyle.Bold);
-        label.TextAlign = ContentAlignment.MiddleLeft;
-        label.BorderStyle = BorderStyle.None;
-        label.BackColor = Color.Transparent;
-        label.ForeColor = active ? Color.White : Color.FromArgb(100, 116, 139);
-        label.MouseDown += Form_MouseDown;
-        Controls.Add(label);
-        return label;
-    }
-
-    private void SetStep(Label label, bool active, bool done)
-    {
-        label.ForeColor = done
-            ? Color.FromArgb(34, 197, 94)
-            : active
-                ? Color.White
-                : Color.FromArgb(100, 116, 139);
-    }
-
-    private void StylePrimaryButton()
-    {
-        primaryButton.Enabled = acceptTerms.Checked || stage != 0;
-        primaryButton.ButtonColor = acceptTerms.Checked || stage != 0
-            ? Color.FromArgb(34, 197, 94)
-            : Color.FromArgb(35, 42, 56);
-    }
-
-    private static Image LoadImage(string name)
-    {
-        var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(name);
-        return stream == null ? null : Image.FromStream(stream);
-    }
-
-    private void ShowTermsStep()
-    {
-        title.Text = "Termos de uso";
-        subtitle.Text = "Antes de baixar, confirme que voce aceita os termos do instalador oficial do MLUltimate.";
-        SetStep(step1, true, false);
-        SetStep(step2, false, false);
-        SetStep(step3, false, false);
-
-        termsBox.Visible = true;
-        termsBox.SelectionStart = 0;
-        termsBox.SelectionLength = 0;
-        
-        acceptTerms.Visible = true;
-        acceptTerms.Checked = false;
-        acceptTerms.Enabled = false;
-        acceptTerms.ForeColor = Color.FromArgb(100, 116, 139);
-        TermsBox_VScroll(null, null);
-
-        folderLabel.Visible = false;
-        folderText.Visible = false;
-        secondaryButton.Visible = false;
-        folderNote.Visible = false;
-        downloadLabel.Visible = false;
-        progress.Visible = false;
-        finalLabel.Visible = false;
-        desktopShortcut.Visible = false;
-        openNow.Visible = false;
-
-        status.Text = "";
-        primaryButton.Text = "Aceitar e continuar";
-        stage = 0;
-        StylePrimaryButton();
-    }
-
-    private void ShowFolderStep()
-    {
-        title.Text = "Escolha onde baixar";
-        subtitle.Text = "Escolha a pasta onde o instalador temporario sera baixado antes da instalacao.";
-        SetStep(step1, false, true);
-        SetStep(step2, true, false);
-        SetStep(step3, false, false);
-
-        termsBox.Visible = false;
-        acceptTerms.Visible = false;
-
-        folderLabel.Visible = true;
-        folderText.Visible = true;
-        secondaryButton.Visible = true;
-        folderNote.Visible = true;
-
-        downloadLabel.Visible = false;
-        progress.Visible = false;
-        finalLabel.Visible = false;
-        desktopShortcut.Visible = false;
-        openNow.Visible = false;
-
-        folderText.Text = downloadFolder;
-        status.Text = "";
-        primaryButton.Text = "Baixar e instalar";
-        stage = 1;
-        StylePrimaryButton();
-    }
-
-    private void BrowseFolder()
-    {
-        using (var dialog = new FolderBrowserDialog())
+        iconBox = new PictureBox
         {
-            dialog.Description = "Escolha onde baixar o instalador do MLUltimate";
-            dialog.SelectedPath = folderText.Text;
-            if (dialog.ShowDialog(this) == DialogResult.OK)
+            Location = new Point(20, 16),
+            Size = new Size(40, 40),
+            SizeMode = PictureBoxSizeMode.CenterImage
+        };
+        try
+        {
+            if (Icon != null)
             {
-                folderText.Text = dialog.SelectedPath;
+                iconBox.Image = new Icon(Icon, new Size(36, 36)).ToBitmap();
             }
         }
+        catch {}
+
+        titleLabel = new Label
+        {
+            Location = new Point(72, 14),
+            Size = new Size(410, 24),
+            Text = "Assistente de Instalação do " + AppTitle,
+            Font = new Font("Segoe UI", 11f, FontStyle.Bold),
+            ForeColor = SystemColors.ControlText
+        };
+
+        publisherLabel = new Label
+        {
+            Location = new Point(72, 38),
+            Size = new Size(410, 18),
+            Text = "Fornecedor: " + PublisherName + "   |   Versão: " + CurrentVersion,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),
+            ForeColor = SystemColors.GrayText
+        };
+
+        headerSeparator = new Panel
+        {
+            Location = new Point(0, 68),
+            Size = new Size(500, 1),
+            BackColor = SystemColors.ControlDark
+        };
+
+        infoLabel = new Label
+        {
+            Location = new Point(22, 82),
+            Size = new Size(456, 36),
+            Text = "Este assistente instalará a versão oficial do " + AppTitle + " para Windows em seu computador.",
+            ForeColor = SystemColors.ControlText
+        };
+
+        statusLabel = new Label
+        {
+            Location = new Point(22, 122),
+            Size = new Size(456, 18),
+            Text = "Clique em 'Instalar' para iniciar a instalação padrão.",
+            ForeColor = SystemColors.ControlText
+        };
+
+        progressBar = new ProgressBar
+        {
+            Location = new Point(22, 144),
+            Size = new Size(456, 20),
+            Minimum = 0,
+            Maximum = 100,
+            Value = 0,
+            Visible = false
+        };
+
+        footerSeparator = new Panel
+        {
+            Location = new Point(0, 180),
+            Size = new Size(500, 1),
+            BackColor = SystemColors.ControlDark
+        };
+
+        btnInstall = new Button
+        {
+            Location = new Point(296, 194),
+            Size = new Size(92, 28),
+            Text = "Instalar",
+            UseVisualStyleBackColor = true,
+            TabIndex = 0
+        };
+        btnInstall.Click += BtnInstall_Click;
+
+        btnCancel = new Button
+        {
+            Location = new Point(396, 194),
+            Size = new Size(82, 28),
+            Text = "Cancelar",
+            UseVisualStyleBackColor = true,
+            TabIndex = 1
+        };
+        btnCancel.Click += BtnCancel_Click;
+
+        Controls.Add(iconBox);
+        Controls.Add(titleLabel);
+        Controls.Add(publisherLabel);
+        Controls.Add(headerSeparator);
+        Controls.Add(infoLabel);
+        Controls.Add(statusLabel);
+        Controls.Add(progressBar);
+        Controls.Add(footerSeparator);
+        Controls.Add(btnInstall);
+        Controls.Add(btnCancel);
+
+        AcceptButton = btnInstall;
+        CancelButton = btnCancel;
+
+        FormClosing += SetupForm_FormClosing;
     }
 
-    private void StartInstall()
+    private void BtnInstall_Click(object sender, EventArgs e)
+    {
+        if (isInstalling) return;
+
+        isInstalling = true;
+        btnInstall.Enabled = false;
+        progressBar.Visible = true;
+        progressBar.Value = 0;
+        statusLabel.Text = "Verificando arquivos de instalação...";
+
+        var localCandidate = FindLocalInstaller();
+        if (!String.IsNullOrEmpty(localCandidate))
+        {
+            LaunchInstaller(localCandidate);
+            return;
+        }
+
+        targetDownloadUrl = DownloadBase + "/v" + CurrentVersion + "/MLUltimate-Launcher-" + CurrentVersion + "-win-x64.exe";
+        ResolveAndStartDownload();
+    }
+
+    private void ResolveAndStartDownload()
     {
         try
         {
-            folderLabel.Visible = false;
-            folderText.Visible = false;
-            secondaryButton.Visible = false;
-            folderNote.Visible = false;
+            var tempDir = Path.Combine(Path.GetTempPath(), "MLUltimateSetup");
+            Directory.CreateDirectory(tempDir);
+            tempSetupPath = Path.Combine(tempDir, "MLUltimate-Launcher-" + CurrentVersion + "-Setup.exe");
 
-            downloadLabel.Visible = true;
-            progress.Visible = true;
-            status.Visible = true;
-
-            status.Text = "Conectando ao GitHub oficial...";
-            stage = 2;
-            StylePrimaryButton();
-            var target = FindLatestInstaller();
-            if (String.IsNullOrWhiteSpace(target.TagName) || String.IsNullOrWhiteSpace(target.DownloadUrl))
+            if (File.Exists(tempSetupPath))
             {
-                throw new InvalidOperationException("Nenhum instalador Windows foi encontrado no GitHub.");
+                try { File.Delete(tempSetupPath); } catch {}
             }
 
-            progress.Value = 12;
-            status.Text = "Baixando MLUltimate Launcher " + target.TagName + "...";
-            SetStep(step1, false, true);
-            SetStep(step2, false, true);
-            SetStep(step3, true, false);
+            statusLabel.Text = "Conectando ao GitHub oficial...";
+            progressBar.Value = 5;
 
-            var safeTag = Regex.Replace(target.TagName, "[^A-Za-z0-9_.-]", "_");
-            downloadFolder = String.IsNullOrWhiteSpace(folderText.Text) ? downloadFolder : folderText.Text;
-            Directory.CreateDirectory(downloadFolder);
-            var downloadPath = Path.Combine(downloadFolder, "MLUltimate-" + safeTag + "-Setup.exe");
+            downloadClient = new WebClient();
+            downloadClient.Headers.Add("User-Agent", "MLUltimate-Setup");
 
-            if (File.Exists(downloadPath))
+            downloadClient.DownloadProgressChanged += delegate(object s, DownloadProgressChangedEventArgs args)
             {
-                try { File.Delete(downloadPath); } catch {}
-            }
-
-            using (var client = CreateDownloadClient())
-            {
-                client.DownloadProgressChanged += delegate(object sender, DownloadProgressChangedEventArgs args)
+                progressBar.Value = Math.Min(100, Math.Max(0, args.ProgressPercentage));
+                if (args.TotalBytesToReceive > 0)
                 {
-                    var value = Math.Min(94, Math.Max(14, args.ProgressPercentage));
-                    progress.Value = value;
-                    status.Text = "Baixando arquivos do launcher... " + args.ProgressPercentage + "%";
-                };
-                var finished = new System.Threading.ManualResetEvent(false);
-                Exception downloadError = null;
-                client.DownloadFileCompleted += delegate(object sender, System.ComponentModel.AsyncCompletedEventArgs args)
-                {
-                    downloadError = args.Error;
-                    finished.Set();
-                };
-                client.DownloadFileAsync(new Uri(target.DownloadUrl), downloadPath);
-                while (!finished.WaitOne(80))
-                {
-                    Application.DoEvents();
+                    double mbRec = args.BytesReceived / 1048576.0;
+                    double mbTot = args.TotalBytesToReceive / 1048576.0;
+                    statusLabel.Text = string.Format("Baixando instalador oficial: {0}% ({1:0.0} / {2:0.0} MB)", args.ProgressPercentage, mbRec, mbTot);
                 }
-                if (downloadError != null)
+                else
                 {
-                    throw downloadError;
+                    statusLabel.Text = string.Format("Baixando instalador oficial: {0}%", args.ProgressPercentage);
                 }
-            }
+            };
 
-            progress.Value = 96;
-            status.Text = "Instalando no Windows...";
-            SetStep(step1, false, true);
-            SetStep(step2, false, true);
-            SetStep(step3, true, false);
-
-            var process = Process.Start(new ProcessStartInfo(downloadPath) { UseShellExecute = true });
-            if (process != null)
+            downloadClient.DownloadFileCompleted += delegate(object s, System.ComponentModel.AsyncCompletedEventArgs args)
             {
-                while (!process.HasExited)
+                if (args.Cancelled)
                 {
-                    Application.DoEvents();
-                    System.Threading.Thread.Sleep(100);
+                    isInstalling = false;
+                    btnInstall.Enabled = true;
+                    progressBar.Visible = false;
+                    statusLabel.Text = "Instalação cancelada.";
+                    return;
                 }
-            }
 
-            progress.Value = 100;
-            status.Text = "Instalacao concluida. Escolha como finalizar.";
-            SetStep(step3, false, true);
-            ShowFinalStep();
+                if (args.Error != null)
+                {
+                    isInstalling = false;
+                    btnInstall.Enabled = true;
+                    progressBar.Visible = false;
+                    statusLabel.Text = "Erro ao baixar o instalador oficial.";
+                    MessageBox.Show(this, "Não foi possível baixar o instalador oficial do MLUltimate Launcher:\\n\\n" + args.Error.Message + "\\n\\nPor favor, verifique sua conexão com a internet.", AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                progressBar.Value = 100;
+                statusLabel.Text = "Iniciando instalador padrão do Windows...";
+                LaunchInstaller(tempSetupPath);
+            };
+
+            downloadClient.DownloadFileAsync(new Uri(targetDownloadUrl), tempSetupPath);
         }
-        catch (Exception error)
+        catch (Exception ex)
         {
-            progress.Value = 100;
-            status.Text = "Nao foi possivel instalar: " + error.Message;
-            primaryButton.Text = "Fechar";
-            stage = 4;
-            StylePrimaryButton();
+            isInstalling = false;
+            btnInstall.Enabled = true;
+            progressBar.Visible = false;
+            statusLabel.Text = "Erro ao iniciar download.";
+            MessageBox.Show(this, "Erro: " + ex.Message, AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
-    private void ShowFinalStep()
+    private void LaunchInstaller(string setupPath)
     {
-        title.Text = "Tudo pronto";
-        subtitle.Text = "O launcher foi instalado. Voce pode criar um atalho e abrir o app agora.";
-        SetStep(step1, false, true);
-        SetStep(step2, false, true);
-        SetStep(step3, false, true);
-
-        downloadLabel.Visible = false;
-        progress.Visible = false;
-        status.Visible = false;
-
-        finalLabel.Visible = true;
-        desktopShortcut.Visible = true;
-        openNow.Visible = true;
-        primaryButton.Text = "Concluir";
-        stage = 3;
-        StylePrimaryButton();
-    }
-
-    private void PrimaryAction()
-    {
-        if (stage == 0)
+        try
         {
-            if (!acceptTerms.Checked)
+            var psi = new ProcessStartInfo(setupPath)
             {
-                status.ForeColor = Color.FromArgb(252, 211, 77);
-                status.Text = "Marque a opcao de aceite para continuar.";
-                return;
-            }
-            status.ForeColor = Color.FromArgb(203, 213, 225);
-            ShowFolderStep();
-        }
-        else if (stage == 1)
-        {
-            StartInstall();
-        }
-        else if (stage == 3)
-        {
-            FinishInstall();
-        }
-        else if (stage == 4)
-        {
+                UseShellExecute = true
+            };
+            Process.Start(psi);
             Close();
         }
+        catch (Exception ex)
+        {
+            isInstalling = false;
+            btnInstall.Enabled = true;
+            statusLabel.Text = "Erro ao executar o instalador.";
+            MessageBox.Show(this, "Não foi possível iniciar o assistente de instalação:\\n" + ex.Message, AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
-    private void FinishInstall()
+    private static string FindLocalInstaller()
     {
-        var appPath = FindInstalledApp();
-        if (!desktopShortcut.Checked)
+        try
         {
-            RemoveDesktopShortcut();
-        }
-        if (openNow.Checked && !String.IsNullOrWhiteSpace(appPath))
-        {
-            Process.Start(new ProcessStartInfo(appPath) { UseShellExecute = true });
-        }
-        Close();
-    }
-
-    private void TermsBox_VScroll(object sender, EventArgs e)
-    {
-        if (acceptTerms.Enabled) return;
-
-        int lastCharIndex = termsBox.TextLength - 1;
-        if (lastCharIndex >= 0)
-        {
-            Point p = termsBox.GetPositionFromCharIndex(lastCharIndex);
-            if (p.Y <= termsBox.Height + 50)
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            var candidates = new[]
             {
-                acceptTerms.Enabled = true;
-                acceptTerms.ForeColor = Color.White;
-            }
-        }
-    }
-
-    private static string TermsText()
-    {
-        return "Termos de Servico do MLUltimate Launcher\\r\\n\\r\\n" +
-            "1. Aceitacao dos Termos: Ao baixar, instalar ou utilizar o MLUltimate Launcher ('Launcher'), voce concorda integralmente com estes Termos de Servico. Se nao concordar, cancele a instalacao.\\r\\n\\r\\n" +
-            "2. Fornecimento do Servico ('As-Is'): O Launcher e fornecido 'no estado em que se encontra', sem garantias de qualquer natureza, expressas ou implicitas. Nao garantimos disponibilidade continua dos servicos externos, funcionamento livre de erros ou suporte tecnico vitalicio.\\r\\n\\r\\n" +
-            "3. Propriedade Intelectual e Uso Aceitavel: O Launcher facilita a criacao de instancias e download de mods. O usuario compromete-se a respeitar as licencas, direitos autorais e regras dos criadores originais dos mods, modpacks, servidores e do proprio jogo (Minecraft/Mojang AB). O MLUltimate nao possui afiliacao oficial com a Mojang AB ou Microsoft.\\r\\n\\r\\n" +
-            "4. Privacidade, Dados e Contas: O uso de contas externas (como contas Microsoft/Xbox) e feito exclusivamente atraves de autenticacao oficial segura. O MLUltimate nao intercepta nem armazena as suas senhas.\\r\\n\\r\\n" +
-            "5. Atualizacoes Automaticas: O instalador cria atalhos locais e efetua o download do pacote mais recente e seguro diretamente do repositorio oficial no GitHub. Ao continuar, voce autoriza esta operacao.\\r\\n\\r\\n" +
-            "6. Limitacao de Responsabilidade: Os desenvolvedores do MLUltimate nao serao responsaveis por perdas de dados (mundos salvos), banimentos em servidores de terceiros ou danos decorrentes do uso inadequado deste software.\\r\\n\\r\\n" +
-            "7. Regras Adicionais: Voce concorda que nao ha qualquer tipo de suporte a versoes alternativas nao autorizadas, este software e restrito ao download do launcher do MLUltimate. Quaisquer alteracoes nos arquivos locais do launcher sao de inteira responsabilidade do usuario final, isentando-nos de perdas.\\r\\n\\r\\n" +
-            "8. Termo de Uso da API do GitHub: Ao fazer download via este launcher, as requisições passam pela API oficial do GitHub, logo, voces tambem concordam com os Termos de Uso do GitHub (github.com).\\r\\n\\r\\n" +
-            "Por favor, role ate o final para habilitar o botao de aceite.";
-    }
-
-    private static string FindInstalledApp()
-    {
-        var names = new[] { "MLUltimate Launcher.exe", "mlultimate-launcher.exe" };
-        var candidatePaths = new[]
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "MLUltimate Launcher", "MLUltimate Launcher.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "mlultimate-launcher", "MLUltimate Launcher.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "MLUltimate Launcher", "MLUltimate Launcher.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "MLUltimate Launcher", "MLUltimate Launcher.exe")
-        };
-
-        foreach (var p in candidatePaths)
-        {
-            try
+                Path.Combine(appDir, "MLUltimate-Launcher-" + CurrentVersion + "-win-x64.exe"),
+                Path.Combine(appDir, "..", "MLUltimate-Launcher-" + CurrentVersion + "-win-x64.exe")
+            };
+            foreach (var candidate in candidates)
             {
-                if (File.Exists(p)) return p;
-            }
-            catch {}
-        }
-
-        var roots = new[]
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
-        };
-        foreach (var root in roots)
-        {
-            if (String.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) continue;
-            foreach (var name in names)
-            {
-                try
+                if (File.Exists(candidate) && new FileInfo(candidate).Length > 10000000)
                 {
-                    var files = Directory.GetFiles(root, name, SearchOption.AllDirectories);
-                    if (files.Length > 0) return files[0];
+                    return Path.GetFullPath(candidate);
                 }
-                catch {}
             }
         }
+        catch {}
         return null;
     }
 
-    private static void RemoveDesktopShortcut()
+    private void BtnCancel_Click(object sender, EventArgs e)
     {
-        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-        var shortcutPath = Path.Combine(desktop, "MLUltimate Launcher.lnk");
-        if (File.Exists(shortcutPath))
-        {
-            File.Delete(shortcutPath);
-        }
+        Close();
     }
 
-    private static ReleaseTarget FindLatestInstaller()
+    private void SetupForm_FormClosing(object sender, FormClosingEventArgs e)
     {
-        try
+        if (downloadClient != null && downloadClient.IsBusy)
         {
-            using (var client = CreateApiClient())
-            {
-                var json = client.DownloadString(ApiUrl);
-                var asset = Regex.Match(json, @"""browser_download_url""\\s*:\\s*""([^""]*/releases/download/([^/""]+)/MLUltimate-Launcher-[^""]*-win-x64\\.exe)""");
-                if (asset.Success)
-                {
-                    var tag = asset.Groups[2].Value.Trim();
-                    var url = asset.Groups[1].Value.Replace(@"\\/", "/").Trim();
-                    if (!String.IsNullOrWhiteSpace(tag) && !String.IsNullOrWhiteSpace(url))
-                    {
-                        return new ReleaseTarget(tag, url);
-                    }
-                }
-            }
-        }
-        catch
-        {
-        }
-
-        try
-        {
-            using (var client = CreateApiClient())
-            {
-                var xml = client.DownloadString(AtomUrl);
-                var tagMatch = Regex.Match(xml, @"href=""https://github\.com/[^""]+/releases/tag/([^""]+)""");
-                if (tagMatch.Success)
-                {
-                    var tag = Uri.UnescapeDataString(tagMatch.Groups[1].Value).Trim();
-                    if (!String.IsNullOrWhiteSpace(tag) && !tag.Equals("releases", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var version = Regex.Replace(tag, "^v", "");
-                        return new ReleaseTarget(tag, DownloadBase + "/" + tag + "/MLUltimate-Launcher-" + version + "-win-x64.exe");
-                    }
-                }
-            }
-        }
-        catch
-        {
-        }
-
-        return new ReleaseTarget(FallbackTag, DownloadBase + "/" + FallbackTag + "/MLUltimate-Launcher-" + FallbackVersion + "-win-x64.exe");
-    }
-
-    private static WebClient CreateApiClient()
-    {
-        var client = new WebClient();
-        client.Headers.Add("Accept", "application/vnd.github+json");
-        client.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MLUltimate-Installer");
-        return client;
-    }
-
-    private static WebClient CreateDownloadClient()
-    {
-        var client = new WebClient();
-        client.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MLUltimate-Installer");
-        return client;
-    }
-
-    private struct ReleaseTarget
-    {
-        public readonly string TagName;
-        public readonly string DownloadUrl;
-
-        public ReleaseTarget(string tagName, string downloadUrl)
-        {
-            TagName = tagName;
-            DownloadUrl = downloadUrl;
+            try { downloadClient.CancelAsync(); } catch {}
         }
     }
 }
@@ -1697,7 +1120,7 @@ writeFileSync(
 
           <div class="trust" aria-label="Garantias">
             <span>Criador: MLUltimate Team</span>
-            <span>Fornecedor: MLUltimate</span>
+            <span>Fornecedor: MLUltimate Team</span>
             <span>Release oficial do GitHub</span>
             <span>100% Livre de malware & seguro</span>
           </div>
@@ -1772,8 +1195,6 @@ execFileSync(
     "/reference:System.dll",
     "/reference:System.Drawing.dll",
     "/reference:System.Windows.Forms.dll",
-    `/resource:${heroPath},launcher-hero.png`,
-    `/resource:${iconPath},mlultimate-icon.png`,
     csharpPath,
   ],
   { stdio: "inherit" },

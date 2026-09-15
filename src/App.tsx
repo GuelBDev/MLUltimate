@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AccountPanel } from "./components/account/AccountPanel";
 import { RuntimeTranslator } from "./components/i18n/RuntimeTranslator";
 import { LanguageSetupScreen } from "./components/language/LanguageSetupScreen";
 import { Sidebar, type PageId } from "./components/layout/Sidebar";
@@ -17,6 +16,8 @@ import { ServersPage } from "./pages/ServersPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { launcherApi } from "./services/launcherApi";
 import type { ContentType } from "./types/launcher";
+import { cn } from "./utils/cn";
+import { AccountModal } from "./components/account/AccountModal";
 
 const HUD_SCALE_STORAGE_KEY = "mlultimate:hud-scale";
 const HUD_SCALE_MIN = 0.75;
@@ -72,8 +73,8 @@ const useHudScaleControls = () => {
 };
 
 const pageTitles: Record<PageId, string> = {
-  home: "Home",
-  avatar: "Avatar",
+  home: "Launchpad",
+  avatar: "Avatar & Skins",
   servers: "Servidores",
   library: "Minhas Instâncias",
   explore: "Biblioteca",
@@ -81,43 +82,29 @@ const pageTitles: Record<PageId, string> = {
   settings: "Configurações",
 };
 
-function AppShell() {
-  const queryClient = useQueryClient();
-  const [activePage, setActivePage] = useState<PageId>("home");
-  const [pageRevision, setPageRevision] = useState(0);
-  const [exploreContext, setExploreContext] = useState<{
-    type: ContentType;
-    instanceId?: string;
-  }>({ type: "mod" });
-  const refreshActivePage = useCallback(() => {
-    void queryClient.invalidateQueries();
-    setPageRevision((revision) => revision + 1);
-  }, [queryClient]);
+type AppShellProps = {
+  activePage: PageId;
+  changePage: (page: PageId) => void;
+  pageRevision: number;
+  refreshActivePage: () => void;
+  exploreContext: { type: ContentType; instanceId?: string };
+  navigateToExplore: (type: ContentType, instanceId?: string) => void;
+  isSidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
+  onOpenAccountModal?: () => void;
+};
 
-  const navigateToExplore = useCallback(
-    (type: ContentType, instanceId?: string) => {
-      setExploreContext({ type, instanceId });
-      setActivePage("explore");
-    },
-    [],
-  );
-
-  const changePage = useCallback(
-    (page: PageId) => {
-      if (page === "explore") {
-        setExploreContext({ type: "mod", instanceId: undefined });
-      }
-
-      if (page === activePage) {
-        refreshActivePage();
-        return;
-      }
-
-      setActivePage(page);
-    },
-    [activePage, refreshActivePage],
-  );
-
+function AppShell({
+  activePage,
+  changePage,
+  pageRevision,
+  refreshActivePage,
+  exploreContext,
+  navigateToExplore,
+  isSidebarCollapsed,
+  onToggleSidebar,
+  onOpenAccountModal,
+}: AppShellProps) {
   useEffect(() => {
     const refreshOnShortcut = (event: KeyboardEvent) => {
       const isRefresh =
@@ -171,48 +158,67 @@ function AppShell() {
             onExploreInstance={(type, instanceId) => {
               navigateToExplore(type, instanceId);
             }}
+            onOpenAccountModal={onOpenAccountModal}
           />
         );
     }
-  }, [activePage, changePage, exploreContext.instanceId, exploreContext.type, navigateToExplore]);
+  }, [activePage, changePage, exploreContext.instanceId, exploreContext.type, navigateToExplore, onOpenAccountModal]);
 
   return (
     <div className="app-shell h-dvh overflow-hidden pt-8 text-white">
-      <div className="grid h-[calc(100dvh-2rem)] grid-cols-[76px_minmax(0,1fr)] xl:grid-cols-[228px_minmax(0,1fr)] 2xl:grid-cols-[248px_minmax(0,1fr)_320px]">
-        <Sidebar activePage={activePage} onPageChange={changePage} />
+      <div
+        className={cn(
+          "grid h-[calc(100dvh-2rem)] transition-[grid-template-columns] duration-300 ease-in-out",
+          isSidebarCollapsed
+            ? "grid-cols-[68px_minmax(0,1fr)]"
+            : "grid-cols-[228px_minmax(0,1fr)]",
+        )}
+      >
+        <Sidebar
+          activePage={activePage}
+          onPageChange={changePage}
+          collapsed={isSidebarCollapsed}
+          onToggleCollapse={onToggleSidebar}
+        />
 
-        <main className="app-main min-w-0 overflow-y-auto border-l border-white/8 2xl:border-x">
-          <div className="mx-auto flex min-h-full w-full max-w-[1120px] flex-col gap-5 px-3 py-4 sm:px-5 lg:gap-6 lg:px-7 lg:py-6">
-            <header className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-[#60A5FA]">MLUltimate Launcher</p>
-                <h1 className="mt-1 text-2xl font-semibold text-white">
-                  {pageTitles[activePage]}
-                </h1>
-              </div>
-            </header>
+        <div className="flex min-w-0 flex-1 overflow-hidden border-l border-white/8">
+          <main className={cn("app-main flex-1 min-w-0", activePage === "home" ? "overflow-hidden flex flex-col" : "overflow-y-auto")}>
+            <div
+              className={cn(
+                "mx-auto flex w-full flex-col max-w-[1540px]",
+                activePage === "home"
+                  ? "h-full flex-1 overflow-hidden px-4 py-3 sm:px-6 lg:px-7 lg:py-3 gap-3"
+                  : "min-h-full gap-5 px-4 py-4 sm:px-6 lg:gap-6 lg:px-8 lg:py-5",
+              )}
+            >
+              {activePage !== "home" && (
+                <header className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-[#60A5FA]">
+                      MLUltimate Launcher
+                    </p>
+                    <h1 className="mt-1 text-2xl font-semibold text-white">
+                      {pageTitles[activePage]}
+                    </h1>
+                  </div>
+                </header>
+              )}
 
-            <div className="2xl:hidden">
-              <AccountPanel />
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={`${activePage}-${pageRevision}`}
+                  initial={{ opacity: 0, y: 10, scale: 0.99 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.99 }}
+                  transition={{ duration: 0.22, ease: "easeOut" }}
+                  className={activePage === "home" ? "h-full flex flex-col flex-1 overflow-hidden min-h-0" : undefined}
+                >
+                  {page}
+                </motion.div>
+              </AnimatePresence>
             </div>
-
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={`${activePage}-${pageRevision}`}
-                initial={{ opacity: 0, y: 10, scale: 0.99 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -8, scale: 0.99 }}
-                transition={{ duration: 0.22, ease: "easeOut" }}
-              >
-                {page}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </main>
-
-        <aside className="app-account-aside hidden overflow-y-auto px-4 py-5 2xl:block 2xl:px-5 2xl:py-6">
-          <AccountPanel />
-        </aside>
+          </main>
+        </div>
       </div>
     </div>
   );
@@ -223,17 +229,65 @@ const settingsKey = ["settings"] as const;
 function AppRoot() {
   const queryClient = useQueryClient();
   const [isBooting, setIsBooting] = useState(true);
+  const [activePage, setActivePage] = useState<PageId>("home");
+  const [pageRevision, setPageRevision] = useState(0);
+  const [exploreContext, setExploreContext] = useState<{
+    type: ContentType;
+    instanceId?: string;
+  }>({ type: "mod" });
+
   useHudScaleControls();
+
   const settings = useQuery({
     queryKey: settingsKey,
     queryFn: launcherApi.getSettings,
   });
+
   const saveLanguage = useMutation({
     mutationFn: launcherApi.updateSettings,
     onSuccess: (data) => {
       queryClient.setQueryData(settingsKey, data);
     },
   });
+
+  const refreshActivePage = useCallback(() => {
+    void queryClient.invalidateQueries();
+    setPageRevision((revision) => revision + 1);
+  }, [queryClient]);
+
+  const navigateToExplore = useCallback(
+    (type: ContentType, instanceId?: string) => {
+      setExploreContext({ type, instanceId });
+      setActivePage("explore");
+    },
+    [],
+  );
+
+  const changePage = useCallback(
+    (page: PageId) => {
+      if (page === activePage) {
+        refreshActivePage();
+        return;
+      }
+
+      setActivePage(page);
+    },
+    [activePage, refreshActivePage],
+  );
+
+  const [sidebarCollapsedOverride, setSidebarCollapsedOverride] = useState<boolean | null>(null);
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
+
+  const isSidebarCollapsed =
+    sidebarCollapsedOverride ?? (settings.data?.sidebarCollapsed !== false);
+
+  const toggleSidebar = useCallback(() => {
+    const next = !isSidebarCollapsed;
+    setSidebarCollapsedOverride(next);
+    void launcherApi.updateSettings({ sidebarCollapsed: next }).then((updated) => {
+      queryClient.setQueryData(settingsKey, updated);
+    });
+  }, [isSidebarCollapsed, queryClient]);
 
   const needsLanguageSetup = !isBooting && settings.data && !settings.data.languageSelected;
   const isLoadingSettings = !isBooting && settings.isLoading;
@@ -251,7 +305,13 @@ function AppRoot() {
   return (
     <>
       {settings.data ? <RuntimeTranslator language={settings.data.language} /> : null}
-      {showTitleBar ? <WindowTitleBar /> : null}
+      {showTitleBar ? (
+        <WindowTitleBar
+          activePage={activePage}
+          onNavigate={changePage}
+          onOpenAccountModal={() => setAccountModalOpen(true)}
+        />
+      ) : null}
       <AnimatePresence mode="wait">
         {isBooting ? (
           <StartupScreen key="startup" onComplete={handleStartupComplete} />
@@ -286,10 +346,24 @@ function AppRoot() {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
           >
-            <AppShell />
+            <AppShell
+              activePage={activePage}
+              changePage={changePage}
+              pageRevision={pageRevision}
+              refreshActivePage={refreshActivePage}
+              exploreContext={exploreContext}
+              navigateToExplore={navigateToExplore}
+              isSidebarCollapsed={isSidebarCollapsed}
+              onToggleSidebar={toggleSidebar}
+              onOpenAccountModal={() => setAccountModalOpen(true)}
+            />
           </motion.div>
         )}
       </AnimatePresence>
+      <AccountModal
+        open={accountModalOpen}
+        onClose={() => setAccountModalOpen(false)}
+      />
     </>
   );
 }

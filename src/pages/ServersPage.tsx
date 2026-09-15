@@ -32,6 +32,17 @@ import type { AddCustomServerInput, LoaderType, ServerStatusResult } from "../ty
 
 type ServerCategoryTab = "my-servers" | "pvp-area" | "library";
 
+const isNeoForgeSupported = (mcVersion: string) => {
+  if (!mcVersion) return true;
+  if (mcVersion === "1.20.1") return true;
+  const parts = mcVersion.split(".").map(Number);
+  if (parts.length >= 2 && parts[0] === 1 && parts[1] !== undefined) {
+    if (parts[1] > 20) return true;
+    if (parts[1] === 20 && parts.length >= 3 && (parts[2] ?? 0) >= 2) return true;
+  }
+  return false;
+};
+
 type LibraryServer = {
   id: string;
   name: string;
@@ -1213,7 +1224,12 @@ export const ServersPage = () => {
                 <label className="block text-gray-300 font-medium mb-1">Versão do Minecraft</label>
                 <AppSelect
                   value={newInstanceVersion}
-                  onChange={setNewInstanceVersion}
+                  onChange={(val) => {
+                    setNewInstanceVersion(val);
+                    if (!isNeoForgeSupported(val) && newInstanceLoader === "neoforge") {
+                      setNewInstanceLoader("forge");
+                    }
+                  }}
                   placeholder="Selecione a Versão"
                   options={minecraftVersions.map((v) => ({
                     value: v.id,
@@ -1234,7 +1250,13 @@ export const ServersPage = () => {
                     { value: "fabric", label: "Fabric (Leve & Mods)" },
                     { value: "iris-sodium", label: "Iris + Sodium (Alta Performance & Shaders)" },
                     { value: "forge", label: "Forge (Modpacks Tradicionais)" },
-                    { value: "neoforge", label: "NeoForge (Modern Forge)" },
+                    {
+                      value: "neoforge",
+                      label: isNeoForgeSupported(newInstanceVersion)
+                        ? "NeoForge (Modern Forge)"
+                        : "NeoForge (Requer MC 1.20.1+)",
+                      disabled: !isNeoForgeSupported(newInstanceVersion),
+                    },
                     { value: "quilt", label: "Quilt" },
                   ]}
                   className="w-full h-10 text-xs"

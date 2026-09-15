@@ -11,6 +11,7 @@ import {
   MoreVertical,
   Package,
   Palette,
+  Pencil,
   Play,
   Plus,
   Power,
@@ -26,6 +27,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import instanceDefaultImage from "../assets/instance-default.png";
 import { ModpackUpdateModal } from "../components/instances/ModpackUpdateModal";
+import { InstanceEditModal } from "../components/instances/InstanceEditModal";
 import { LaunchErrorNotice } from "../components/launcher/LaunchErrorNotice";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -155,6 +157,7 @@ export const InstanceDetailPage = ({
   const [launchErrorLog, setLaunchErrorLog] = useState<string | null>(null);
   const [activeCrashReport, setActiveCrashReport] = useState<CrashReportDetails | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [updateTargetVersion, setUpdateTargetVersion] = useState<{ id: string; name: string } | null>(null);
   const [exportFolders, setExportFolders] =
     useState<ExportInstanceFolder[]>(defaultExportFolders);
@@ -490,6 +493,15 @@ export const InstanceDetailPage = ({
                     Compartilhar
                   </DropdownMenu.Item>
                   <DropdownMenu.Item
+                    onSelect={() => {
+                      setEditOpen(true);
+                    }}
+                    className="flex cursor-pointer select-none items-center gap-2 rounded-lg p-2 text-sm text-gray-300 outline-none hover:bg-white/10 focus:bg-white/10"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Editar
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
                     onSelect={() => openFolder.mutate(current.id)}
                     className="flex cursor-pointer select-none items-center gap-2 rounded-lg p-2 text-sm text-gray-300 outline-none hover:bg-white/10 focus:bg-white/10"
                   >
@@ -662,6 +674,12 @@ export const InstanceDetailPage = ({
           </section>
         </div>
       ) : null}
+
+      <InstanceEditModal
+        instance={current}
+        isOpen={editOpen}
+        onClose={() => setEditOpen(false)}
+      />
 
       <ModpackUpdateModal
         instanceId={current.id}

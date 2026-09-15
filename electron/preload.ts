@@ -22,6 +22,7 @@ import type {
   InstanceFileActionInput,
   ToggleInstanceFileInput,
   ReadInstanceTextFileInput,
+  RestoreTrashOptions,
   InstanceIconSelection,
   LaunchEvent,
   LaunchCancelRequest,
@@ -29,6 +30,7 @@ import type {
   LauncherSettings,
   LauncherInstance,
   MinecraftVersionSummary,
+  MlultimateLoginInput,
   OfflineLoginInput,
   SavedAuthAccount,
   SwitchAccountInput,
@@ -60,9 +62,13 @@ const api = {
       ipcRenderer.invoke("auth:login-microsoft") as Promise<AuthSession>,
     loginOffline: (input: OfflineLoginInput) =>
       ipcRenderer.invoke("auth:login-offline", input) as Promise<AuthSession>,
+    loginMlultimate: (input: MlultimateLoginInput) =>
+      ipcRenderer.invoke("auth:login-mlultimate", input) as Promise<AuthSession>,
     switchAccount: (input: SwitchAccountInput) =>
       ipcRenderer.invoke("auth:switch-account", input) as Promise<AuthSession>,
     logout: () => ipcRenderer.invoke("auth:logout") as Promise<AuthSession>,
+    removeAccount: (input: SwitchAccountInput) =>
+      ipcRenderer.invoke("auth:remove-account", input) as Promise<AuthSession>,
   },
   launcher: {
     launch: (request: LaunchRequest) =>
@@ -108,8 +114,8 @@ const api = {
       ipcRenderer.invoke("instances:open-folder", instanceId) as Promise<void>,
     listTrash: () =>
       ipcRenderer.invoke("instances:list-trash") as Promise<TrashedInstance[]>,
-    restoreTrash: (trashId: string) =>
-      ipcRenderer.invoke("instances:restore-trash", trashId) as Promise<LauncherInstance>,
+    restoreTrash: (input: string | { trashId: string; options?: RestoreTrashOptions }) =>
+      ipcRenderer.invoke("instances:restore-trash", input) as Promise<LauncherInstance>,
     deleteTrash: (trashIds: string[]) =>
       ipcRenderer.invoke("instances:delete-trash", trashIds) as Promise<void>,
     emptyTrash: () =>
@@ -165,6 +171,8 @@ const api = {
     list: () => ipcRenderer.invoke("downloads:list") as Promise<DownloadItem[]>,
     cancel: (downloadId: string) =>
       ipcRenderer.invoke("downloads:cancel", downloadId) as Promise<void>,
+    openFolder: (destination: string) =>
+      ipcRenderer.invoke("downloads:open-folder", destination) as Promise<void>,
     onChange: (callback: (items: DownloadItem[]) => void) => {
       const listener = (_: Electron.IpcRendererEvent, items: DownloadItem[]) => {
         callback(items);

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { launcherApi } from "../services/launcherApi";
-import type { OfflineLoginInput, SwitchAccountInput } from "../types/launcher";
+import type { MlultimateLoginInput, OfflineLoginInput, SwitchAccountInput } from "../types/launcher";
 
 const sessionKey = ["auth", "session"] as const;
 const accountsKey = ["auth", "accounts"] as const;
@@ -26,6 +26,11 @@ export const useAuthSession = () => {
     onSuccess: refreshAuth,
   });
 
+  const loginMlultimate = useMutation({
+    mutationFn: (input: MlultimateLoginInput) => launcherApi.loginMlultimate(input),
+    onSuccess: refreshAuth,
+  });
+
   const loginOffline = useMutation({
     mutationFn: (input: OfflineLoginInput) => launcherApi.loginOffline(input),
     onSuccess: refreshAuth,
@@ -41,12 +46,19 @@ export const useAuthSession = () => {
     onSuccess: refreshAuth,
   });
 
+  const removeAccount = useMutation({
+    mutationFn: (input: SwitchAccountInput) => launcherApi.removeAccount(input),
+    onSuccess: refreshAuth,
+  });
+
   return {
     session,
     accounts,
     loginMicrosoft,
+    loginMlultimate,
     loginOffline,
     switchAccount,
     logout,
+    removeAccount,
   };
 };

@@ -1205,6 +1205,63 @@ public class MinecraftBridge {
         return null;
     }
 
+    public static boolean isCursorGrabbed() {
+        try {
+            return org.lwjgl.input.Mouse.isGrabbed();
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    public static boolean isAnyGuiOpen() {
+        if (isCurrentScreenOpen()) return true;
+        try {
+            net.mlultimate.client.MLUltimate inst = net.mlultimate.client.MLUltimate.getInstance();
+            if (inst != null) {
+                return inst.isModMenuOpen() || inst.isHudEditorOpen();
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+    public static void ensureCursorVisible() {
+        try {
+            if (org.lwjgl.input.Mouse.isGrabbed()) {
+                org.lwjgl.input.Mouse.setGrabbed(false);
+            }
+        } catch (Throwable ignored) {
+        }
+
+        Object client = getClient();
+        if (client != null) {
+            if (fInGameHasFocus == null) {
+                fInGameHasFocus = findField(client.getClass(), boolean.class, "inGameHasFocus", "field_71415_G", "w");
+            }
+            if (fInGameHasFocus != null) {
+                try {
+                    fInGameHasFocus.setBoolean(client, false);
+                } catch (Throwable ignored) {
+                }
+            }
+
+            if (fMouseHelper == null) {
+                fMouseHelper = findField(client.getClass(), null, "mouseHelper", "field_71417_B", "u");
+            }
+            if (fMouseHelper != null) {
+                try {
+                    Object mh = fMouseHelper.get(client);
+                    if (mh != null) {
+                        if (fDeltaX == null) fDeltaX = findField(mh.getClass(), int.class, "deltaX", "field_74377_a", "a");
+                        if (fDeltaY == null) fDeltaY = findField(mh.getClass(), int.class, "deltaY", "field_74375_b", "b");
+                        if (fDeltaX != null) fDeltaX.setInt(mh, 0);
+                        if (fDeltaY != null) fDeltaY.setInt(mh, 0);
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+    }
+
     public static void lockCamera() {
         Object client = getClient();
         if (client == null) return;
@@ -1220,39 +1277,7 @@ public class MinecraftBridge {
             }
         }
 
-        if (fInGameHasFocus == null) {
-            fInGameHasFocus = findField(client.getClass(), boolean.class, "inGameHasFocus", "field_71415_G", "w");
-        }
-        if (fInGameHasFocus != null) {
-            try {
-                fInGameHasFocus.setBoolean(client, false);
-            } catch (Throwable ignored) {
-            }
-        }
-
-        if (fMouseHelper == null) {
-            fMouseHelper = findField(client.getClass(), null, "mouseHelper", "field_71417_B", "u");
-        }
-        if (fMouseHelper != null) {
-            try {
-                Object mh = fMouseHelper.get(client);
-                if (mh != null) {
-                    if (fDeltaX == null) fDeltaX = findField(mh.getClass(), int.class, "deltaX", "field_74377_a", "a");
-                    if (fDeltaY == null) fDeltaY = findField(mh.getClass(), int.class, "deltaY", "field_74375_b", "b");
-                    if (fDeltaX != null) fDeltaX.setInt(mh, 0);
-                    if (fDeltaY != null) fDeltaY.setInt(mh, 0);
-                }
-            } catch (Throwable ignored) {
-            }
-        }
-
-        try {
-            if (org.lwjgl.input.Mouse.isGrabbed()) {
-                org.lwjgl.input.Mouse.setGrabbed(false);
-            }
-        } catch (Throwable ignored) {
-        }
-
+        ensureCursorVisible();
         unpressAllKeys();
     }
 
@@ -1286,6 +1311,13 @@ public class MinecraftBridge {
         cameraLocked = false;
         Object client = getClient();
         if (client == null) return;
+
+        // If ANY GUI screen is open (Inventory, Chest, Settings, Pause menu, etc.),
+        // NEVER grab the mouse and NEVER set inGameFocus to true!
+        if (isAnyGuiOpen()) {
+            ensureCursorVisible();
+            return;
+        }
 
         if (mSetIngameFocus == null) {
             mSetIngameFocus = findMethod(client.getClass(), void.class, "setIngameFocus", "func_71381_h", "n");

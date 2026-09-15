@@ -102,6 +102,17 @@ export class LauncherDatabase {
         last_used_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS mlultimate_profiles (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL,
+        uuid TEXT NOT NULL,
+        access_token TEXT NOT NULL,
+        client_token TEXT,
+        skin_url TEXT,
+        created_at TEXT NOT NULL,
+        last_used_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS launcher_events (
         id TEXT PRIMARY KEY,
         level TEXT NOT NULL,

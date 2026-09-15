@@ -21,6 +21,7 @@ import type {
   InstanceFileActionInput,
   ToggleInstanceFileInput,
   ReadInstanceTextFileInput,
+  RestoreTrashOptions,
   InstanceIconSelection,
   LaunchEvent,
   LaunchCancelRequest,
@@ -28,6 +29,7 @@ import type {
   LauncherSettings,
   LauncherInstance,
   MinecraftVersionSummary,
+  MlultimateLoginInput,
   NameMCSkinLibraryInput,
   NameMCSkinLibraryResult,
   NameMCSkinSearchResult,
@@ -58,8 +60,10 @@ declare global {
         listAccounts: () => Promise<SavedAuthAccount[]>;
         loginMicrosoft: () => Promise<AuthSession>;
         loginOffline: (input: OfflineLoginInput) => Promise<AuthSession>;
+        loginMlultimate: (input: MlultimateLoginInput) => Promise<AuthSession>;
         switchAccount: (input: SwitchAccountInput) => Promise<AuthSession>;
         logout: () => Promise<AuthSession>;
+        removeAccount: (input: SwitchAccountInput) => Promise<AuthSession>;
       };
       launcher: {
         launch: (request: LaunchRequest) => Promise<void>;
@@ -81,7 +85,7 @@ declare global {
         remove: (instanceId: string) => Promise<void>;
         openFolder: (instanceId: string) => Promise<void>;
         listTrash: () => Promise<TrashedInstance[]>;
-        restoreTrash: (trashId: string) => Promise<LauncherInstance>;
+        restoreTrash: (input: string | { trashId: string; options?: RestoreTrashOptions }) => Promise<LauncherInstance>;
         deleteTrash: (trashIds: string[]) => Promise<void>;
         emptyTrash: () => Promise<void>;
         checkModpackUpdate: (instanceId: string) => Promise<{ hasUpdate: boolean; newVersionId?: string; newVersionNumber?: string }>;
@@ -125,6 +129,7 @@ declare global {
       downloads: {
         list: () => Promise<DownloadItem[]>;
         cancel: (downloadId: string) => Promise<void>;
+        openFolder: (destination: string) => Promise<void>;
         onChange: (callback: (items: DownloadItem[]) => void) => () => void;
       };
       settings: {

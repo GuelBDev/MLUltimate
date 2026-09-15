@@ -11,6 +11,7 @@ import { LauncherDatabase } from "../database/sqliteDatabase";
 import { DownloadManager } from "../downloads/downloadManager";
 import { MinecraftVersionService } from "../minecraft/minecraftVersionService";
 import { getLauncherDataSubpath } from "../utils/launcherPaths";
+import { restoreAllQuarantinedDisabledMods } from "../launcher/launchCompatibility";
 import { InstanceTrashService } from "./instanceTrashService";
 import type {
   AddCustomServerInput,
@@ -24,6 +25,7 @@ import type {
   InstanceIconSelection,
   LauncherInstance,
   LoaderType,
+  RestoreTrashOptions,
   UpdateCustomServerInput,
   UpdateInstanceInput,
 } from "../../src/types/launcher";
@@ -456,11 +458,22 @@ export class InstanceService {
     return this.trashService.emptyTrash();
   }
 
-  async restoreTrash(trashId: string): Promise<LauncherInstance> {
+  async restoreTrash(
+    trashId: string,
+    options?: RestoreTrashOptions,
+  ): Promise<LauncherInstance> {
     const trashItem = await this.trashService.getTrashItem(trashId);
     if (!trashItem) {
       throw new Error("Item não encontrado na lixeira.");
     }
+
+    const opts: Required<RestoreTrashOptions> = {
+      worlds: options?.worlds ?? true,
+      mods: options?.mods ?? true,
+      resourcepacks: options?.resourcepacks ?? true,
+      shaders: options?.shaders ?? true,
+      config: options?.config ?? true,
+    };
 
     const restored = await this.create({
       name: trashItem.name,
@@ -470,39 +483,144 @@ export class InstanceService {
       contentManagementEnabled: true,
     });
 
-    const savesDirInTrash = this.trashService.getTrashItemSavesDir(trashId);
-    if (savesDirInTrash) {
-      const destinationSavesDir = path.join(restored.gameDir, "saves");
-      await cp(savesDirInTrash, destinationSavesDir, { recursive: true, force: true }).catch((err) =>
-        console.warn("[Trash] Falha ao restaurar pasta de saves da instância", err),
-      );
+    const trashItemDir = this.trashService.getTrashItemDir(trashId);
+
+    // 1. Restore worlds (saves)
+    if (opts.worlds) {
+      const savesDirInTrash = path.join(trashItemDir, "saves");
+      if (existsSync(savesDirInTrash)) {
+        const destinationSavesDir = path.join(restored.gameDir, "saves");
+        await cp(savesDirInTrash, destinationSavesDir, { recursive: true, force: true }).catch((err) =>
+          console.warn("[Trash] Falha ao restaurar pasta de saves da instância", err),
+        );
+      }
     }
 
-    if (trashItem.mods && trashItem.mods.length > 0) {
-      const now = new Date().toISOString();
-      for (const mod of trashItem.mods) {
-        if (mod.provider && mod.projectId && mod.versionId) {
-          try {
-            this.database.run(
-              `INSERT OR IGNORE INTO installed_content (id, instance_id, provider, type, project_id, version_id, name, file_name, file_path, installed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                randomUUID(),
-                restored.id,
-                mod.provider,
-                mod.type || "mod",
-                mod.projectId,
-                mod.versionId,
-                mod.name,
-                mod.fileName,
-                path.join(restored.gameDir, "mods", mod.fileName),
-                now,
-              ],
-            );
-          } catch {
-            // ignore
+    // 2. Restore mods (files + db records)
+    if (opts.mods) {
+      const modsDirInTrash = path.join(trashItemDir, "mods");
+      if (existsSync(modsDirInTrash)) {
+        const destinationModsDir = path.join(restored.gameDir, "mods");
+        await cp(modsDirInTrash, destinationModsDir, { recursive: true, force: true }).catch((err) =>
+          console.warn("[Trash] Falha ao restaurar pasta de mods da instância", err),
+        );
+      }
+
+      if (trashItem.mods && trashItem.mods.length > 0) {
+        const now = new Date().toISOString();
+        for (const mod of trashItem.mods) {
+          if (mod.provider && mod.projectId && mod.versionId) {
+            try {
+              this.database.run(
+                `INSERT OR IGNORE INTO installed_content (id, instance_id, provider, type, project_id, version_id, name, file_name, file_path, installed_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                  randomUUID(),
+                  restored.id,
+                  mod.provider,
+                  mod.type || "mod",
+                  mod.projectId,
+                  mod.versionId,
+                  mod.name,
+                  mod.fileName,
+                  path.join(restored.gameDir, "mods", mod.fileName),
+                  now,
+                ],
+              );
+            } catch {
+              // ignore
+            }
           }
         }
+      }
+    }
+
+    // 3. Restore resourcepacks (files + db records)
+    if (opts.resourcepacks) {
+      const rpDirInTrash = path.join(trashItemDir, "resourcepacks");
+      if (existsSync(rpDirInTrash)) {
+        const destinationRpDir = path.join(restored.gameDir, "resourcepacks");
+        await cp(rpDirInTrash, destinationRpDir, { recursive: true, force: true }).catch((err) =>
+          console.warn("[Trash] Falha ao restaurar texturas da instância", err),
+        );
+      }
+
+      if (trashItem.resourcepacks && trashItem.resourcepacks.length > 0) {
+        const now = new Date().toISOString();
+        for (const rp of trashItem.resourcepacks) {
+          if (rp.provider && rp.projectId && rp.versionId) {
+            try {
+              this.database.run(
+                `INSERT OR IGNORE INTO installed_content (id, instance_id, provider, type, project_id, version_id, name, file_name, file_path, installed_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                  randomUUID(),
+                  restored.id,
+                  rp.provider,
+                  rp.type || "resourcepack",
+                  rp.projectId,
+                  rp.versionId,
+                  rp.name,
+                  rp.fileName,
+                  path.join(restored.gameDir, "resourcepacks", rp.fileName),
+                  now,
+                ],
+              );
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+    }
+
+    // 4. Restore shaderpacks (files + db records)
+    if (opts.shaders) {
+      const spDirInTrash = path.join(trashItemDir, "shaderpacks");
+      if (existsSync(spDirInTrash)) {
+        const destinationSpDir = path.join(restored.gameDir, "shaderpacks");
+        await cp(spDirInTrash, destinationSpDir, { recursive: true, force: true }).catch((err) =>
+          console.warn("[Trash] Falha ao restaurar shaders da instância", err),
+        );
+      }
+
+      if (trashItem.shaderpacks && trashItem.shaderpacks.length > 0) {
+        const now = new Date().toISOString();
+        for (const sp of trashItem.shaderpacks) {
+          if (sp.provider && sp.projectId && sp.versionId) {
+            try {
+              this.database.run(
+                `INSERT OR IGNORE INTO installed_content (id, instance_id, provider, type, project_id, version_id, name, file_name, file_path, installed_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                  randomUUID(),
+                  restored.id,
+                  sp.provider,
+                  sp.type || "shader",
+                  sp.projectId,
+                  sp.versionId,
+                  sp.name,
+                  sp.fileName,
+                  path.join(restored.gameDir, "shaderpacks", sp.fileName),
+                  now,
+                ],
+              );
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+    }
+
+    // 5. Restore configs
+    if (opts.config) {
+      const cfgDirInTrash = path.join(trashItemDir, "config");
+      if (existsSync(cfgDirInTrash)) {
+        const destinationCfgDir = path.join(restored.gameDir, "config");
+        await cp(cfgDirInTrash, destinationCfgDir, { recursive: true, force: true }).catch((err) =>
+          console.warn("[Trash] Falha ao restaurar configurações da instância", err),
+        );
       }
     }
 
@@ -960,9 +1078,16 @@ export class InstanceService {
             (e) =>
               e.entryName === "fabric.mod.json" ||
               e.entryName === "META-INF/mods.toml" ||
+              e.entryName === "mods.toml" ||
               e.entryName === "mcmod.info" ||
               e.entryName === "quilt.mod.json" ||
-              e.entryName === "neoforge.mods.toml",
+              e.entryName === "META-INF/neoforge.mods.toml" ||
+              e.entryName === "neoforge.mods.toml" ||
+              e.entryName.endsWith("neoforge.mods.toml") ||
+              e.entryName.endsWith("mods.toml") ||
+              e.entryName.endsWith("fabric.mod.json") ||
+              e.entryName.endsWith("quilt.mod.json") ||
+              e.entryName.endsWith("mcmod.info"),
           );
 
           if (isMod) {
@@ -1637,6 +1762,7 @@ export class InstanceService {
 
   async restoreLockedContent(instanceId: string) {
     const instance = await this.getById(instanceId);
+    restoreAllQuarantinedDisabledMods(instance.gameDir);
     const lock = await this.readModpackLock(instance.gameDir);
 
     if (!lock) {
@@ -2116,7 +2242,14 @@ export class InstanceService {
           try {
             const zip = new AdmZip(destination);
             const isFabric = !!zip.getEntry("fabric.mod.json");
-            const isForge = !!zip.getEntry("META-INF/mods.toml");
+            const isForge = !!(
+              zip.getEntry("META-INF/neoforge.mods.toml") ||
+              zip.getEntry("neoforge.mods.toml") ||
+              zip.getEntry("META-INF/mods.toml") ||
+              zip.getEntry("mods.toml") ||
+              zip.getEntry("mcmod.info") ||
+              zip.getEntry("quilt.mod.json")
+            );
             const isShader = zip.getEntries().some((e) => e.entryName.startsWith("shaders/"));
             const hasAssets = zip.getEntries().some((e) => e.entryName.startsWith("assets/"));
             const hasData = zip.getEntries().some((e) => e.entryName.startsWith("data/"));
@@ -2624,29 +2757,47 @@ const detectShaderSupport = async (row: InstanceRow) => {
           !entry.name.toLowerCase().endsWith(".disabled"),
       )
       .map((entry) => entry.name.toLowerCase());
-    const has = (pattern: RegExp) => names.some((name) => pattern.test(name));
-    const hasSodium = has(/^sodium(?:[-_.+](?:fabric|neoforge|forge))?[-_.+]?\d/i);
-    const hasEmbeddium = has(
-      /^embeddium(?:[-_.+](?:fabric|neoforge|forge))?[-_.+]?\d/i,
+    const matchesMod = (entryName: string, modKey: string) => {
+      const clean = entryName.replace(/\.(jar|zip)$/i, "").toLowerCase();
+      return (
+        clean === modKey ||
+        clean.startsWith(`${modKey}-`) ||
+        clean.startsWith(`${modKey}_`) ||
+        clean.startsWith(`${modKey}+`) ||
+        clean.startsWith(`${modKey}.`) ||
+        new RegExp(`(^|[-_.])${modKey}([-_.]|\\d|$)`, "i").test(clean)
+      );
+    };
+
+    const hasSodium = names.some((n) => matchesMod(n, "sodium") || matchesMod(n, "rubidium"));
+    const hasEmbeddium = names.some((n) => matchesMod(n, "embeddium"));
+    const hasIris = names.some(
+      (n) => matchesMod(n, "iris") || matchesMod(n, "iris-shaders") || matchesMod(n, "irisshaders"),
+    );
+    const hasOculus = names.some((n) => matchesMod(n, "oculus"));
+    const hasOptiFine = names.some((n) => matchesMod(n, "optifine"));
+    const hasAngelica = names.some((n) => matchesMod(n, "angelica"));
+    const hasShadersMod = names.some(
+      (n) => matchesMod(n, "shadersmod") || matchesMod(n, "shadersmodcore"),
     );
 
-    if (has(/^iris(?:[-_.+](?:fabric|neoforge|forge))?[-_.+]?\d/i)) {
+    if (hasIris) {
       engines.add(hasSodium ? "Iris + Sodium" : "Iris");
     }
 
-    if (has(/^oculus(?:[-_.+](?:mc|neoforge|forge))?[-_.+]?\d/i)) {
+    if (hasOculus) {
       engines.add(hasEmbeddium ? "Oculus + Embeddium" : "Oculus");
     }
 
-    if (has(/^optifine(?:[-_.+]|\d|$)/i)) {
+    if (hasOptiFine) {
       engines.add("OptiFine");
     }
 
-    if (has(/^angelica(?:[-_.+]|\d|$)/i)) {
+    if (hasAngelica) {
       engines.add("Angelica");
     }
 
-    if (has(/^shadersmod(?:[-_.+]|\d|$)/i)) {
+    if (hasShadersMod) {
       engines.add("ShadersMod");
     }
   } catch {
@@ -3004,8 +3155,13 @@ const normalizeLoaderVersion = (loader: LoaderType, version?: string, minecraftV
     return normalized === minecraftVersion ? undefined : normalized;
   }
 
-  if (loader === "neoforge" && lower.startsWith("neoforge-")) {
-    const normalized = trimmed.slice("neoforge-".length);
+  if (loader === "neoforge") {
+    let normalized = trimmed;
+    if (lower.startsWith("neoforge-")) {
+      normalized = trimmed.slice("neoforge-".length);
+    } else if (lower.startsWith("forge-")) {
+      normalized = trimmed.slice("forge-".length);
+    }
     return normalized === minecraftVersion ? undefined : normalized;
   }
 

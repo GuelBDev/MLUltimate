@@ -1,4 +1,5 @@
-export type AuthProvider = "microsoft" | "offline";
+export type AuthProvider = "microsoft" | "offline" | "mlultimate";
+export type AccountProvider = AuthProvider;
 
 export type LicenseStatus = "verified" | "unverified" | "offline-not-required";
 
@@ -34,6 +35,11 @@ export type SavedAuthAccount = PublicAccount & {
 
 export type OfflineLoginInput = {
   username: string;
+};
+
+export type MlultimateLoginInput = {
+  login: string;
+  password: string;
 };
 
 export type SwitchAccountInput = {
@@ -226,6 +232,14 @@ export type TrashedModManifest = {
   type?: string;
 };
 
+export type RestoreTrashOptions = {
+  worlds?: boolean;
+  mods?: boolean;
+  resourcepacks?: boolean;
+  shaders?: boolean;
+  config?: boolean;
+};
+
 export type TrashedInstance = {
   id: string;
   originalInstanceId: string;
@@ -238,8 +252,12 @@ export type TrashedInstance = {
   deletedAt: string;
   worlds: TrashedWorld[];
   mods: TrashedModManifest[];
+  resourcepacks?: TrashedModManifest[];
+  shaderpacks?: TrashedModManifest[];
   worldsCount: number;
   modsCount: number;
+  resourcepacksCount?: number;
+  shaderpacksCount?: number;
   sourceProvider?: ContentProvider;
   sourceProjectId?: string;
   sourceVersionId?: string;
@@ -261,6 +279,11 @@ export type DownloadItem = {
   completedAt?: string;
   error?: string;
   currentStep?: string;
+  groupId?: string;
+  groupTitle?: string;
+  contentType?: ContentType;
+  contentVersion?: string;
+  contentName?: string;
 };
 
 export type ContentSearchInput = {
@@ -272,6 +295,11 @@ export type ContentSearchInput = {
   sort?: "relevance" | "downloads" | "updated" | "newest";
   limit?: number;
   offset?: number;
+};
+
+export type ContentCompatibilityPair = {
+  gameVersion: string;
+  loader?: LoaderType;
 };
 
 export type ContentSearchResult = {
@@ -299,6 +327,7 @@ export type ContentSearchResult = {
   latestGameVersion?: string;
   compatibleGameVersions?: string[];
   compatibleLoaders?: LoaderType[];
+  compatibilityPairs?: ContentCompatibilityPair[];
 };
 
 export type ContentVersion = {
@@ -537,6 +566,7 @@ export type LauncherSettings = {
   sidebarImageDataUrl?: string;
   sidebarImageName?: string;
   sidebarNavOrder?: string[];
+  sidebarCollapsed?: boolean;
   favoritePresets?: string[];
 };
 
@@ -581,6 +611,7 @@ export type UpdateLauncherSettingsInput = {
   sidebarImageDataUrl?: string | null;
   sidebarImageName?: string | null;
   sidebarNavOrder?: string[];
+  sidebarCollapsed?: boolean;
   favoritePresets?: string[];
 };
 

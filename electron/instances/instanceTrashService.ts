@@ -109,19 +109,45 @@ export class InstanceTrashService {
       [instance.id],
     );
 
-    const mods: TrashedModManifest[] = trackedRows.map((row) => ({
-      name: row.name,
-      fileName: row.file_name,
-      provider: row.provider,
-      projectId: row.project_id,
-      versionId: row.version_id,
-      type: row.type,
-    }));
+    const mods: TrashedModManifest[] = trackedRows
+      .filter((row) => !row.type || row.type === "mod")
+      .map((row) => ({
+        name: row.name,
+        fileName: row.file_name,
+        provider: row.provider,
+        projectId: row.project_id,
+        versionId: row.version_id,
+        type: "mod",
+      }));
 
-    // Check if there are unrecorded manual jars in mods folder
+    const resourcepacks: TrashedModManifest[] = trackedRows
+      .filter((row) => row.type === "resourcepack")
+      .map((row) => ({
+        name: row.name,
+        fileName: row.file_name,
+        provider: row.provider,
+        projectId: row.project_id,
+        versionId: row.version_id,
+        type: "resourcepack",
+      }));
+
+    const shaderpacks: TrashedModManifest[] = trackedRows
+      .filter((row) => row.type === "shader")
+      .map((row) => ({
+        name: row.name,
+        fileName: row.file_name,
+        provider: row.provider,
+        projectId: row.project_id,
+        versionId: row.version_id,
+        type: "shader",
+      }));
+
+    // Copy and detect Mods folder
     const modsDir = path.join(instance.gameDir, "mods");
+    const trashModsDir = path.join(trashItemDir, "mods");
     if (existsSync(modsDir)) {
       try {
+        await cp(modsDir, trashModsDir, { recursive: true, force: true });
         const modFiles = await readdir(modsDir, { withFileTypes: true });
         const existingNames = new Set(mods.map((m) => m.fileName.toLowerCase()));
 
@@ -137,8 +163,69 @@ export class InstanceTrashService {
             existingNames.add(lower);
           }
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        console.warn("[Trash] Falha ao copiar mods para a lixeira", err);
+      }
+    }
+
+    // Copy and detect Resourcepacks folder
+    const rpDir = path.join(instance.gameDir, "resourcepacks");
+    const trashRpDir = path.join(trashItemDir, "resourcepacks");
+    if (existsSync(rpDir)) {
+      try {
+        await cp(rpDir, trashRpDir, { recursive: true, force: true });
+        const rpFiles = await readdir(rpDir, { withFileTypes: true });
+        const existingNames = new Set(resourcepacks.map((m) => m.fileName.toLowerCase()));
+
+        for (const file of rpFiles) {
+          const lower = file.name.toLowerCase();
+          if (!existingNames.has(lower)) {
+            resourcepacks.push({
+              name: file.name.replace(/\.zip$/i, ""),
+              fileName: file.name,
+              type: "resourcepack",
+            });
+            existingNames.add(lower);
+          }
+        }
+      } catch (err) {
+        console.warn("[Trash] Falha ao copiar texturas para a lixeira", err);
+      }
+    }
+
+    // Copy and detect Shaderpacks folder
+    const spDir = path.join(instance.gameDir, "shaderpacks");
+    const trashSpDir = path.join(trashItemDir, "shaderpacks");
+    if (existsSync(spDir)) {
+      try {
+        await cp(spDir, trashSpDir, { recursive: true, force: true });
+        const spFiles = await readdir(spDir, { withFileTypes: true });
+        const existingNames = new Set(shaderpacks.map((m) => m.fileName.toLowerCase()));
+
+        for (const file of spFiles) {
+          const lower = file.name.toLowerCase();
+          if (!existingNames.has(lower)) {
+            shaderpacks.push({
+              name: file.name.replace(/\.zip$/i, ""),
+              fileName: file.name,
+              type: "shader",
+            });
+            existingNames.add(lower);
+          }
+        }
+      } catch (err) {
+        console.warn("[Trash] Falha ao copiar shaders para a lixeira", err);
+      }
+    }
+
+    // Copy Config folder
+    const cfgDir = path.join(instance.gameDir, "config");
+    const trashCfgDir = path.join(trashItemDir, "config");
+    if (existsSync(cfgDir)) {
+      try {
+        await cp(cfgDir, trashCfgDir, { recursive: true, force: true });
+      } catch (err) {
+        console.warn("[Trash] Falha ao copiar configs para a lixeira", err);
       }
     }
 
@@ -155,8 +242,12 @@ export class InstanceTrashService {
       deletedAt: new Date().toISOString(),
       worlds,
       mods,
+      resourcepacks,
+      shaderpacks,
       worldsCount: worlds.length,
       modsCount: mods.length,
+      resourcepacksCount: resourcepacks.length,
+      shaderpacksCount: shaderpacks.length,
       sourceProvider: instance.sourceProvider,
       sourceProjectId: instance.sourceProjectId,
       sourceVersionId: instance.sourceVersionId,
@@ -220,6 +311,11 @@ export class InstanceTrashService {
     } catch {
       return null;
     }
+  }
+
+  getTrashItemDir(trashId: string): string {
+    const safeId = sanitizeId(trashId);
+    return path.join(this.trashRoot, safeId);
   }
 
   getTrashItemSavesDir(trashId: string): string | null {

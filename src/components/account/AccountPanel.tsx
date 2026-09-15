@@ -109,8 +109,8 @@ export const AccountPanel = () => {
           <div className="mt-5 space-y-3">
             <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-3">
               <span className="text-sm text-[#94A3B8]">Modo</span>
-              <Badge tone={account.provider === "microsoft" ? "blue" : "slate"}>
-                {account.provider === "microsoft" ? "Microsoft" : "Offline"}
+              <Badge tone={account.provider === "microsoft" ? "blue" : account.provider === "mlultimate" ? "green" : "slate"}>
+                {account.provider === "microsoft" ? "Microsoft" : account.provider === "mlultimate" ? "MLUltimate" : "Offline"}
               </Badge>
             </div>
             <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-3">
@@ -291,7 +291,9 @@ const AccountSwitcherDialog = ({
                   <span className="mt-0.5 block truncate text-xs text-[#94A3B8]">
                     {savedAccount.provider === "microsoft"
                       ? savedAccount.email ?? "Microsoft"
-                      : "Offline"}
+                      : savedAccount.provider === "mlultimate"
+                        ? "Conta MLUltimate"
+                        : "Offline"}
                   </span>
                 </span>
                 <Badge tone={savedAccount.active ? "green" : "slate"}>

@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { launcherApi } from "../services/launcherApi";
 
+import type { RestoreTrashOptions } from "../types/launcher";
+
 const trashKey = ["trash-instances"] as const;
 
 export const useTrash = () => {
@@ -12,7 +14,8 @@ export const useTrash = () => {
   });
 
   const restoreTrash = useMutation({
-    mutationFn: (trashId: string) => launcherApi.restoreTrash(trashId),
+    mutationFn: (input: string | { trashId: string; options?: RestoreTrashOptions }) =>
+      launcherApi.restoreTrash(input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: trashKey });
       void queryClient.invalidateQueries({ queryKey: ["instances"] });

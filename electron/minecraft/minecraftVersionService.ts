@@ -1,6 +1,6 @@
 import AdmZip from "adm-zip";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { net } from "electron";
@@ -19,6 +19,7 @@ const FORGE_MAVEN = "https://maven.minecraftforge.net";
 const FORGE_METADATA_URL = `${FORGE_MAVEN}/net/minecraftforge/forge/maven-metadata.xml`;
 const NEOFORGE_MAVEN = "https://maven.neoforged.net/releases";
 const NEOFORGE_METADATA_URL = `${NEOFORGE_MAVEN}/net/neoforged/neoforge/maven-metadata.xml`;
+const NEOFORGE_1201_METADATA_URL = `${NEOFORGE_MAVEN}/net/neoforged/forge/maven-metadata.xml`;
 
 const versionManifestSchema = z.object({
   latest: z.object({
@@ -745,16 +746,24 @@ export class MinecraftVersionService {
       minecraftVersion,
       requestedNeoForgeVersion,
     );
-    const profileId = neoForgeProfileId(neoForgeVersion);
-    const profilePath = this.getNeoForgeProfilePathById(profileId);
+    const existingProfilePath = await this.findCompleteNeoForgeProfilePath(
+      minecraftVersion,
+      neoForgeVersion,
+    );
 
-    if (await this.isLoaderProfileComplete(profilePath)) {
+    if (existingProfilePath) {
       return;
     }
 
+    const is1201 = minecraftVersion === "1.20.1";
     const installerDir = path.join(this.rootDir, "loaders", "neoforge", minecraftVersion);
-    const installerPath = path.join(installerDir, `neoforge-${neoForgeVersion}-installer.jar`);
-    const installerUrl = `${NEOFORGE_MAVEN}/net/neoforged/neoforge/${neoForgeVersion}/neoforge-${neoForgeVersion}-installer.jar`;
+    const installerJarName = is1201
+      ? `forge-${neoForgeVersion}-installer.jar`
+      : `neoforge-${neoForgeVersion}-installer.jar`;
+    const installerPath = path.join(installerDir, installerJarName);
+    const installerUrl = is1201
+      ? `${NEOFORGE_MAVEN}/net/neoforged/forge/${neoForgeVersion}/${installerJarName}`
+      : `${NEOFORGE_MAVEN}/net/neoforged/neoforge/${neoForgeVersion}/${installerJarName}`;
     const taskId = this.downloads.createTask(
       `NeoForge ${minecraftVersion}`,
       installerDir,
@@ -791,8 +800,12 @@ export class MinecraftVersionService {
       await runJavaInstaller(javaBin, installerPath, this.rootDir, "NeoForge");
       this.downloads.throwIfCancelled(taskId);
 
-      if (!(await this.isLoaderProfileComplete(profilePath))) {
-        throw new Error("NeoForge terminou, mas o profile instalado esta incompleto.");
+      const profilePath =
+        (await this.findCompleteNeoForgeProfilePath(minecraftVersion, neoForgeVersion)) ??
+        (await this.findNeoForgeProfilePath(minecraftVersion, neoForgeVersion));
+
+      if (!profilePath || !existsSync(profilePath)) {
+        throw new Error("NeoForge terminou, mas o profile instalado esta incompleto ou ausente.");
       }
 
       this.downloads.completeTask(taskId);
@@ -807,9 +820,11 @@ export class MinecraftVersionService {
       minecraftVersion,
       requestedNeoForgeVersion,
     );
-    const profilePath = this.getNeoForgeProfilePathById(neoForgeProfileId(neoForgeVersion));
+    const profilePath =
+      (await this.findCompleteNeoForgeProfilePath(minecraftVersion, neoForgeVersion)) ??
+      (await this.findNeoForgeProfilePath(minecraftVersion, neoForgeVersion));
 
-    if (!(await this.isLoaderProfileComplete(profilePath))) {
+    if (!profilePath || !existsSync(profilePath)) {
       throw new Error(`NeoForge não está instalado para Minecraft ${minecraftVersion}.`);
     }
 
@@ -851,14 +866,23 @@ export class MinecraftVersionService {
     minecraftVersion: string,
     requestedNeoForgeVersion?: string,
   ) {
+    if (!isNeoForgeSupported(minecraftVersion)) {
+      throw new Error(
+        `NeoForge não é suportado para Minecraft ${minecraftVersion}. O NeoForge está disponível apenas a partir da versão 1.20.1.`,
+      );
+    }
+
     const requested = normalizeNeoForgeVersion(requestedNeoForgeVersion);
 
     if (requested) {
       return requested;
     }
 
+    const is1201 = minecraftVersion === "1.20.1";
+    const metadataUrl = is1201 ? NEOFORGE_1201_METADATA_URL : NEOFORGE_METADATA_URL;
+
     const response = await fetchWithElectronNet(
-      NEOFORGE_METADATA_URL,
+      metadataUrl,
       "Buscar versoes do NeoForge",
     );
 
@@ -900,6 +924,86 @@ export class MinecraftVersionService {
 
   private getNeoForgeProfilePathById(profileId: string) {
     return path.join(this.rootDir, "versions", profileId, `${profileId}.json`);
+  }
+
+  private async findNeoForgeProfilePath(minecraftVersion: string, neoForgeVersion: string) {
+    for (const profileId of neoForgeProfileIds(minecraftVersion, neoForgeVersion)) {
+      const profilePath = this.getNeoForgeProfilePathById(profileId);
+
+      if (existsSync(profilePath)) {
+        return profilePath;
+      }
+    }
+
+    const versionsDir = path.join(this.rootDir, "versions");
+    if (existsSync(versionsDir)) {
+      try {
+        const entries = await readdir(versionsDir, { withFileTypes: true });
+        const clean = neoForgeVersion
+          .replace(/^neoforge-/i, "")
+          .replace(/^forge-/i, "")
+          .replace(`${minecraftVersion}-`, "")
+          .toLowerCase();
+
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const name = entry.name.toLowerCase();
+          if (
+            (name.includes("neoforge") || (minecraftVersion === "1.20.1" && name.includes("forge"))) &&
+            name.includes(clean)
+          ) {
+            const candidate = path.join(versionsDir, entry.name, `${entry.name}.json`);
+            if (existsSync(candidate)) {
+              return candidate;
+            }
+          }
+        }
+      } catch {
+        // ignore scan errors
+      }
+    }
+
+    return null;
+  }
+
+  private async findCompleteNeoForgeProfilePath(minecraftVersion: string, neoForgeVersion: string) {
+    for (const profileId of neoForgeProfileIds(minecraftVersion, neoForgeVersion)) {
+      const profilePath = this.getNeoForgeProfilePathById(profileId);
+
+      if (await this.isLoaderProfileComplete(profilePath)) {
+        return profilePath;
+      }
+    }
+
+    const versionsDir = path.join(this.rootDir, "versions");
+    if (existsSync(versionsDir)) {
+      try {
+        const entries = await readdir(versionsDir, { withFileTypes: true });
+        const clean = neoForgeVersion
+          .replace(/^neoforge-/i, "")
+          .replace(/^forge-/i, "")
+          .replace(`${minecraftVersion}-`, "")
+          .toLowerCase();
+
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const name = entry.name.toLowerCase();
+          if (
+            (name.includes("neoforge") || (minecraftVersion === "1.20.1" && name.includes("forge"))) &&
+            name.includes(clean)
+          ) {
+            const candidate = path.join(versionsDir, entry.name, `${entry.name}.json`);
+            if (await this.isLoaderProfileComplete(candidate)) {
+              return candidate;
+            }
+          }
+        }
+      } catch {
+        // ignore scan errors
+      }
+    }
+
+    return null;
   }
 
   private async ensureLauncherProfiles() {
@@ -947,6 +1051,14 @@ export class MinecraftVersionService {
   }
 
   private isForgeRuntimeComplete(profile: z.infer<typeof loaderProfileSchema>) {
+    const isNeoForge =
+      profile.id.toLowerCase().includes("neoforge") ||
+      profile.libraries.some((library) => library.name.startsWith("net.neoforged:"));
+
+    if (isNeoForge) {
+      return true;
+    }
+
     const runtime = getForgeRuntimeInfo(profile);
 
     if (!runtime) {
@@ -1226,31 +1338,56 @@ export class MinecraftVersionService {
       }
 
       const destination = path.join(this.rootDir, "libraries", libraryPath);
-      const url =
-        artifact?.url ??
-        (library.url
-          ? new URL(
-              libraryPath.replaceAll("\\", "/"),
-              library.url.endsWith("/") ? library.url : `${library.url}/`,
-            ).toString()
-          : null);
+      const normalizedPath = libraryPath.replaceAll("\\", "/");
+      const candidateUrls: string[] = [];
 
-      if (!url) {
-        if (!existsSync(destination)) {
-          throw new Error(`${loaderName} nao informa URL para biblioteca ${library.name}.`);
+      if (artifact?.url) {
+        candidateUrls.push(artifact.url);
+      }
+      if (library.url) {
+        candidateUrls.push(
+          new URL(
+            normalizedPath,
+            library.url.endsWith("/") ? library.url : `${library.url}/`,
+          ).toString(),
+        );
+      }
+      candidateUrls.push(
+        `https://libraries.minecraft.net/${normalizedPath}`,
+        `${FORGE_MAVEN}/${normalizedPath}`,
+        `https://maven.neoforged.net/releases/${normalizedPath}`,
+        `https://maven.fabricmc.net/${normalizedPath}`,
+        `https://repo1.maven.org/maven2/${normalizedPath}`,
+      );
+
+      const uniqueCandidateUrls = Array.from(new Set(candidateUrls));
+      let downloaded = false;
+      let lastError: unknown = null;
+
+      for (const candidateUrl of uniqueCandidateUrls) {
+        try {
+          await this.downloads.download({
+            label: `${loaderName} ${library.name}`,
+            url: candidateUrl,
+            destination,
+            sha1: artifact?.sha1,
+            visible: false,
+          });
+          downloaded = true;
+          break;
+        } catch (err) {
+          lastError = err;
         }
-
-        completed += 1;
-        return;
       }
 
-      await this.downloads.download({
-        label: `${loaderName} ${library.name}`,
-        url,
-        destination,
-        sha1: artifact?.sha1,
-        visible: false,
-      });
+      if (!downloaded && !existsSync(destination)) {
+        throw new Error(
+          `Não foi possível baixar biblioteca ${library.name} para ${loaderName}: ${
+            lastError instanceof Error ? lastError.message : "Sem URL válida."
+          }`,
+        );
+      }
+
       completed += 1;
       this.downloads.throwIfCancelled(taskId);
       this.downloads.updateTask(taskId, {
@@ -1552,7 +1689,23 @@ const forgeProfileIds = (minecraftVersion: string, forgeVersion: string) =>
     ]),
   );
 
-const neoForgeProfileId = (neoForgeVersion: string) => `neoforge-${neoForgeVersion}`;
+const neoForgeProfileIds = (minecraftVersion: string, neoForgeVersion: string) => {
+  const cleanVersion = neoForgeVersion
+    .replace(/^neoforge-/i, "")
+    .replace(/^forge-/i, "")
+    .replace(`${minecraftVersion}-`, "");
+
+  return Array.from(
+    new Set([
+      `neoforge-${neoForgeVersion}`,
+      `neoforge-${cleanVersion}`,
+      `${minecraftVersion}-neoforge-${cleanVersion}`,
+      `${minecraftVersion}-forge-${cleanVersion}`,
+      `1.20.1-forge-${cleanVersion}`,
+      neoForgeVersion,
+    ]),
+  );
+};
 
 const normalizeForgeVersion = (minecraftVersion: string, version?: string) => {
   const trimmed = version?.trim();
@@ -1577,16 +1730,47 @@ const normalizeNeoForgeVersion = (version?: string) => {
     return undefined;
   }
 
-  return trimmed.toLowerCase().startsWith("neoforge-")
-    ? trimmed.slice("neoforge-".length)
-    : trimmed;
+  let clean = trimmed;
+  if (clean.toLowerCase().startsWith("neoforge-")) {
+    clean = clean.slice("neoforge-".length);
+  } else if (clean.toLowerCase().startsWith("forge-")) {
+    clean = clean.slice("forge-".length);
+  }
+
+  return clean;
+};
+
+export const isNeoForgeSupported = (minecraftVersion: string) => {
+  if (minecraftVersion === "1.20.1") {
+    return true;
+  }
+
+  const parts = minecraftVersion.split(".").map(Number);
+  if (parts.length >= 2 && parts[0] === 1 && parts[1] !== undefined) {
+    if (parts[1] > 20) {
+      return true;
+    }
+    if (parts[1] === 20 && parts.length >= 3 && (parts[2] ?? 0) >= 2) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 const neoForgePrefixForMinecraft = (minecraftVersion: string) => {
+  if (minecraftVersion === "1.20.1") {
+    return "1.20.1-";
+  }
+
   const parts = minecraftVersion.split(".");
 
   if (parts.length >= 3 && parts[0] === "1") {
     return `${parts[1]}.${parts[2]}.`;
+  }
+
+  if (parts.length === 2 && parts[0] === "1") {
+    return `${parts[1]}.0.`;
   }
 
   if (parts.length >= 2) {

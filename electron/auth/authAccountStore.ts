@@ -1,7 +1,7 @@
 import { LauncherDatabase } from "../database/sqliteDatabase";
 
 export type ActiveAccountRef = {
-  provider: "microsoft" | "offline";
+  provider: "microsoft" | "offline" | "mlultimate";
   id: string;
 };
 
@@ -22,11 +22,11 @@ export class AuthAccountStore {
 
     const [provider, id] = row.value.split(":");
 
-    if ((provider !== "microsoft" && provider !== "offline") || !id) {
+    if ((provider !== "microsoft" && provider !== "offline" && provider !== "mlultimate") || !id) {
       return null;
     }
 
-    return { provider, id };
+    return { provider: provider as ActiveAccountRef["provider"], id };
   }
 
   setActiveAccount(provider: ActiveAccountRef["provider"], id: string) {

@@ -19,8 +19,10 @@ import type {
   LaunchCancelRequest,
   LaunchRequest,
   LauncherSettings,
+  RestoreTrashOptions,
   NameMCSkinLibraryInput,
   NameMCSkinSearchResult,
+  MlultimateLoginInput,
   OfflineLoginInput,
   SavedAuthAccount,
   SaveNicknameSkinInput,
@@ -82,6 +84,7 @@ const defaultSettings: LauncherSettings = {
   backgroundImageOpacity: 0.28,
   sidebarImageOpacity: 0.22,
   favoritePresets: ["night-dark", "blue-sky", "yellow-sun", "light-mode", "emerald-cave"],
+  sidebarCollapsed: true,
 };
 const browserSettingsKey = "mlultimate:browser-settings";
 
@@ -139,6 +142,11 @@ export const launcherApi = {
     return window.mlultimate.auth.loginOffline(input);
   },
 
+  loginMlultimate: async (input: MlultimateLoginInput) => {
+    if (!hasBridge()) throw desktopOnly();
+    return window.mlultimate.auth.loginMlultimate(input);
+  },
+
   switchAccount: async (input: SwitchAccountInput) => {
     if (!hasBridge()) throw desktopOnly();
     return window.mlultimate.auth.switchAccount(input);
@@ -147,6 +155,11 @@ export const launcherApi = {
   logout: async () => {
     if (!hasBridge()) return signedOut;
     return window.mlultimate.auth.logout();
+  },
+
+  removeAccount: async (input: SwitchAccountInput) => {
+    if (!hasBridge()) return signedOut;
+    return window.mlultimate.auth.removeAccount(input);
   },
 
   launch: async (request: LaunchRequest) => {
@@ -252,9 +265,11 @@ export const launcherApi = {
     return window.mlultimate.instances.listTrash();
   },
 
-  restoreTrash: async (trashId: string): Promise<LauncherInstance> => {
+  restoreTrash: async (
+    input: string | { trashId: string; options?: RestoreTrashOptions },
+  ): Promise<LauncherInstance> => {
     if (!hasBridge()) throw desktopOnly();
-    return window.mlultimate.instances.restoreTrash(trashId);
+    return window.mlultimate.instances.restoreTrash(input);
   },
 
   deleteTrash: async (trashIds: string[]): Promise<void> => {
@@ -383,6 +398,11 @@ export const launcherApi = {
   cancelDownload: async (downloadId: string) => {
     if (!hasBridge()) return;
     return window.mlultimate.downloads.cancel(downloadId);
+  },
+
+  openDownloadFolder: async (destination: string) => {
+    if (!hasBridge()) return;
+    return window.mlultimate.downloads.openFolder(destination);
   },
 
   onDownloadsChange: (callback: Parameters<typeof window.mlultimate.downloads.onChange>[0]) => {

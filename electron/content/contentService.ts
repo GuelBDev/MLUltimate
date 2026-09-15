@@ -2,7 +2,7 @@ import AdmZip from "adm-zip";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { net } from "electron";
 import { z } from "zod";
@@ -194,6 +194,15 @@ const curseForgeProjectSchema = z.object({
       .array(
         z.object({
           name: z.string(),
+        }),
+      )
+      .optional()
+      .default([]),
+    latestFilesIndexes: z
+      .array(
+        z.object({
+          gameVersion: z.string().optional(),
+          modLoader: z.number().optional(),
         }),
       )
       .optional()
@@ -524,6 +533,7 @@ export class ContentService {
 
   async listInstalled(instanceId: string) {
     await this.instances.restoreLockedContent(instanceId);
+    await this.syncDiskContent(instanceId);
 
     const rows = this.database.all<InstalledContentRow>(
       "SELECT * FROM installed_content WHERE instance_id = ? ORDER BY installed_at DESC",
@@ -538,6 +548,84 @@ export class ContentService {
         [instanceId],
       )
       .map(rowToInstalledContent);
+  }
+
+  private async syncDiskContent(instanceId: string) {
+    try {
+      const instance = await this.instances.getById(instanceId).catch(() => null);
+      if (!instance || !existsSync(instance.gameDir)) {
+        return;
+      }
+
+      const rows = this.database.all<InstalledContentRow>(
+        "SELECT * FROM installed_content WHERE instance_id = ?",
+        [instanceId],
+      );
+
+      const existingPaths = new Set<string>();
+      for (const row of rows) {
+        if (!existsSync(row.file_path)) {
+          this.database.run("DELETE FROM installed_content WHERE id = ?", [row.id]);
+        } else {
+          existingPaths.add(path.resolve(row.file_path).toLowerCase());
+        }
+      }
+
+      const scanTargets: Array<{ type: ContentType; subDir: string; exts: string[] }> = [
+        { type: "mod", subDir: "mods", exts: [".jar"] },
+        { type: "resourcepack", subDir: "resourcepacks", exts: [".zip"] },
+        { type: "shader", subDir: "shaderpacks", exts: [".zip"] },
+      ];
+
+      for (const target of scanTargets) {
+        const folder = path.join(instance.gameDir, target.subDir);
+        if (!existsSync(folder)) continue;
+
+        const files = await readdir(folder, { withFileTypes: true }).catch(() => []);
+        for (const file of files) {
+          if (!file.isFile()) continue;
+          const fullPath = path.join(folder, file.name);
+          const normalizedPath = path.resolve(fullPath).toLowerCase();
+
+          if (existingPaths.has(normalizedPath)) {
+            continue;
+          }
+
+          const isDis = file.name.endsWith(".disabled");
+          const baseName = isDis ? file.name.slice(0, -".disabled".length) : file.name;
+          const ext = path.extname(baseName).toLowerCase();
+          if (!target.exts.includes(ext)) {
+            continue;
+          }
+
+          const cleanName = path.parse(baseName).name;
+          const id = randomUUID();
+          this.database.run(
+            `
+            INSERT OR IGNORE INTO installed_content
+              (id, instance_id, provider, type, project_id, version_id, name, file_name, file_path, enabled, installed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            [
+              id,
+              instanceId,
+              "modrinth",
+              target.type,
+              cleanName.toLowerCase(),
+              "local",
+              cleanName,
+              file.name,
+              fullPath,
+              isDis ? 0 : 1,
+              new Date().toISOString(),
+            ],
+          );
+          existingPaths.add(normalizedPath);
+        }
+      }
+    } catch (err) {
+      console.warn(`[ContentService] Falha ao sincronizar conteudo do disco para ${instanceId}:`, err);
+    }
   }
 
   async hydrateInstanceContentImages(
@@ -709,6 +797,48 @@ export class ContentService {
     }
 
     return row;
+  }
+
+  private findInstalledItemAcrossProviders(
+    instanceId: string,
+    type: ContentType,
+    candidateKeys: string[],
+  ): InstalledContentRow | null {
+    const isShaderOrMod = type === "shader" || type === "mod";
+    const rows = this.database.all<InstalledContentRow>(
+      isShaderOrMod
+        ? "SELECT * FROM installed_content WHERE instance_id = ? AND type IN ('mod', 'shader')"
+        : "SELECT * FROM installed_content WHERE instance_id = ? AND type = ?",
+      isShaderOrMod ? [instanceId] : [instanceId, type],
+    );
+
+    const normalizedKeys = candidateKeys
+      .filter(Boolean)
+      .map((k) => k.toLowerCase().replace(/[^a-z0-9]/g, ""));
+
+    for (const row of rows) {
+      if (!existsSync(row.file_path)) continue;
+
+      const normRowId = row.project_id.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const normRowName = row.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const normRowFile = row.file_name.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+      for (const key of normalizedKeys) {
+        if (key.length < 3) continue;
+        if (
+          normRowId === key ||
+          normRowName === key ||
+          normRowName.startsWith(key) ||
+          key.startsWith(normRowName) ||
+          normRowFile.startsWith(key) ||
+          normRowFile.includes(key)
+        ) {
+          return row;
+        }
+      }
+    }
+
+    return null;
   }
 
   private async hydrateContentIcons(rows: InstalledContentRow[]) {
@@ -915,6 +1045,14 @@ export class ContentService {
     }
 
     let files = await this.getCurseForgeFiles(row.project_id, instance.minecraftVersion, loader, row.type);
+
+    if (files.length === 0 && loader === "neoforge" && compareMinecraftVersions(instance.minecraftVersion, "1.20.1") <= 0) {
+      files = await this.getCurseForgeFiles(row.project_id, instance.minecraftVersion, "forge", row.type);
+    }
+
+    if (files.length === 0 && loader === "forge" && compareMinecraftVersions(instance.minecraftVersion, "1.20.1") <= 0) {
+      files = await this.getCurseForgeFiles(row.project_id, instance.minecraftVersion, "neoforge", row.type);
+    }
 
     if (files.length === 0) {
       files = await this.getCurseForgeFiles(row.project_id, instance.minecraftVersion, undefined, row.type);
@@ -1166,6 +1304,16 @@ export class ContentService {
             .filter((item): item is LoaderType => Boolean(item)),
         ),
       ),
+      compatibilityPairs: project.latestFilesIndexes
+        .map((file) => {
+          const gameVersion = file.gameVersion;
+          const loader = curseForgeLoaderToType(file.modLoader);
+          if (!gameVersion || !loader || !isMinecraftVersion(gameVersion)) {
+            return null;
+          }
+          return { gameVersion, loader };
+        })
+        .filter((item): item is { gameVersion: string; loader: LoaderType } => item !== null),
     }));
   }
 
@@ -1181,7 +1329,25 @@ export class ContentService {
     }
 
     if (installedProjectIds.has(input.projectId)) {
+      const existingInDb = this.database.get<InstalledContentRow>(
+        "SELECT * FROM installed_content WHERE instance_id = ? AND provider = ? AND project_id = ? ORDER BY installed_at DESC LIMIT 1",
+        [input.instanceId, "modrinth", input.projectId],
+      );
+      if (existingInDb && existsSync(existingInDb.file_path)) {
+        return [rowToInstalledContent(existingInDb)];
+      }
       return [];
+    }
+
+    // Check if this project is already installed in this instance (useful for common APIs like Fabric API, Iris, etc.)
+    if (!input.versionId) {
+      const existingInDb = this.findInstalledItemAcrossProviders(input.instanceId, input.type, [
+        input.projectId,
+      ]);
+      if (existingInDb && existsSync(existingInDb.file_path)) {
+        installedProjectIds.add(input.projectId);
+        return [rowToInstalledContent(existingInDb)];
+      }
     }
 
     installedProjectIds.add(input.projectId);
@@ -1203,9 +1369,15 @@ export class ContentService {
     const compatibleVersions = versions.filter((candidate) =>
       isModrinthVersionCompatible(candidate, input.type, instance.minecraftVersion, loader),
     );
-    const version = input.versionId
+    let version = input.versionId
       ? compatibleVersions.find((candidate) => candidate.id === input.versionId)
       : compatibleVersions.at(0);
+
+    // Fallback: if a dependency specified a specific versionId that is incompatible with this instance's MC version,
+    // gracefully fall back to the newest compatible version of this project for this instance!
+    if (!version && compatibleVersions.length > 0) {
+      version = compatibleVersions.at(0);
+    }
 
     if (!version) {
       throw new Error(
@@ -1219,6 +1391,17 @@ export class ContentService {
 
     if (!file) {
       throw new Error("A versão Modrinth encontrada não possui arquivo para baixar.");
+    }
+
+    if (!input.versionId) {
+      const existingByFileName = this.findInstalledItemAcrossProviders(input.instanceId, input.type, [
+        file.filename,
+        version.name,
+      ]);
+      if (existingByFileName && existsSync(existingByFileName.file_path)) {
+        installedProjectIds.add(input.projectId);
+        return [rowToInstalledContent(existingByFileName)];
+      }
     }
 
     const installed = await this.installFile({
@@ -1246,27 +1429,38 @@ export class ContentService {
       let dependencyVersionId = dependency.version_id ?? undefined;
 
       if (!dependencyProjectId && dependencyVersionId) {
-        const dependencyVersion = await this.getModrinthVersionById(dependencyVersionId);
-        dependencyProjectId = dependencyVersion.project_id;
-        dependencyVersionId = dependencyVersion.id;
+        try {
+          const dependencyVersion = await this.getModrinthVersionById(dependencyVersionId);
+          dependencyProjectId = dependencyVersion.project_id;
+          dependencyVersionId = dependencyVersion.id;
+        } catch (err) {
+          console.warn(`[Modrinth] Falha ao consultar metadados da dependência ${dependencyVersionId}:`, err);
+        }
       }
 
       if (!dependencyProjectId) {
         continue;
       }
 
-      dependencies.push(
-        ...(await this.installModrinth(
-          {
-            provider: "modrinth",
-            type: "mod",
-            projectId: dependencyProjectId,
-            instanceId: input.instanceId,
-            versionId: dependencyVersionId,
-          },
-          installedProjectIds,
-        )),
-      );
+      try {
+        dependencies.push(
+          ...(await this.installModrinth(
+            {
+              provider: "modrinth",
+              type: "mod",
+              projectId: dependencyProjectId,
+              instanceId: input.instanceId,
+              versionId: dependencyVersionId,
+            },
+            installedProjectIds,
+          )),
+        );
+      } catch (depError) {
+        console.warn(
+          `[Modrinth] Dependência ${dependencyProjectId} para ${input.projectId} não pôde ser instalada automaticamente:`,
+          depError,
+        );
+      }
     }
 
     return [installed, ...dependencies];
@@ -1407,7 +1601,7 @@ export class ContentService {
   private async getCurseForgeProject(
     input: z.infer<typeof projectInputSchema>,
   ): Promise<ContentProjectDetails> {
-    const [projectResponse, descriptionResponse, filesResponse] = await Promise.all([
+    const [projectResponse, descriptionResponse, initialFiles] = await Promise.all([
       this.fetchCurseForge(`/mods/${input.projectId}`, "Buscar detalhes na CurseForge"),
       this.fetchCurseForge(
         `/mods/${input.projectId}/description`,
@@ -1423,6 +1617,16 @@ export class ContentService {
 
     if (!projectResponse.ok) {
       throw new Error(`CurseForge retornou erro ${projectResponse.status} ao buscar detalhes.`);
+    }
+
+    let filesResponse = initialFiles;
+    if (filesResponse.length === 0 && (input.minecraftVersion || input.loader)) {
+      filesResponse = await this.getCurseForgeFiles(
+        input.projectId,
+        undefined,
+        undefined,
+        input.type,
+      );
     }
 
     const project = curseForgeProjectSchema.parse(await projectResponse.json()).data;
@@ -1488,6 +1692,22 @@ export class ContentService {
       compatibleLoaders: Array.from(
         new Set(contentVersions.flatMap((version) => version.loaders)),
       ),
+      compatibilityPairs: project.latestFilesIndexes?.length
+        ? project.latestFilesIndexes
+            .map((file) => {
+              const gameVersion = file.gameVersion;
+              const loader = curseForgeLoaderToType(file.modLoader);
+              if (!gameVersion || !loader || !isMinecraftVersion(gameVersion)) {
+                return null;
+              }
+              return { gameVersion, loader };
+            })
+            .filter((item): item is { gameVersion: string; loader: LoaderType } => item !== null)
+        : contentVersions.flatMap((version) =>
+            version.gameVersions.flatMap((gameVersion) =>
+              version.loaders.map((loader) => ({ gameVersion, loader })),
+            ),
+          ),
       categories: project.categories.map((category) => category.name),
       gallery: project.screenshots.map((image) => ({
         url: image.url,
@@ -1573,13 +1793,24 @@ export class ContentService {
     }
 
     if (installedProjectIds.has(input.projectId)) {
-      const existing = this.database.get<InstalledContentRow>(
-        "SELECT * FROM installed_content WHERE instance_id = ? AND provider = ? AND project_id = ? ORDER BY installed_at DESC LIMIT 1",
-        [input.instanceId, "curseforge", input.projectId],
-      );
+      const existing = this.findInstalledItemAcrossProviders(input.instanceId, input.type, [
+        input.projectId,
+      ]);
 
-      if (existing) {
+      if (existing && existsSync(existing.file_path)) {
         return rowToInstalledContent(existing);
+      }
+    }
+
+    // Check if this project is already installed in this instance before downloading again
+    if (!input.versionId) {
+      const existingInDb = this.findInstalledItemAcrossProviders(input.instanceId, input.type, [
+        input.projectId,
+      ]);
+
+      if (existingInDb && existsSync(existingInDb.file_path)) {
+        installedProjectIds.add(input.projectId);
+        return rowToInstalledContent(existingInDb);
       }
     }
 
@@ -1595,6 +1826,17 @@ export class ContentService {
           ? "A versao CurseForge escolhida nao e compativel com esta instancia."
           : "Nenhum arquivo CurseForge compativel foi encontrado.",
       );
+    }
+
+    if (!input.versionId) {
+      const existingByFile = this.findInstalledItemAcrossProviders(input.instanceId, input.type, [
+        file.fileName,
+        file.displayName ?? "",
+      ]);
+      if (existingByFile && existsSync(existingByFile.file_path)) {
+        installedProjectIds.add(input.projectId);
+        return rowToInstalledContent(existingByFile);
+      }
     }
 
     const downloadUrl =
@@ -1625,15 +1867,22 @@ export class ContentService {
         continue;
       }
 
-      await this.installCurseForge(
-        {
-          provider: "curseforge",
-          type: "mod",
-          projectId: String(dependency.modId),
-          instanceId: input.instanceId,
-        },
-        installedProjectIds,
-      );
+      try {
+        await this.installCurseForge(
+          {
+            provider: "curseforge",
+            type: "mod",
+            projectId: String(dependency.modId),
+            instanceId: input.instanceId,
+          },
+          installedProjectIds,
+        );
+      } catch (depError) {
+        console.warn(
+          `[CurseForge] Dependência ${dependency.modId} para ${input.projectId} não pôde ser instalada automaticamente:`,
+          depError,
+        );
+      }
     }
 
     return installed;
@@ -1647,6 +1896,18 @@ export class ContentService {
   ) {
     let files = await this.getCurseForgeFiles(projectId, minecraftVersion, loader, type);
 
+    if (files.length === 0 && loader === "quilt") {
+      files = await this.getCurseForgeFiles(projectId, minecraftVersion, "fabric", type);
+    }
+
+    if (files.length === 0 && loader === "neoforge" && compareMinecraftVersions(minecraftVersion, "1.20.1") <= 0) {
+      files = await this.getCurseForgeFiles(projectId, minecraftVersion, "forge", type);
+    }
+
+    if (files.length === 0 && loader === "forge" && compareMinecraftVersions(minecraftVersion, "1.20.1") <= 0) {
+      files = await this.getCurseForgeFiles(projectId, minecraftVersion, "neoforge", type);
+    }
+
     if (files.length === 0) {
       files = await this.getCurseForgeFiles(projectId, minecraftVersion, undefined, type);
     }
@@ -1659,9 +1920,11 @@ export class ContentService {
       isCurseForgeFileCompatible(candidate, type, minecraftVersion, loader),
     );
 
-    return compatibleFiles.find((candidate) =>
-      candidate.gameVersions.some((version) => isMinecraftVersionCompatible(version, minecraftVersion)),
-    ) ?? compatibleFiles.at(0);
+    return (
+      compatibleFiles.find((candidate) =>
+        candidate.gameVersions.some((version) => isMinecraftVersionCompatible(version, minecraftVersion)),
+      ) ?? compatibleFiles.at(0)
+    );
   }
 
   private async getCurseForgeDownloadUrl(projectId: string, fileId: number) {
@@ -1693,7 +1956,7 @@ export class ContentService {
   }): Promise<InstalledContent> {
     const fileName = sanitizeFileName(input.fileName);
     const destination = path.join(input.gameDir, folderForType(input.type), fileName);
-    const existing = this.database.get<InstalledContentRow>(
+    let existing = this.database.get<InstalledContentRow>(
       `
       SELECT * FROM installed_content
       WHERE instance_id = ? AND provider = ? AND type = ? AND project_id = ?
@@ -1703,9 +1966,21 @@ export class ContentService {
       [input.instanceId, input.provider, input.type, input.projectId],
     );
 
+    if (!existing) {
+      existing = this.database.get<InstalledContentRow>(
+        `
+        SELECT * FROM installed_content
+        WHERE instance_id = ? AND (file_path = ? OR file_name = ?)
+        ORDER BY installed_at DESC
+        LIMIT 1
+        `,
+        [input.instanceId, destination, fileName],
+      );
+    }
+
     if (
       existing &&
-      existing.version_id === input.versionId &&
+      (existing.version_id === input.versionId || existsSync(destination)) &&
       existsSync(existing.file_path)
     ) {
       return rowToInstalledContent(existing);
@@ -1716,6 +1991,11 @@ export class ContentService {
       url: input.url,
       destination,
       sha1: input.sha1,
+      groupId: input.instanceId,
+      groupTitle: input.instanceName,
+      contentType: input.type,
+      contentVersion: input.versionId,
+      contentName: input.name,
     });
 
     const installedAt = new Date().toISOString();
@@ -2128,7 +2408,7 @@ const mapModrinthSort = (sort?: string) => {
 const mapCurseForgeSort = (sort?: string) => {
   switch (sort) {
     case "downloads":
-      return "2";
+      return "6";
     case "updated":
       return "3";
     case "newest":
@@ -2396,10 +2676,6 @@ const curseForgeSha1 = (file: z.infer<typeof curseForgeFilesSchema>["data"][numb
   file.hashes.find((hash) => hash.algo === 1)?.value;
 
 const curseForgeCdnDownloadUrl = (file: z.infer<typeof curseForgeFilesSchema>["data"][number]) => {
-  if (!file.isAvailable) {
-    throw new Error(`Arquivo CurseForge indisponivel: ${file.fileName}.`);
-  }
-
   const folder = Math.floor(file.id / 1000);
   const fileSlot = String(file.id % 1000).padStart(3, "0");
 
@@ -2452,6 +2728,10 @@ const mergeProviderResults = (results: ContentSearchResult[]) => {
     existing.compatibleLoaders = Array.from(
       new Set([...(existing.compatibleLoaders ?? []), ...(result.compatibleLoaders ?? [])]),
     );
+    existing.compatibilityPairs = [
+      ...(existing.compatibilityPairs ?? []),
+      ...(result.compatibilityPairs ?? []),
+    ];
     existing.latestGameVersion =
       latestGameVersion([existing.latestGameVersion, result.latestGameVersion].filter(isMinecraftVersion)) ??
       existing.latestGameVersion ??
@@ -2525,7 +2805,31 @@ const isModrinthVersionCompatible = (
     .map((candidate) => candidate.toLowerCase())
     .filter(isLoaderType);
 
-  return loaders.length === 0 || loaders.includes(loader);
+  if (loaders.length === 0 || loaders.includes(loader)) {
+    return true;
+  }
+
+  if (loader === "quilt" && loaders.includes("fabric")) {
+    return true;
+  }
+
+  if (
+    loader === "neoforge" &&
+    loaders.includes("forge") &&
+    compareMinecraftVersions(minecraftVersion, "1.20.1") <= 0
+  ) {
+    return true;
+  }
+
+  if (
+    loader === "forge" &&
+    loaders.includes("neoforge") &&
+    compareMinecraftVersions(minecraftVersion, "1.20.1") <= 0
+  ) {
+    return true;
+  }
+
+  return false;
 };
 
 const isCurseForgeFileCompatible = (
@@ -2551,7 +2855,31 @@ const isCurseForgeFileCompatible = (
     .map((candidate) => candidate.toLowerCase())
     .filter(isLoaderType);
 
-  return loaders.length === 0 || loaders.includes(loader);
+  if (loaders.length === 0 || loaders.includes(loader)) {
+    return true;
+  }
+
+  if (loader === "quilt" && loaders.includes("fabric")) {
+    return true;
+  }
+
+  if (
+    loader === "neoforge" &&
+    loaders.includes("forge") &&
+    compareMinecraftVersions(minecraftVersion, "1.20.1") <= 0
+  ) {
+    return true;
+  }
+
+  if (
+    loader === "forge" &&
+    loaders.includes("neoforge") &&
+    compareMinecraftVersions(minecraftVersion, "1.20.1") <= 0
+  ) {
+    return true;
+  }
+
+  return false;
 };
 
 const isMinecraftVersionCompatible = (candidate: string, target: string) => {

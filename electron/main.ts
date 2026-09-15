@@ -6,6 +6,7 @@ import { LauncherDatabase } from "./database/sqliteDatabase";
 import { AvatarService } from "./avatar/avatarService";
 import { SecureTokenStore } from "./auth/secureTokenStore";
 import { MicrosoftAuthService } from "./auth/microsoftAuthService";
+import { MlultimateAuthService } from "./auth/mlultimateAuthService";
 import { OfflineAuthService } from "./auth/offlineAuthService";
 import { AuthAccountStore } from "./auth/authAccountStore";
 import { ContentService } from "./content/contentService";
@@ -246,6 +247,7 @@ const bootstrap = async (database: LauncherDatabase, apiKeys: ApiKeyStore) => {
   const avatar = new AvatarService(database);
   const microsoftAuth = new MicrosoftAuthService(tokenStore, authAccounts);
   const offlineAuth = new OfflineAuthService(database, authAccounts);
+  const mlultimateAuth = new MlultimateAuthService(database, authAccounts);
   const downloads = new DownloadManager((items) => {
     mainWindow?.webContents.send("downloads:changed", items);
   });
@@ -264,6 +266,7 @@ const bootstrap = async (database: LauncherDatabase, apiKeys: ApiKeyStore) => {
   const launcher = new LauncherService(
     microsoftAuth,
     offlineAuth,
+    mlultimateAuth,
     instances,
     javaRuntimes,
     minecraftVersions,
@@ -297,6 +300,7 @@ const bootstrap = async (database: LauncherDatabase, apiKeys: ApiKeyStore) => {
 
   registerIpcHandlers({
     microsoftAuth,
+    mlultimateAuth,
     offlineAuth,
     launcher,
     downloads,

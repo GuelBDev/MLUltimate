@@ -12,10 +12,10 @@ import { useInstalledContent } from "../hooks/useInstalledContent";
 import { useMinecraftVersions } from "../hooks/useMinecraftVersions";
 import { launcherApi } from "../services/launcherApi";
 import { RichContent } from "../components/common/RichContent";
+import { cn } from "../utils/cn";
 import type {
   ContentProjectDetails,
   ContentProvider,
-  ContentProviderFilter,
   ContentSearchInput,
   ContentSearchResult,
   ContentType,
@@ -31,7 +31,6 @@ type ExplorePageProps = {
   initialInstanceId?: string;
 };
 
-const providerFilters: ContentProviderFilter[] = ["all", "modrinth", "curseforge"];
 const types: ContentType[] = ["mod", "modpack", "resourcepack", "shader"];
 const loaders: LoaderType[] = ["vanilla", "fabric", "iris", "iris-sodium", "forge", "neoforge", "quilt"];
 const detailTabs = ["overview", "content", "changelog", "gallery", "versions"] as const;
@@ -58,17 +57,11 @@ const typeLabels: Record<ContentType, string> = {
   shader: "Shaders",
 };
 
-const providerLabels: Record<ContentProviderFilter, string> = {
-  all: "Todos",
-  modrinth: "Modrinth",
-  curseforge: "CurseForge",
-};
-
 export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExplorePageProps) => {
   const queryClient = useQueryClient();
   const { instances } = useInstances();
   const { versions } = useMinecraftVersions();
-  const [provider, setProvider] = useState<ContentProviderFilter>("all");
+  const [provider, setProvider] = useState<ContentProvider>("modrinth");
   const [type, setType] = useState<ContentType>(initialType);
   const [activeInstanceId, setActiveInstanceId] = useState<string | undefined>(initialInstanceId);
   const [prevInitialInstanceId, setPrevInitialInstanceId] = useState(initialInstanceId);
@@ -84,7 +77,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
   const [installTarget, setInstallTarget] = useState<InstallTarget | null>(null);
   const [providerInstallTarget, setProviderInstallTarget] = useState<InstallTarget | null>(null);
-  const [loadClicks, setLoadClicks] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   const [activeOperations, setActiveOperations] = useState<string[]>([]);
   const [operationError, setOperationError] = useState<string | null>(null);
 
@@ -107,7 +100,6 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   const effectiveLoader = targetInstance
     ? normalizeContentLoader(targetInstance.loader)
     : loader;
-  const resultLimit = loadClicks < 3 ? 20 + loadClicks * 20 : 60 + (loadClicks - 2) * 40;
   const installedContent = useInstalledContent(activeInstanceId);
   const installedUpdates = useQuery({
     queryKey: ["installed-content-updates", activeInstanceId],
@@ -136,7 +128,24 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
 
   const search = useMutation({
     mutationFn: (input: ContentSearchInput) => launcherApi.searchContent(input),
-    onSuccess: setResults,
+    onSuccess: (data) => {
+      setResults(data);
+      setHasMore(data.length >= 20);
+    },
+  });
+
+  const loadMoreMutation = useMutation({
+    mutationFn: (input: ContentSearchInput) => launcherApi.searchContent(input),
+    onSuccess: (newData) => {
+      if (newData.length < 20) {
+        setHasMore(false);
+      }
+      setResults((prev) => {
+        const existingKeys = new Set(prev.map((p) => `${p.provider}:${p.projectId}`));
+        const fresh = newData.filter((p) => !existingKeys.has(`${p.provider}:${p.projectId}`));
+        return [...prev, ...fresh];
+      });
+    },
   });
 
   const details = useMutation({
@@ -166,6 +175,9 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
     onSuccess: () => {
       setInstallTarget(null);
       setProviderInstallTarget(null);
+      void queryClient.invalidateQueries({ queryKey: ["installed-content"] });
+      void queryClient.invalidateQueries({ queryKey: ["installed-content-updates"] });
+      void queryClient.invalidateQueries({ queryKey: ["instance-inspection"] });
       void queryClient.invalidateQueries({ queryKey: ["instances"] });
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
     },
@@ -186,6 +198,9 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
     onSuccess: () => {
       setInstallTarget(null);
       setProviderInstallTarget(null);
+      void queryClient.invalidateQueries({ queryKey: ["installed-content"] });
+      void queryClient.invalidateQueries({ queryKey: ["installed-content-updates"] });
+      void queryClient.invalidateQueries({ queryKey: ["instance-inspection"] });
       void queryClient.invalidateQueries({ queryKey: ["instances"] });
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
       void queryClient.invalidateQueries({ queryKey: ["minecraft", "versions"] });
@@ -195,9 +210,9 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   const updateInstalled = useMutation({
     mutationFn: launcherApi.updateInstalledContent,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["installed-content", initialInstanceId] });
-      void queryClient.invalidateQueries({ queryKey: ["installed-content-updates", initialInstanceId] });
-      void queryClient.invalidateQueries({ queryKey: ["instance-inspection", initialInstanceId] });
+      void queryClient.invalidateQueries({ queryKey: ["installed-content"] });
+      void queryClient.invalidateQueries({ queryKey: ["installed-content-updates"] });
+      void queryClient.invalidateQueries({ queryKey: ["instance-inspection"] });
       void queryClient.invalidateQueries({ queryKey: ["instances"] });
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
     },
@@ -225,9 +240,9 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   };
 
   const refreshInstallState = () => {
-    void queryClient.invalidateQueries({ queryKey: ["installed-content", activeInstanceId] });
-    void queryClient.invalidateQueries({ queryKey: ["installed-content-updates", activeInstanceId] });
-    void queryClient.invalidateQueries({ queryKey: ["instance-inspection", activeInstanceId] });
+    void queryClient.invalidateQueries({ queryKey: ["installed-content"] });
+    void queryClient.invalidateQueries({ queryKey: ["installed-content-updates"] });
+    void queryClient.invalidateQueries({ queryKey: ["instance-inspection"] });
     void queryClient.invalidateQueries({ queryKey: ["instances"] });
     void queryClient.invalidateQueries({ queryKey: ["downloads"] });
   };
@@ -277,6 +292,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   };
 
   const runSearch = () => {
+    setHasMore(true);
     search.mutate({
       provider,
       type,
@@ -284,16 +300,33 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
       minecraftVersion: effectiveVersion || undefined,
       loader: effectiveLoader || undefined,
       sort: "downloads",
-      limit: resultLimit,
+      limit: 20,
       offset: 0,
     });
   };
 
+  const handleLoadMore = () => {
+    if (search.isPending || loadMoreMutation.isPending || !hasMore) {
+      return;
+    }
+
+    loadMoreMutation.mutate({
+      provider,
+      type,
+      query,
+      minecraftVersion: effectiveVersion || undefined,
+      loader: effectiveLoader || undefined,
+      sort: "downloads",
+      limit: 20,
+      offset: results.length,
+    });
+  };
+
   useEffect(() => {
-    const timer = window.setTimeout(runSearch, 450);
+    const timer = window.setTimeout(runSearch, 400);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider, type, query, effectiveVersion, effectiveLoader, resultLimit]);
+  }, [provider, type, query, effectiveVersion, effectiveLoader]);
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -307,7 +340,7 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
   };
 
   const updateSearchShape = (next: () => void) => {
-    setLoadClicks(0);
+    setHasMore(true);
     next();
   };
 
@@ -321,9 +354,12 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
       return;
     }
 
-    if (activeInstanceId) {
-      startInstallToInstance({ project, version: selectedContentVersion }, activeInstanceId, project);
-      return;
+    if (activeInstanceId && targetInstance) {
+      const compat = getInstallCompatibility(project, selectedContentVersion, targetInstance);
+      if (compat.compatible) {
+        startInstallToInstance({ project, version: selectedContentVersion }, activeInstanceId, project);
+        return;
+      }
     }
 
     setInstallTarget({ project, version: selectedContentVersion });
@@ -358,15 +394,17 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
     operationError ??
     (search.error instanceof Error
       ? search.error.message
-      : details.error instanceof Error
-        ? details.error.message
-        : install.error instanceof Error
-          ? install.error.message
-          : installAsInstance.error instanceof Error
-            ? installAsInstance.error.message
-            : updateInstalled.error instanceof Error
-              ? updateInstalled.error.message
-              : null);
+      : loadMoreMutation.error instanceof Error
+        ? loadMoreMutation.error.message
+        : details.error instanceof Error
+          ? details.error.message
+          : install.error instanceof Error
+            ? install.error.message
+            : installAsInstance.error instanceof Error
+              ? installAsInstance.error.message
+              : updateInstalled.error instanceof Error
+                ? updateInstalled.error.message
+                : null);
 
   if (selectedProject) {
     const installableProject = details.data
@@ -425,33 +463,69 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#94A3B8] whitespace-nowrap">Instância ativa:</span>
+              <AppSelect
+                value={activeInstanceId ?? ""}
+                onChange={(val) => setActiveInstanceId(val || undefined)}
+                options={[
+                  { value: "", label: "Todas as instâncias (Explorar livre)" },
+                  ...(instances.data ?? []).map((inst) => ({
+                    value: inst.id,
+                    label: `${inst.name} (${inst.minecraftVersion} - ${inst.loader})`,
+                  })),
+                ]}
+                className="w-56"
+              />
+            </div>
             {targetInstance ? (
-              <div className="flex items-center gap-2">
-                <Badge tone="green">
-                  {targetInstance.name} ({targetInstance.minecraftVersion} - {targetInstance.loader})
-                </Badge>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-[#B8C2D0] hover:bg-white/10 hover:text-white transition"
-                  onClick={() => setActiveInstanceId(undefined)}
-                  title="Desvincular instância para buscar livremente na biblioteca"
-                >
-                  <X className="h-3.5 w-3.5" />
-                  Explorar tudo
-                </button>
-              </div>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-[#B8C2D0] hover:bg-white/10 hover:text-white transition"
+                onClick={() => setActiveInstanceId(undefined)}
+                title="Desvincular instância para buscar livremente na biblioteca"
+              >
+                <X className="h-3.5 w-3.5" />
+                Limpar
+              </button>
             ) : null}
-            <Badge tone="blue">{providerLabels[provider]}</Badge>
           </div>
         </div>
+      </Card>
 
-        <form className="mt-5 flex flex-wrap items-center gap-3" onSubmit={submit}>
-          <AppSelect
-            value={provider}
-            onChange={(val) => updateSearchShape(() => setProvider(val as ContentProviderFilter))}
-            options={providerFilters.map((item) => ({ value: item, label: providerLabels[item] }))}
-            className="flex-1 basis-[120px]"
-          />
+      <div className="sticky top-0 z-30 rounded-2xl border border-white/12 bg-[#0F1420]/95 p-4 shadow-2xl backdrop-blur-xl transition-all">
+        <form className="flex flex-wrap items-center gap-3" onSubmit={submit}>
+          <div className="inline-flex h-11 items-center rounded-xl border border-white/10 bg-[#0D1117] p-1 shadow-inner">
+            <button
+              type="button"
+              onClick={() => updateSearchShape(() => setProvider("curseforge"))}
+              className={cn(
+                "flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-all duration-150 select-none",
+                provider === "curseforge"
+                  ? "border border-white/10 bg-[#1E2433] text-white shadow-sm"
+                  : "border border-transparent bg-transparent text-[#94A3B8] hover:bg-white/[0.04] hover:text-white",
+              )}
+            >
+              <span className="grid h-5 w-5 place-items-center rounded-md bg-black text-white shrink-0 shadow-sm">
+                <SiCurseforge className="h-3 w-3" />
+              </span>
+              <span>CurseForge</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => updateSearchShape(() => setProvider("modrinth"))}
+              className={cn(
+                "flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-all duration-150 select-none",
+                provider === "modrinth"
+                  ? "border border-white/10 bg-[#1E2433] text-white shadow-sm"
+                  : "border border-transparent bg-transparent text-[#94A3B8] hover:bg-white/[0.04] hover:text-white",
+              )}
+            >
+              <SiModrinth className="h-4.5 w-4.5 text-[#00AF5C] shrink-0" />
+              <span>Modrinth</span>
+            </button>
+          </div>
           <AppSelect
             value={type}
             onChange={(val) => updateSearchShape(() => setType(val as ContentType))}
@@ -501,22 +575,23 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
           </div>
         </form>
 
-        <p className="mt-3 text-xs text-[#94A3B8]">
-          Filtro ativo: {effectiveVersion || "todas as versoes"} - {effectiveLoader || "todos loaders"}
-        </p>
-
-        {provider !== "modrinth" ? (
-          <p className="mt-3 text-xs leading-5 text-[#94A3B8]">
-            CurseForge usa a API central segura do MLUltimate; nenhuma chave precisa ser colocada pelo usuário.
+        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-[#94A3B8]">
+          <p>
+            Filtro ativo: <span className="font-medium text-white/80">{effectiveVersion || "todas as versões"}</span> - <span className="font-medium text-white/80">{effectiveLoader || "todos loaders"}</span>
           </p>
-        ) : null}
+          {visibleResults.length > 0 ? (
+            <span className="font-medium text-[#60A5FA]">
+              {visibleResults.length} {visibleResults.length === 1 ? "resultado" : "resultados"}
+            </span>
+          ) : null}
+        </div>
 
         {error ? (
-          <div className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <div className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-2.5 text-sm text-red-100">
             {error}
           </div>
         ) : null}
-      </Card>
+      </div>
 
       <section className="grid gap-4">
         {visibleResults.map((project) => {
@@ -624,16 +699,25 @@ export const ExplorePage = ({ initialType = "mod", initialInstanceId }: ExploreP
       ) : null}
 
       {results.length > 0 ? (
-        <div className="flex justify-center pb-2">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => setLoadClicks((value) => value + 1)}
-            disabled={search.isPending}
-          >
-            <RefreshCw className={`h-4 w-4 ${search.isPending ? "animate-spin" : ""}`} />
-            Carregar Mais
-          </Button>
+        <div className="flex justify-center pb-4 pt-2">
+          {hasMore ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleLoadMore}
+              disabled={search.isPending || loadMoreMutation.isPending}
+            >
+              <RefreshCw
+                className={cn(
+                  "h-4 w-4",
+                  (search.isPending || loadMoreMutation.isPending) && "animate-spin",
+                )}
+              />
+              {loadMoreMutation.isPending ? "Carregando..." : "Carregar Mais"}
+            </Button>
+          ) : (
+            <p className="text-xs text-[#94A3B8]">Você chegou ao fim dos resultados.</p>
+          )}
         </div>
       ) : null}
 
@@ -911,7 +995,9 @@ const ProjectDetails = ({
                 />
               );
             })}
-            {versions.length === 0 ? <EmptyDetail text="Carregando versoes..." /> : null}
+            {versions.length === 0 ? (
+              <EmptyDetail text="Nenhuma versão disponível para os filtros atuais deste projeto." />
+            ) : null}
             {versions.length > 0 && filteredVersions.length === 0 ? (
               <EmptyDetail text="Nenhuma versão encontrada para esta busca." />
             ) : null}
@@ -1221,8 +1307,23 @@ const getProjectInstallState = (
     return { status: "available" };
   }
 
-  if (version && installed.versionId !== version.id) {
-    return { status: "update", installed };
+  if (version) {
+    const isSameVersion =
+      installed.versionId === version.id ||
+      (version.fileName &&
+        installed.fileName &&
+        version.fileName.toLowerCase() === installed.fileName.toLowerCase());
+
+    if (isSameVersion) {
+      return { status: "installed", installed };
+    }
+
+    const updateInfo = updateMap.get(installed.id);
+    if (updateInfo?.updateAvailable && updateInfo.latestVersionId === version.id) {
+      return { status: "update", installed };
+    }
+
+    return { status: "available", installed };
   }
 
   const update = updateMap.get(installed.id);
@@ -1234,16 +1335,210 @@ const getProjectInstallState = (
   return { status: "installed", installed };
 };
 
+const STOP_WORDS = new Set([
+  "shaders",
+  "shader",
+  "mod",
+  "mods",
+  "fabric",
+  "forge",
+  "neoforge",
+  "quilt",
+  "edition",
+  "api",
+  "client",
+  "for",
+  "minecraft",
+  "mc",
+  "v",
+  "version",
+  "the",
+  "pack",
+  "addon",
+  "addons",
+  "official",
+]);
+
+const extractSignificantTokens = (text?: string): string[] => {
+  if (!text) return [];
+  const cleaned = text
+    .replace(/\.(jar|zip|disabled|mrpack)$/i, "")
+    .replace(/\[.*?\]|\(.*?\)/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/([a-zA-Z])(\d)/g, "$1 $2")
+    .replace(/(\d)([a-zA-Z])/g, "$1 $2")
+    .toLowerCase()
+    .replace(/[-_.:+]/g, " ")
+    .replace(/[^a-z0-9\s]/g, "");
+
+  const rawTokens = cleaned
+    .split(/\s+/)
+    .filter((token) => token.length >= 2 && !/^\d+$/.test(token));
+
+  // NÃO usar fallback — se todos os tokens são stop-words, retornar vazio
+  // Evita false positives com tokens genéricos como "fabric", "mod"
+  return rawTokens.filter((token) => !STOP_WORDS.has(token));
+};
+
+const getCoreTokens = (text?: string): string => {
+  const tokens = extractSignificantTokens(text);
+  return tokens.join("");
+};
+
+const normalizeContentKey = (str?: string) =>
+  (str ?? "")
+    .toLowerCase()
+    .replace(/\.jar$/i, "")
+    .replace(/\.zip$/i, "")
+    .replace(/\.disabled$/i, "")
+    .replace(/\[.*?\]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+const getProjectIdentifiers = (project: ContentSearchResult | ContentProjectDetails) => {
+  const ids = new Set<string>();
+  if (project.projectId) ids.add(project.projectId.toLowerCase());
+  if (project.slug) ids.add(project.slug.toLowerCase());
+
+  if (project.providerProjects) {
+    for (const p of Object.values(project.providerProjects)) {
+      if (p?.projectId) ids.add(p.projectId.toLowerCase());
+      if (p?.slug) ids.add(p.slug.toLowerCase());
+    }
+  }
+  return ids;
+};
+
 const findInstalledContentForProject = (
   project: ContentSearchResult | ContentProjectDetails,
   installedContent: InstalledContent[],
 ) => {
+  const identifiers = getProjectIdentifiers(project);
   const refs = getProjectProviderRefs(project);
+  const normTitle = normalizeContentKey(project.title);
+  const normSlug = normalizeContentKey(project.slug);
+  const coreTitle = getCoreTokens(project.title);
+  const coreSlug = getCoreTokens(project.slug);
+  const projectTokens = new Set([
+    ...extractSignificantTokens(project.title),
+    ...extractSignificantTokens(project.slug),
+  ]);
 
-  return installedContent.find((item) =>
-    item.type === project.type &&
-    refs.some((ref) => item.provider === ref.provider && item.projectId === ref.projectId),
-  );
+  return installedContent.find((item) => {
+    // Compatibilidade de tipo: permitir compatibilidade se for mod de shader (ex: Iris/Oculus)
+    const isShaderMod =
+      (item.name.toLowerCase().includes("shader") ||
+        item.fileName.toLowerCase().includes("shader") ||
+        item.name.toLowerCase().includes("iris") ||
+        item.fileName.toLowerCase().includes("iris")) &&
+      (project.title.toLowerCase().includes("shader") ||
+        project.title.toLowerCase().includes("iris") ||
+        (project.slug && project.slug.toLowerCase().includes("iris")));
+
+    if (item.type !== project.type && !isShaderMod) {
+      return false;
+    }
+
+    // 1. Provedor e ID de projeto diretos
+    if (refs.some((ref) => item.provider === ref.provider && item.projectId === ref.projectId)) {
+      return true;
+    }
+
+    // 2. Identificador cruzado (slug, id de outro provedor)
+    const itemIdLower = item.projectId.toLowerCase();
+    if (identifiers.has(itemIdLower)) {
+      return true;
+    }
+
+    // 3. Comparação de chaves normalizadas — AMBOS os lados devem ter tamanho mínimo
+    const itemNormName = normalizeContentKey(item.name);
+    const itemNormFileName = normalizeContentKey(item.fileName);
+
+    if (normSlug && normSlug.length >= 3) {
+      if (
+        (itemNormName.length >= 3 && itemNormName.startsWith(normSlug)) ||
+        (itemNormFileName.length >= 3 && itemNormFileName.startsWith(normSlug))
+      ) {
+        return true;
+      }
+      // Só faz reverse-match se o item tiver tamanho significativo
+      if (itemNormName.length >= 3 && normSlug.startsWith(itemNormName)) {
+        return true;
+      }
+    }
+
+    if (normTitle && normTitle.length >= 3) {
+      if (
+        (itemNormName.length >= 3 && itemNormName.startsWith(normTitle)) ||
+        (itemNormFileName.length >= 3 && itemNormFileName.startsWith(normTitle))
+      ) {
+        return true;
+      }
+      if (itemNormName.length >= 3 && normTitle.startsWith(itemNormName)) {
+        return true;
+      }
+    }
+
+    // 4. Comparação de Core Tokens — sem includes(), só startsWith com guarda de tamanho
+    const itemCoreName = getCoreTokens(item.name);
+    const itemCoreFileName = getCoreTokens(item.fileName);
+
+    if (coreSlug && coreSlug.length >= 3) {
+      if (
+        (itemCoreName.length >= 3 && itemCoreName.startsWith(coreSlug)) ||
+        (itemCoreFileName.length >= 3 && itemCoreFileName.startsWith(coreSlug))
+      ) {
+        return true;
+      }
+      if (itemCoreName.length >= 3 && coreSlug.startsWith(itemCoreName)) {
+        return true;
+      }
+    }
+
+    if (coreTitle && coreTitle.length >= 3) {
+      if (
+        (itemCoreName.length >= 3 && itemCoreName.startsWith(coreTitle)) ||
+        (itemCoreFileName.length >= 3 && itemCoreFileName.startsWith(coreTitle))
+      ) {
+        return true;
+      }
+      if (itemCoreName.length >= 3 && coreTitle.startsWith(itemCoreName)) {
+        return true;
+      }
+    }
+
+    // 5. Comparação de tokens individuais — requer match exato de 2+ tokens
+    const itemTokens = new Set([
+      ...extractSignificantTokens(item.name),
+      ...extractSignificantTokens(item.fileName),
+    ]);
+
+    // Ambos os lados devem ter tokens significativos
+    if (itemTokens.size === 0 || projectTokens.size === 0) {
+      return false;
+    }
+
+    if (projectTokens.size === 1 && itemTokens.size === 1) {
+      // Match de token único SÓ se ambos têm exatamente 1 token e são iguais
+      const projectToken = Array.from(projectTokens)[0];
+      const itemToken = Array.from(itemTokens)[0];
+      if (projectToken && projectToken.length >= 3 && projectToken === itemToken) {
+        return true;
+      }
+    } else if (projectTokens.size > 1) {
+      let matches = 0;
+      for (const token of projectTokens) {
+        if (token.length >= 3 && itemTokens.has(token)) {
+          matches += 1;
+        }
+      }
+      // Requer pelo menos 2 tokens em comum — sem fallback de percentual
+      if (matches >= 2) {
+        return true;
+      }
+    }
+
+    return false;
+  });
 };
 
 const findInstalledInstanceForProject = (
@@ -1454,6 +1749,60 @@ const mergeProjectProviderMetadata = <
   },
 });
 
+const compareMinecraftVersions = (left: string, right: string) => {
+  const leftParts = left.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const rightParts = right.split(".").map((part) => Number.parseInt(part, 10) || 0);
+
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const diff = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (diff !== 0) return diff;
+  }
+
+  return left.localeCompare(right);
+};
+
+const normalizeContentLoader = (loader: LoaderType): LoaderType =>
+  loader === "iris" || loader === "iris-sodium" ? "fabric" : loader;
+
+const isLoaderCompatible = (
+  candidateLoader: string,
+  targetLoader: LoaderType,
+  minecraftVersion: string,
+) => {
+  const normCandidate = normalizeContentLoader(candidateLoader as LoaderType);
+  const normTarget = normalizeContentLoader(targetLoader);
+
+  if (normCandidate === normTarget) return true;
+  if (normTarget === "quilt" && normCandidate === "fabric") return true;
+  if (
+    normTarget === "neoforge" &&
+    normCandidate === "forge" &&
+    compareMinecraftVersions(minecraftVersion, "1.20.1") <= 0
+  ) {
+    return true;
+  }
+  if (
+    normTarget === "forge" &&
+    normCandidate === "neoforge" &&
+    compareMinecraftVersions(minecraftVersion, "1.20.1") <= 0
+  ) {
+    return true;
+  }
+  return false;
+};
+
+const isMinecraftVersionCompatible = (supported: string, instanceVersion: string) => {
+  if (supported === instanceVersion) {
+    return true;
+  }
+
+  if (supported.endsWith(".x")) {
+    return instanceVersion.startsWith(supported.slice(0, -1));
+  }
+
+  return false;
+};
+
 const getInstallCompatibility = (
   project: ContentSearchResult | ContentProjectDetails,
   version: ContentVersion | undefined,
@@ -1470,7 +1819,7 @@ const getInstallCompatibility = (
     if (!selectedVersionCompatible) {
       return {
         compatible: false,
-        reason: `Esta textura nao e compativel com Minecraft ${instance.minecraftVersion}.`,
+        reason: `Esta textura não é compatível com Minecraft ${instance.minecraftVersion}.`,
       };
     }
 
@@ -1478,19 +1827,7 @@ const getInstallCompatibility = (
       compatible: true,
       reason: version
         ? `Textura pronta para instalar em ${instance.name}.`
-        : `O launcher vai buscar uma textura compativel com Minecraft ${instance.minecraftVersion}.`,
-    };
-  }
-
-  const gameVersions = version?.gameVersions ?? project.compatibleGameVersions ?? [];
-  const versionCompatible =
-    gameVersions.length === 0 ||
-    gameVersions.some((gameVersion) => isMinecraftVersionCompatible(gameVersion, instance.minecraftVersion));
-
-  if (!versionCompatible) {
-    return {
-      compatible: false,
-      reason: `Incompativel com Minecraft ${instance.minecraftVersion}.`,
+        : `O launcher vai buscar uma textura compatível com Minecraft ${instance.minecraftVersion}.`,
     };
   }
 
@@ -1498,7 +1835,7 @@ const getInstallCompatibility = (
     return {
       compatible: false,
       reason:
-        "Gerenciamento de conteudo desativado neste perfil. Ative nas opcoes da instancia para instalar arquivos.",
+        "Gerenciamento de conteúdo desativado neste perfil. Ative nas opções da instância para instalar arquivos.",
     };
   }
 
@@ -1506,7 +1843,7 @@ const getInstallCompatibility = (
     return {
       compatible: false,
       reason:
-        `A instancia ${instance.name} nao possui um motor de shader reconhecido. ` +
+        `A instância ${instance.name} não possui um motor de shader reconhecido. ` +
         "Instale Iris, Iris + Sodium, OptiFine, Oculus, Angelica ou ShadersMod primeiro.",
     };
   }
@@ -1516,17 +1853,84 @@ const getInstallCompatibility = (
       compatible: false,
       reason:
         project.type === "modpack"
-          ? "Modpacks precisam de uma instancia com loader compativel."
+          ? "Modpacks precisam de uma instância com loader compatível."
           : "Mods precisam de Fabric, Forge, NeoForge, Quilt, Iris ou Iris + Sodium. Vanilla aceita apenas texturas.",
     };
   }
 
-  const contentLoaders = version?.loaders ?? project.compatibleLoaders ?? [];
-  const instanceContentLoader = normalizeContentLoader(instance.loader);
+  if (version) {
+    const gameVersions = version.gameVersions ?? [];
+    const versionCompatible =
+      gameVersions.length === 0 ||
+      gameVersions.some((gameVersion) => isMinecraftVersionCompatible(gameVersion, instance.minecraftVersion));
+
+    if (!versionCompatible) {
+      return {
+        compatible: false,
+        reason: `A versão selecionada não é compatível com Minecraft ${instance.minecraftVersion}.`,
+      };
+    }
+
+    const contentLoaders = version.loaders ?? [];
+    const loaderCompatible =
+      project.type === "shader" ||
+      contentLoaders.length === 0 ||
+      contentLoaders.some((l) => isLoaderCompatible(l, instance.loader, instance.minecraftVersion));
+
+    if (!loaderCompatible) {
+      return {
+        compatible: false,
+        reason: `A versão selecionada precisa de ${contentLoaders.join(", ")}; esta instância usa ${instance.loader}.`,
+      };
+    }
+
+    return {
+      compatible: true,
+      reason: `Pronto para instalar em ${instance.name}.`,
+    };
+  }
+
+  if (
+    project.compatibilityPairs &&
+    project.compatibilityPairs.length > 0 &&
+    (project.type === "mod" || project.type === "modpack")
+  ) {
+    const hasMatchingPair = project.compatibilityPairs.some((pair) => {
+      const vOk = isMinecraftVersionCompatible(pair.gameVersion, instance.minecraftVersion);
+      const lOk = !pair.loader || isLoaderCompatible(pair.loader, instance.loader, instance.minecraftVersion);
+      return vOk && lOk;
+    });
+
+    if (!hasMatchingPair) {
+      return {
+        compatible: false,
+        reason: `Incompatível: este mod não possui arquivo para Minecraft ${instance.minecraftVersion} com ${instance.loader}.`,
+      };
+    }
+
+    return {
+      compatible: true,
+      reason: `Pronto para instalar em ${instance.name}.`,
+    };
+  }
+
+  const gameVersions = project.compatibleGameVersions ?? [];
+  const versionCompatible =
+    gameVersions.length === 0 ||
+    gameVersions.some((gameVersion) => isMinecraftVersionCompatible(gameVersion, instance.minecraftVersion));
+
+  if (!versionCompatible) {
+    return {
+      compatible: false,
+      reason: `Incompatível com Minecraft ${instance.minecraftVersion}.`,
+    };
+  }
+
+  const contentLoaders = project.compatibleLoaders ?? [];
   const loaderCompatible =
     project.type === "shader" ||
     contentLoaders.length === 0 ||
-    contentLoaders.includes(instanceContentLoader);
+    contentLoaders.some((l) => isLoaderCompatible(l, instance.loader, instance.minecraftVersion));
 
   if (!loaderCompatible) {
     return {
@@ -1542,21 +1946,6 @@ const getInstallCompatibility = (
         ? `Pronto para instalar em ${instance.name} usando ${instance.shaderSupport.engines.join(", ")}.`
         : `Pronto para instalar em ${instance.name}.`,
   };
-};
-
-const normalizeContentLoader = (loader: LoaderType): LoaderType =>
-  loader === "iris" || loader === "iris-sodium" ? "fabric" : loader;
-
-const isMinecraftVersionCompatible = (supported: string, instanceVersion: string) => {
-  if (supported === instanceVersion) {
-    return true;
-  }
-
-  if (supported.endsWith(".x")) {
-    return instanceVersion.startsWith(supported.slice(0, -1));
-  }
-
-  return false;
 };
 
 const CompatibilityMeta = ({ project }: { project: ContentSearchResult | ContentProjectDetails }) => {
