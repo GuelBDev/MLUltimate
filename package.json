@@ -1,8 +1,8 @@
 {
   "name": "mlultimate-launcher",
   "private": true,
-  "version": "4.0.1",
-  "description": "MLUltimate Launcher 4.0.1 desktop launcher for Minecraft.",
+  "version": "4.0.2",
+  "description": "MLUltimate Launcher 4.0.2 desktop launcher for Minecraft.",
   "author": "MLUltimate Team",
   "desktopName": "MLUltimate Launcher",
   "repository": {

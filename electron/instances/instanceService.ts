@@ -2669,7 +2669,7 @@ const countContentEntries = async (
         );
       }
 
-      const normalized = file.name.toLowerCase().replace(/\.disabled$/, "");
+      const normalized = file.name.toLowerCase().replace(/\.(disabled|disabled-by-mlultimate)$/i, "");
       return extensions.some((extension) => normalized.endsWith(extension));
     }).length;
   } catch {
@@ -2845,7 +2845,16 @@ const extractArchive = async (archivePath: string, destination: string) => {
   const extension = path.extname(archivePath).toLowerCase();
 
   if ([".zip", ".mrpack", ".mlultimate"].includes(extension)) {
-    await new AdmZip(archivePath).extractAllToAsync(destination, true, false);
+    const zip = new AdmZip(archivePath);
+    await new Promise<void>((resolve, reject) => {
+      zip.extractAllToAsync(destination, true, false, (error) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      });
+    });
     return;
   }
 

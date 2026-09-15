@@ -123,6 +123,8 @@ export const InstanceDetailPage = ({
   const inspection = useQuery({
     queryKey: ["instance-inspection", current.id],
     queryFn: () => launcherApi.inspectInstance(current.id),
+    refetchInterval: 5000,
+    refetchOnWindowFocus: true,
   });
   const project = useQuery({
     queryKey: [
@@ -272,6 +274,21 @@ export const InstanceDetailPage = ({
       ),
     [content],
   );
+  const effectiveModsCount = inspection.data
+    ? (categoryCounts.get("mod") ?? 0)
+    : current.modsCount;
+  const effectiveResourcepacksCount = inspection.data
+    ? (categoryCounts.get("resourcepack") ?? 0)
+    : current.resourcepacksCount;
+  const effectiveShaderpacksCount = inspection.data
+    ? (categoryCounts.get("shader") ?? 0)
+    : current.shaderpacksCount;
+  const effectiveDataPacksCount = inspection.data
+    ? (categoryCounts.get("datapack") ?? 0)
+    : current.dataPacksCount;
+  const effectiveWorldsCount = inspection.data
+    ? (categoryCounts.get("world") ?? 0)
+    : current.worldsCount;
   const updateMap = useMemo(
     () => new Map((updates.data ?? []).map((item) => [item.id, item])),
     [updates.data],
@@ -431,9 +448,9 @@ export const InstanceDetailPage = ({
                 <History className="h-4 w-4 text-[#60A5FA]" />
                 Última vez: {formatDate(current.lastPlayedAt)}
               </span>
-              <span>{current.modsCount} mods</span>
-              <span>{current.resourcepacksCount} texturas</span>
-              <span>{current.shaderpacksCount} shaders</span>
+              <span>{effectiveModsCount} mods</span>
+              <span>{effectiveResourcepacksCount} texturas</span>
+              <span>{effectiveShaderpacksCount} shaders</span>
               {current.modpackFilesCount ? (
                 <span>{current.modpackFilesCount} arquivos do pacote</span>
               ) : null}
@@ -710,11 +727,15 @@ export const InstanceDetailPage = ({
 
       {section === "overview" ? (
         <Overview
-          instance={current}
           projectBody={project.data?.body}
           projectCategories={project.data?.categories}
           inspection={inspection.data}
           heroUrl={project.data?.gallery[0]?.url}
+          effectiveModsCount={effectiveModsCount}
+          effectiveResourcepacksCount={effectiveResourcepacksCount}
+          effectiveShaderpacksCount={effectiveShaderpacksCount}
+          effectiveDataPacksCount={effectiveDataPacksCount}
+          effectiveWorldsCount={effectiveWorldsCount}
         />
       ) : null}
 
@@ -1031,23 +1052,31 @@ export const InstanceDetailPage = ({
 };
 
 const Overview = ({
-  instance,
   projectBody,
   projectCategories,
   inspection,
   heroUrl,
+  effectiveModsCount,
+  effectiveResourcepacksCount,
+  effectiveShaderpacksCount,
+  effectiveDataPacksCount,
+  effectiveWorldsCount,
 }: {
-  instance: LauncherInstance;
   projectBody?: string;
   projectCategories?: string[];
   inspection?: Awaited<ReturnType<typeof launcherApi.inspectInstance>>;
   heroUrl?: string;
+  effectiveModsCount: number;
+  effectiveResourcepacksCount: number;
+  effectiveShaderpacksCount: number;
+  effectiveDataPacksCount: number;
+  effectiveWorldsCount: number;
 }) => (
   <div className="space-y-5">
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <Stat icon={Package} label="Mods" value={instance.modsCount} />
-      <Stat icon={Palette} label="Texturas" value={instance.resourcepacksCount} />
-      <Stat icon={Sparkles} label="Shaders" value={instance.shaderpacksCount} />
+      <Stat icon={Package} label="Mods" value={effectiveModsCount} />
+      <Stat icon={Palette} label="Texturas" value={effectiveResourcepacksCount} />
+      <Stat icon={Sparkles} label="Shaders" value={effectiveShaderpacksCount} />
       <Stat
         icon={HardDrive}
         label="Conteúdo"
@@ -1073,8 +1102,8 @@ const Overview = ({
       />
       <div className="mt-5 grid gap-3 border-t border-white/10 pt-4 text-sm text-[#94A3B8] sm:grid-cols-3">
         <span>{inspection?.configFilesCount ?? 0} arquivos de configuração</span>
-        <span>{instance.dataPacksCount} data packs</span>
-        <span>{instance.worldsCount} mundos</span>
+        <span>{effectiveDataPacksCount} data packs</span>
+        <span>{effectiveWorldsCount} mundos</span>
       </div>
     </Card>
   </div>

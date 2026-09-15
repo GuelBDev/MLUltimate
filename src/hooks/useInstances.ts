@@ -9,6 +9,8 @@ export const useInstances = () => {
   const instances = useQuery({
     queryKey: instancesKey,
     queryFn: launcherApi.listInstances,
+    refetchInterval: 5000,
+    refetchOnWindowFocus: true,
   });
 
   const createInstance = useMutation({

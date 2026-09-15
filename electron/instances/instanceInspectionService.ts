@@ -698,7 +698,7 @@ const isContentEntry = async (
     return false;
   }
 
-  const normalized = fileName.toLowerCase().replace(/\.disabled$/, "");
+  const normalized = fileName.toLowerCase().replace(/\.(disabled|disabled-by-mlultimate)$/i, "");
 
   if (category === "mod") return /\.(jar|zip)$/i.test(normalized);
   if (category === "datapack") return /\.zip$/i.test(normalized);
